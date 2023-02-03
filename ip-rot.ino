@@ -29,11 +29,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 MQTT monitor
 ------------
 mosquitto_sub -v -h 192.168.1.200 -t 'OK1HRA/ROT/#'
+mosquitto_sub -v -h 54.38.157.134 -t 'BD:2F/ROT/#'
 
 MQTT topic
 ------------
 mosquitto_pub -h 192.168.1.200 -t OK1HRA/ROT/Target -m '10'
-
+mosquitto_pub -h 54.38.157.134 -t BD:2F/ROT/Target -m '10'
 
 
 HARDWARE ESP32-POE
@@ -42,14 +43,14 @@ Changelog:
 20221104
 
 ToDo
+- Azimuth shift - posun skutecneho proti tomu v rotatoru
+- automaticka detekce smeru otaceni pri MAXpwm = automatikcky reverse rezim
 - kalibrace promene OneTurnCalibrateRaw
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
-- implementovat ID
+- implementovat ID (vice rotatoru)
 - implementovat jmeno rotatoru
 - nastaveni MAX PWM
-- automaticka detekce smeru otaceni pri MAXpwm = automatikcky reverse rezim
 - watchdog na cas a minimalni pohyb spravnym smerem
-- Azimuth shift - posun skutecneho proti tomu v rotatoru
 - hlidat min napeti (9V?) pod kterym prestat otacet + warning do /status
 
 
@@ -80,7 +81,7 @@ int RotID = 1;
 String RotName = "2+6m yagi";
 
 unsigned int PwmUpDelay  = 4;  // [ms]*255
-unsigned int PwmDwnDelay = 2;  // [ms]*255
+unsigned int PwmDwnDelay = 3;  // [ms]*255
 
 // #define HWREV 8                     // PCB version [7-8]
 #define OTAWEB                      // enable upload firmware via web
@@ -106,7 +107,7 @@ const char* ssid     = "";
 const char* password = "";
 const float FunelDiaInCM = 10.0; // cm funnel diameter
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230128";
+const char* REV = "20230203";
 
 #include "esp_adc_cal.h"
 const int AzimuthPin    = 39;  // analog
@@ -1216,7 +1217,8 @@ if(StatusTmp!=Status){
     case  2: {StatusStr = "CW"; break; }
     case  3: {StatusStr = "PwmDwn-CW"; break; }
   }
-  MqttPubString("Status", StatusStr, false);
+  MqttPubString("StatusHuman", StatusStr, false);
+  MqttPubString("Status", String(Status+4), false);
   StatusTmp=Status;
 }
 
@@ -3422,7 +3424,7 @@ void http(){
           #if defined(OTAWEB)
             webClient.print(F(" | <a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/3D-print-WX-station/releases\" target=_blank>Releases</a> | <a href=\"http://"));
+            webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a> | <a href=\"http://"));
             webClient.println(ETH.localIP());
             webClient.print(F(":88\" target=_blank>html preview</a>"));
           #endif
@@ -3537,7 +3539,7 @@ void http2(){
           //   Serial.println(temperatureC);
           // }
 
-          // webClient2.print(String(bmp.readTemperature()));
+          webClient2.print(String(Azimuth));
           webClient2.println(F("&deg;</span><br><span style=\"color: #000; background: #080; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;\">"));
           #if defined(HTU21D)
             if(HTU21Denable==true){
@@ -3559,7 +3561,7 @@ void http2(){
           webClient2.print(F("| <strong style=\"color: #fff;\">"));
           webClient2.print(String(PulseToMetterBySecond(PeriodMinRpmPulse)));
           webClient2.print(F(" m/s</strong></span><br><span style=\"font-size: 600%; transform: rotate("));
-          webClient2.print(String(WindDir));
+          webClient2.print(String(Azimuth));
           webClient2.print(F("deg); display: inline-block;\">&#10138;</span><br><a href=\""));
           webClient2.print( ETH.localIP() );
           webClient2.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=270,height=330,left=0,top=0,menubar=no,location=no,status=no' ); return false;\" style=\"color:#666;text-decoration:none;\">UTC "));
@@ -3740,6 +3742,21 @@ bool mqttReconnect() {
         Prn(3, 1, " > subscribe "+String(cstr));
       }
     }
+    topic = String(YOUR_CALL) + "/ROT/get";
+    const char *cstr1 = topic.c_str();
+    if(mqttClient.subscribe(cstr1)==true){
+      if(EnableSerialDebug>0){
+        Prn(3, 1, " > subscribe "+String(cstr1));
+      }
+    }
+    topic = String(YOUR_CALL) + "/ROT/stop";
+    const char *cstr2 = topic.c_str();
+    if(mqttClient.subscribe(cstr2)==true){
+      if(EnableSerialDebug>0){
+        Prn(3, 1, " > subscribe "+String(cstr2));
+      }
+    }
+
   }
   return mqttClient.connected();
 }
@@ -3761,6 +3778,14 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
         Prn(3, 1, "/stop ");
       }
       Status = 0;
+    }
+
+    CheckTopicBase = String(YOUR_CALL) + "/ROT/get";
+    if ( CheckTopicBase.equals( String(topic) )){
+      MqttPubString("Azimuth", String(Azimuth), false);
+      if(EnableSerialDebug>0){
+        Prn(3, 1, "/get ");
+      }
     }
 
     // Target
