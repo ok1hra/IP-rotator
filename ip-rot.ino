@@ -77,6 +77,7 @@ Použití knihovny DallasTemperature ve verzi 3.9.0 v adresáři: /home/dan/Ardu
 
 */
 //-------------------------------------------------------------------------------------------------------
+int StartAzimuth = 180;         // max CCW limit callibrate in real using
 int RotID = 1;
 String RotName = "2+6m yagi";
 
@@ -107,7 +108,7 @@ const char* ssid     = "";
 const char* password = "";
 const float FunelDiaInCM = 10.0; // cm funnel diameter
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230203";
+const char* REV = "20230204";
 
 #include "esp_adc_cal.h"
 const int AzimuthPin    = 39;  // analog
@@ -1196,6 +1197,7 @@ if(millis()-ADCTimer > 100){
   VoltageValue = readADC_Cal(analogRead(VoltagePin))/1000.0*4.39;
   // Azimuth=map(AzimuthValue, 142, 3139, -45, 495);
   Azimuth=map(AzimuthValue, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);
+
   // Azimuth=CalibrateRawToDeg(AzimuthValue);
   ADCTimer=millis();
 }
@@ -1223,11 +1225,13 @@ if(StatusTmp!=Status){
 }
 
 // info if change
-if(millis()-MqttTimer > 2000){
+if( (Status==0 && millis()-MqttTimer >2000) || (Status!=0 && millis()-MqttTimer >100) ){
   if(abs(AzimuthTmp-Azimuth)>2){
     MqttPubString("Azimuth", String(Azimuth), false);
-    MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
-    MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
+    if(Status==0){
+      // MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
+      MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
+    }
     AzimuthTmp=Azimuth;
   }
   if(abs(VoltageValueTmp-VoltageValue)>0.5){
@@ -1314,10 +1318,27 @@ void RotCalculate(){
   static unsigned int OneTurnCalibrateRaw = 2600;     // ----------------- need procedure fo callibrate
   const unsigned int CWlimit = 3139-2997/12;
   static unsigned int MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
+  const unsigned int HalfPoint = MaxRotateDegree/2;
 
   // if(EnableSerialDebug>0){
-    MqttPubString("MaxRotateDegree", String(MaxRotateDegree), false);
-  // }
+    MqttPubString("MaxRotateDegree", String(MaxRotateDegree), true);
+    MqttPubString("HalfPoint", String(HalfPoint), true);
+// }
+/*
+StartAzimuth---------HalfPoint---------StartAzimuth+MaxRotateDegree
+ 0                     203,5           360       407
+                                        0         47
+*/
+
+  // overlap
+  if(Azimuth < HalfPoint && AzimuthTarget < HalfPoint){
+    //CCW
+  }else{
+    if(AzimuthTarget<MaxRotateDegree-360){  // if in overlap
+      AzimuthTarget=AzimuthTarget+360;      // go to overlap
+    }
+    //CW
+  }
 
   if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
     if(AzimuthTarget>Azimuth){
@@ -3777,7 +3798,11 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
       if(EnableSerialDebug>0){
         Prn(3, 1, "/stop ");
       }
-      Status = 0;
+      if(Status<0){
+        Status = -3;
+      }else if(Status>0){
+        Status = 3;
+      }
     }
 
     CheckTopicBase = String(YOUR_CALL) + "/ROT/get";
@@ -3829,6 +3854,9 @@ void AfterMQTTconnect(){
           Serial.print(mqttPath);
           Serial.print(" ");
           Serial.println(MACchar);
+
+        MqttPubString("StartAzimuth", String(StartAzimuth), true);
+        MqttPubString("Name", String(RotName), true);
 
         // String pcbString = String(HWREV);   // to string
         // pcbString.toCharArray( mqttTX, 2 );                          // to array
