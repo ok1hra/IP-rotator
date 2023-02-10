@@ -43,7 +43,7 @@ Changelog:
 20221104
 
 ToDo
-- Azimuth shift - posun skutecneho proti tomu v rotatoru
+- web form https://github.com/mobizt/ESPForm
 - automaticka detekce smeru otaceni pri MAXpwm = automatikcky reverse rezim
 - kalibrace promene OneTurnCalibrateRaw
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
