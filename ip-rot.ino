@@ -56,6 +56,7 @@ ToDo
 
 Použití knihovny WiFi ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/WiFi
 Použití knihovny EEPROM ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/EEPROM
+Použití knihovny WebServer ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/WebServer
 Použití knihovny Ethernet ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/Ethernet
 Použití knihovny ESPmDNS ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/ESPmDNS
 Použití knihovny ArduinoOTA ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/ArduinoOTA
@@ -63,23 +64,18 @@ Použití knihovny Update ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardwar
 Použití knihovny AsyncTCP ve verzi 1.1.1 v adresáři: /home/dan/Arduino/libraries/AsyncTCP
 Použití knihovny ESPAsyncWebServer ve verzi 1.2.3 v adresáři: /home/dan/Arduino/libraries/ESPAsyncWebServer
 Použití knihovny FS ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/FS
-Použití knihovny AsyncElegantOTA ve verzi 2.2.5 v adresáři: /home/dan/Arduino/libraries/AsyncElegantOTA
+Použití knihovny AsyncElegantOTA ve verzi 2.2.7 v adresáři: /home/dan/Arduino/libraries/AsyncElegantOTA
 Použití knihovny PubSubClient ve verzi 2.8 v adresáři: /home/dan/Arduino/libraries/PubSubClient
 Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/Wire
-Použití knihovny Adafruit_Unified_Sensor ve verzi 1.1.2 v adresáři: /home/dan/Arduino/libraries/Adafruit_Unified_Sensor
-Použití knihovny Adafruit_BMP280_Library ve verzi 2.5.0 v adresáři: /home/dan/Arduino/libraries/Adafruit_BMP280_Library
-Použití knihovny Adafruit_BusIO ve verzi 1.9.8 v adresáři: /home/dan/Arduino/libraries/Adafruit_BusIO
-Použití knihovny SPI ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/SPI
-Použití knihovny Adafruit_HTU21DF_Library ve verzi 1.0.4 v adresáři: /home/dan/Arduino/libraries/Adafruit_HTU21DF_Library
-Použití knihovny SD_MMC ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/SD_MMC
-Použití knihovny OneWire ve verzi 2.3.6 v adresáři: /home/dan/Arduino/libraries/OneWire
-Použití knihovny DallasTemperature ve verzi 3.9.0 v adresáři: /home/dan/Arduino/libraries/DallasTemperature
 
 */
 //-------------------------------------------------------------------------------------------------------
 int StartAzimuth = 180;         // max CCW limit callibrate in real using
+unsigned int AntRadiationAngle = 44;
 int RotID = 1;
 String RotName = "2+6m yagi";
+String MapUrl = "https://hra.remoteqth.com/map.png" ;
+//$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
 
 unsigned int PwmUpDelay  = 4;  // [ms]*255
 unsigned int PwmDwnDelay = 3;  // [ms]*255
@@ -122,6 +118,7 @@ const int HWidPin       = 34;  // analog
 float HWidValue           = 0.0;
 const int VoltagePin    = 35;  // analog
 float VoltageValue        = 0.0;
+unsigned int MaxRotateDegree = 0;
 
 const int ReversePin    = 16;  //
 const int PwmPin        = 4;   //
@@ -244,6 +241,11 @@ bool needEEPROMcommit = false;
 unsigned int RebootWatchdog;
 unsigned int OutputWatchdog;
 unsigned long WatchdogTimer=0;
+
+//ajax
+#include <WebServer.h>
+#include "index.h"  //Web page header file
+WebServer ajaxserver(84);
 
 WiFiServer server(HTTP_SERVER_PORT);
 WiFiServer server2(HTTP_SERVER_PORT+8);
@@ -1023,6 +1025,20 @@ void setup() {
    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
    RainCountDayOfMonth=UtcTime(2);
    Interrupts(true);
+
+   // ajax
+   ajaxserver.on("/", handleRoot);      //This is display page
+   ajaxserver.on("/readADC", handleADC);//To get update of ADC Value only
+   ajaxserver.on("/readAZ", handleAZ);
+   ajaxserver.on("/readStat", handleStat);
+   ajaxserver.on("/readStart", handleStart);
+   ajaxserver.on("/readMax", handleMax);
+   ajaxserver.on("/readAnt", handleAnt);
+   ajaxserver.on("/readAntName", handleAntName);
+   ajaxserver.on("/readMapUrl", handleMapUrl);
+   ajaxserver.begin();                  //Start server
+   Serial.println("HTTP ajax server started");
+
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -1036,9 +1052,11 @@ void loop() {
   Watchdog();
   RunByStatus();
 
-  // RX_UDP();
+  ajaxserver.handleClient();
 
+  // RX_UDP();
   // PWM demo
+
 
   // static long PwmTimer = 0;
   // static unsigned int dutyCycle = 0;
@@ -1184,7 +1202,7 @@ void Watchdog(){
 const unsigned int CCWlimitRaw = 142+2997/12;
 static unsigned int OneTurnCalibrateRaw = 2600;     // ----------------- need procedure fo callibrate
 const unsigned int CWlimit = 3139-2997/12;
-static unsigned int MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
+MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
 // static unsigned int MaxRotateDegree = CalibrateRawToDeg(CWlimit);     // *[1]
 // static unsigned int MaxLimitDegree = map(3139, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[2]
 static unsigned int MaxLimitDegree = map(3139, 392, 2600, 0, 360);     // *[2]
@@ -1317,7 +1335,7 @@ void RotCalculate(){
   const unsigned int CCWlimitRaw = 142+2997/12;
   static unsigned int OneTurnCalibrateRaw = 2600;     // ----------------- need procedure fo callibrate
   const unsigned int CWlimit = 3139-2997/12;
-  static unsigned int MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
+  MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
   const unsigned int HalfPoint = MaxRotateDegree/2;
 
   // if(EnableSerialDebug>0){
@@ -4675,3 +4693,33 @@ void testFileIO(fs::FS &fs, const char * path){
     Serial.println();
   }
 #endif
+
+// ajax
+void handleRoot() {
+ String s = MAIN_page; //Read HTML contents
+ ajaxserver.send(200, "text/html", s); //Send web page
+}
+void handleADC() {
+ ajaxserver.send(200, "text/plane", String(VoltageValue)); //Send ADC value only to client ajax request
+}
+void handleAZ() {
+  ajaxserver.send(200, "text/plane", String(Azimuth) );
+}
+void handleStat() {
+  ajaxserver.send(200, "text/plane", String(Status+4) );
+}
+void handleStart() {
+  ajaxserver.send(200, "text/plane", String(StartAzimuth) );
+}
+void handleMax() {
+  ajaxserver.send(200, "text/plane", String(MaxRotateDegree) );
+}
+void handleAnt() {
+  ajaxserver.send(200, "text/plane", String(AntRadiationAngle) );
+}
+void handleAntName() {
+  ajaxserver.send(200, "text/plane", RotName );
+}
+void handleMapUrl() {
+  ajaxserver.send(200, "text/plane", MapUrl );
+}
