@@ -22,6 +22,20 @@ const char MAIN_page[] PROGMEM = R"=====(
 			top: 0;
 			z-index: 1;
 		}
+		.form1{
+			margin: auto;
+			position: absolute;
+			left: 0;
+			top: 600px;
+			z-index: 1;
+		}
+		.form2{
+			margin: auto;
+			position: absolute;
+			left: 540px;
+			top: 600px;
+			z-index: 1;
+		}
 		.top{
 			margin: auto;
 			border: 0px solid #222222;
@@ -53,16 +67,22 @@ const char MAIN_page[] PROGMEM = R"=====(
 		<canvas class="mouse" id="Mouse" height="600" width="600"></canvas>
 		<canvas class="top" id="Azimuth" width="600" height="600">Your browser does not support the HTML5 canvas tag.</canvas>
 		<canvas class="bot" id="Map" width="600" height="600"></canvas>
+		<form class="form1" name="frm0" method="post">
+			<input type="text" name="ROT" size="3" value="303">
+			<input type="submit" value="ROTATE" style="background: #080;">
+		</form>
+		<form class="form2" name="frm1" method="post">
+			<input type="submit" value="STOP" style="background: ORANGE;">
+		</form>
 		<div class="second">
 			<p style="color: #ccc; margin: 0 0 0 0; text-align: center;">
-				<span style="color: #000; background: #080; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
+				<span style="color: #000; background: #666; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
 				<span style="font-weight: bold;" id="AZValue">0</span>&deg; |
 				<span id="AntName"> </span> |
 					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V
 				</span>
-				<br>
 				<!--<form action="/get">
-					input1: <input type="text" name="input1">
+					Target <input type="text" name="input1">
 					<input type="submit" value="Submit">
 				</form><br>-->
 			</p>
@@ -170,7 +190,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    if (this.readyState == 4 && this.status == 200) {
 	      document.getElementById("AZValue").innerHTML = this.responseText;
 				Azimuth = this.responseText;
-				if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>2 || Status != 4 ){
+				if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>1 ){	// || Status != 4
 					AZ(Azimuth);
 					Static();
 					AzimuthTmp=Azimuth;
@@ -200,13 +220,21 @@ const char MAIN_page[] PROGMEM = R"=====(
 	//report the mouse position on click
 	mouse.addEventListener("click", function (evt) {
 	    var mousePos = getMousePos(mouse, evt);
-	    alert(mousePos.x + ',' + mousePos.y);
+	    // alert(mousePos.x + ',' + mousePos.y);
+			var AZtarget = Math.atan2(BoxSize/2 - Number(mousePos.y), Number(mousePos.x) - BoxSize/2) * 180 / Math.PI;
+			AZtarget = AZtarget - 90;
+			if(AZtarget<0){
+				AZtarget = Math.abs(AZtarget);
+			}else{
+				AZtarget = 360 - AZtarget;
+			}
+			AZtarget = Math.round(AZtarget);
+			alert( AZtarget + '°');
 	}, false);
 
 	//Get Mouse Position
 	function getMousePos(mouse, evt) {
 	    var rect = mouse.getBoundingClientRect();
-			// Target = Math.atan2(BoxSize/2 - evt.clientY - rect.top, evt.clientX - rect.left - BoxSize/2) * 180 / Math.PI;
 			// return Target;
 	    return {
 	        x: evt.clientX - rect.left,

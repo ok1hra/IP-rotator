@@ -1027,6 +1027,7 @@ void setup() {
    Interrupts(true);
 
    // ajax
+   ajaxserver.on("/",HTTP_POST, handlePost);
    ajaxserver.on("/", handleRoot);      //This is display page
    ajaxserver.on("/readADC", handleADC);//To get update of ADC Value only
    ajaxserver.on("/readAZ", handleAZ);
@@ -4695,6 +4696,26 @@ void testFileIO(fs::FS &fs, const char * path){
 #endif
 
 // ajax
+void handlePost() {
+ String s = MAIN_page; //Read HTML contents
+ String str = ajaxserver.arg("ROT");
+ AzimuthTarget = str.toInt() + StartAzimuth;
+ if(AzimuthTarget>359){
+   AzimuthTarget = AzimuthTarget - 360;
+ }
+ RotCalculate();
+ ajaxserver.send(200, "text/html", s);
+
+ // MqttPubString("Debug 1 ", String(ajaxserver.hasArg("on")), false);
+ // MqttPubString("Debug 2 ", String(ajaxserver.arg("on")), false);
+ // if(ajaxserver.hasArg("on") && (ajaxserver.arg("on").length()>0)){
+    // ajaxserver.sendHeader("Location", String("/"), true); //how to do a redirect, next two lines
+    // ajaxserver.send ( 302, "text/plain", "");
+  // } else {
+  //   ajaxserver.send(400, "text/html", "<html><body><h1>HTTP Error 400</h1><p>Bad request. Please enter a value.</p></body></html>");
+  // }
+}
+
 void handleRoot() {
  String s = MAIN_page; //Read HTML contents
  ajaxserver.send(200, "text/html", s); //Send web page
