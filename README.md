@@ -3,5 +3,4 @@
 - Web preview
 - Main repository [Parameterizable 3D print Antenna rotator in OpenScad](https://github.com/ok1hra/Parameterizable-3D-print-Antenna-rotator-in-OpenScad)
 
-![ip-rotator](ajax-server.png)
-![ip-rotator](ip-rotator.jpg)
+<img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/ajax-server.png" height="150"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/ip-rotator.jpg" height="150">
