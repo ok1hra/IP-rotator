@@ -50,6 +50,12 @@ const char MAIN_page[] PROGMEM = R"=====(
 			top: 0;
 			z-index: -1;
 		}
+		.underbot{
+			position: absolute;
+			left: 0;
+			top: 0;
+			z-index: -2;
+		}
 		.second{
 			border: 0px solid #222222;
 			position: absolute;
@@ -67,19 +73,20 @@ const char MAIN_page[] PROGMEM = R"=====(
 		<canvas class="mouse" id="Mouse" height="600" width="600"></canvas>
 		<canvas class="top" id="Azimuth" width="600" height="600">Your browser does not support the HTML5 canvas tag.</canvas>
 		<canvas class="bot" id="Map" width="600" height="600"></canvas>
-		<form class="form1" name="frm0" method="post">
+		<canvas class="underbot" id="DirLine" width="600" height="600"></canvas>
+		<!--<form class="form1" name="frm0" method="post">
 			<input type="text" name="ROT" size="3" value="303">
 			<input type="submit" value="ROTATE" style="background: #080;">
-		</form>
+		</form>-->
 		<form class="form2" name="frm1" method="post">
 			<input type="submit" value="STOP" style="background: ORANGE;">
 		</form>
 		<div class="second">
 			<p style="color: #ccc; margin: 0 0 0 0; text-align: center;">
 				<span style="color: #000; background: #666; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
-				<span style="font-weight: bold;" id="AZValue">0</span>&deg; |
-				<span id="AntName"> </span> |
-					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V
+					<span style="color: #fff;" id="AntName"> </span> | PWR
+					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V | raw
+					<span style="font-weight: bold;" id="AZValue">0</span>&deg;
 				</span>
 				<!--<form action="/get">
 					Target <input type="text" name="input1">
@@ -113,10 +120,14 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var Xcenter = BoxSize/2;
 	var Ycenter = BoxSize/2;
 
+
+	// setInterval(function.reload(){ map();}, 600000); //mSeconds update rate
+	setInterval(function() { map();}, 600000); //mSeconds update rate
 	setInterval(function() { getData();}, 500); //mSeconds update rate
 	getSet();
 	setTimeout(() => { map(); }, 1000);
 	Static();
+	StaticBot();
 
 	function getSet() {
 	  var ihttp = new XMLHttpRequest();
@@ -179,7 +190,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  var xhttp = new XMLHttpRequest();
 	  xhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      document.getElementById("ADCValue").innerHTML = this.responseText;
+	      document.getElementById("ADCValue").innerHTML = Math.round(this.responseText * 10) / 10;
 	    }
 	  };
 	  xhttp.open("GET", "readADC", true);
@@ -193,6 +204,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 				if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>1 ){	// || Status != 4
 					AZ(Azimuth);
 					Static();
+					StaticBot();
 					AzimuthTmp=Azimuth;
 				}
 				// console.log ('getData.Azimuth ' + Azimuth);
@@ -229,7 +241,20 @@ const char MAIN_page[] PROGMEM = R"=====(
 				AZtarget = 360 - AZtarget;
 			}
 			AZtarget = Math.round(AZtarget);
-			alert( AZtarget + '°');
+			// alert( AZtarget + '°');
+
+			var http = new XMLHttpRequest();
+			var url = '/';
+			var params = "ROT="+AZtarget;
+			http.open('POST', url, true);
+			http.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+			http.onreadystatechange = function() {//Call a function when the state changes.
+			    if(http.readyState == 4 && http.status == 200) {
+			        alert(http.responseText);
+			    }
+			}
+			http.send(params);
+
 	}, false);
 
 	//Get Mouse Position
@@ -242,7 +267,6 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    };
 	}
 
-	// setInterval( location.reload(){ map();}, 5000); //mSeconds update rate
 	function map(){
 		var ctx = document.getElementById('Map');
 		if (ctx.getContext) {
@@ -283,7 +307,17 @@ const char MAIN_page[] PROGMEM = R"=====(
 		  az.moveTo(Xcoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.9));
 		  az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.7), Ycoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.7));
 		az.stroke();
-	  az.font = "bold 100px Arial";
+
+		// let myFont = new FontFace("Roboto", "url(http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext)");
+		// myFont.load().then((font) => {
+		//   document.fonts.add(font);
+		//   // var ctx = image.getContext("2d");
+		//   ctx.fillStyle = "#292929";
+		//   ctx.font = "100px Roboto";
+		//   ctx.fillText("330", 0, 30);
+		// });
+
+		az.font = "bold 100px Arial";
 			az.textAlign = 'center';
 			az.textBaseline = 'middle';
 			var ShowAzimuth = Number(Azimuth) + Number(AzShift);
@@ -360,6 +394,26 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  direction.fillText("S", BoxSize/2, BoxSize* 0.975);
 	  direction.fillText("W", BoxSize*0.025, BoxSize/2);
 	  direction.stroke();
+	}
+
+	function StaticBot(){
+	  var con = document.getElementById("DirLine");
+	  var dirline = con.getContext("2d");
+
+	  // direction line
+	  dirline.beginPath();
+	  dirline.lineWidth = 1;
+	  dirline.strokeStyle = '#606060';
+	    for(var i=0;i<24;i++){
+	  		if(i %2 === 0){
+					dirline.moveTo(Xcoordinate(i*15, BoxSize/2*0.1), Ycoordinate(i*15, BoxSize/2*0.1));
+					dirline.lineTo(Xcoordinate(i*15, BoxSize/2*0.9), Ycoordinate(i*15, BoxSize/2*0.9));
+	  		}else{
+					dirline.moveTo(Xcoordinate(i*15, BoxSize/2*0.3), Ycoordinate(i*15, BoxSize/2*0.3));
+	  			dirline.lineTo(Xcoordinate(i*15, BoxSize/2*0.9), Ycoordinate(i*15, BoxSize/2*0.9));
+	  		}
+	    }
+	  dirline.stroke();
 	}
 
 	</script>

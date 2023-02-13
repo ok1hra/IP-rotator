@@ -43,15 +43,17 @@ Changelog:
 20221104
 
 ToDo
-- web form https://github.com/mobizt/ESPForm
+- status endstop true/false - aktivuje ochranne zony na krajich potenciometru ()
 - automaticka detekce smeru otaceni pri MAXpwm = automatikcky reverse rezim
 - kalibrace promene OneTurnCalibrateRaw
-- do debugu vypisovat prumer casu behu hlavni smycky v ms
 - implementovat ID (vice rotatoru)
 - implementovat jmeno rotatoru
-- nastaveni MAX PWM
 - watchdog na cas a minimalni pohyb spravnym smerem
+- web form https://github.com/mobizt/ESPForm
+- do debugu vypisovat prumer casu behu hlavni smycky v ms
+- nastaveni MAX PWM
 - hlidat min napeti (9V?) pod kterym prestat otacet + warning do /status
+- vycistit kod
 
 
 Použití knihovny WiFi ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/WiFi
@@ -74,12 +76,15 @@ int StartAzimuth = 180;         // max CCW limit callibrate in real using
 unsigned int AntRadiationAngle = 44;
 int RotID = 1;
 String RotName = "2+6m yagi";
-String MapUrl = "https://hra.remoteqth.com/map.png" ;
+String MapUrl = "https://remoteqth.com/xplanet/ok.png" ;
 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
 
 unsigned int PwmUpDelay  = 4;  // [ms]*255
 unsigned int PwmDwnDelay = 3;  // [ms]*255
 
+// #define WWWtwo
+
+//---------------------------------------------------------
 // #define HWREV 8                     // PCB version [7-8]
 #define OTAWEB                      // enable upload firmware via web
 // #define DS18B20                     // external 1wire Temperature sensor
@@ -91,7 +96,7 @@ unsigned int PwmDwnDelay = 3;  // [ms]*255
 #define ETHERNET                    // Enable ESP32 ethernet (DHCP IPv4)
 #define ETH_ADDR 0
 #define ETH_TYPE ETH_PHY_LAN8720
-#define ETH_POWER 0                // #define ETH_PHY_POWER 0 ./Arduino/hardware/espressif/esp32/variants/esp32-poe/pins_arduino.h
+#define ETH_POWER 12 //0                // #define ETH_PHY_POWER 0 ./Arduino/hardware/espressif/esp32/variants/esp32-poe/pins_arduino.h
 #define ETH_MDC 23                  // MDC pin17
 #define ETH_MDIO 18                 // MDIO pin16
 #define ETH_CLK ETH_CLOCK_GPIO17_OUT    // CLKIN pin5 | settings for ESP32 GATEWAY rev f-g
@@ -104,7 +109,7 @@ const char* ssid     = "";
 const char* password = "";
 const float FunelDiaInCM = 10.0; // cm funnel diameter
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230204";
+const char* REV = "20230211";
 
 #include "esp_adc_cal.h"
 const int AzimuthPin    = 39;  // analog
@@ -245,10 +250,12 @@ unsigned long WatchdogTimer=0;
 //ajax
 #include <WebServer.h>
 #include "index.h"  //Web page header file
-WebServer ajaxserver(84);
+WebServer ajaxserver(HTTP_SERVER_PORT+8);
 
 WiFiServer server(HTTP_SERVER_PORT);
-WiFiServer server2(HTTP_SERVER_PORT+8);
+#if defined(WWWtwo)
+  WiFiServer server2(HTTP_SERVER_PORT+8);
+#endif
 bool DHCP_ENABLE = 1;
 // Client variables
 char linebuf[80];
@@ -885,7 +892,9 @@ void setup() {
     }
   #endif
     server.begin();
-    server2.begin();
+    #if defined(WWWtwo)
+      server2.begin();
+    #endif
     UdpCommand.begin(IncomingSwitchUdpPort);    // incoming udp port
     // chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
     //   unsigned long long1 = (unsigned long)((chipid & 0xFFFF0000) >> 16 );
@@ -1027,7 +1036,8 @@ void setup() {
    Interrupts(true);
 
    // ajax
-   ajaxserver.on("/",HTTP_POST, handlePost);
+   ajaxserver.on("/",HTTP_POST, handlePostRot);
+   // ajaxserver.on("/STOP",HTTP_POST, handlePostStop);
    ajaxserver.on("/", handleRoot);      //This is display page
    ajaxserver.on("/readADC", handleADC);//To get update of ADC Value only
    ajaxserver.on("/readAZ", handleAZ);
@@ -1046,7 +1056,9 @@ void setup() {
 
 void loop() {
   http();
-  http2();
+  #if defined(WWWtwo)
+    http2();
+  #endif
   Mqtt();
   CLI();
   Telnet();
@@ -3533,6 +3545,7 @@ void http(){
 //-------------------------------------------------------------------------------------------------------
 
 void http2(){
+  #if defined(WWWtwo)
   // listen for incoming clients
   WiFiClient webClient2 = server2.available();
   if (webClient2) {
@@ -3642,6 +3655,7 @@ void http2(){
    }
    Interrupts(true);
   }
+  #endif
 }
 //-------------------------------------------------------------------------------------------------------
 
@@ -4696,7 +4710,7 @@ void testFileIO(fs::FS &fs, const char * path){
 #endif
 
 // ajax
-void handlePost() {
+void handlePostRot() {
  String s = MAIN_page; //Read HTML contents
  String str = ajaxserver.arg("ROT");
  AzimuthTarget = str.toInt() + StartAzimuth;
@@ -4704,10 +4718,10 @@ void handlePost() {
    AzimuthTarget = AzimuthTarget - 360;
  }
  RotCalculate();
- ajaxserver.send(200, "text/html", s);
+ // ajaxserver.send(200, "text/html", s);
 
- // MqttPubString("Debug 1 ", String(ajaxserver.hasArg("on")), false);
- // MqttPubString("Debug 2 ", String(ajaxserver.arg("on")), false);
+ MqttPubString("Debug 1 ", String(ajaxserver.hasArg("on")), false);
+ MqttPubString("Debug 2 ", String(ajaxserver.arg("on")), false);
  // if(ajaxserver.hasArg("on") && (ajaxserver.arg("on").length()>0)){
     // ajaxserver.sendHeader("Location", String("/"), true); //how to do a redirect, next two lines
     // ajaxserver.send ( 302, "text/plain", "");
@@ -4715,7 +4729,13 @@ void handlePost() {
   //   ajaxserver.send(400, "text/html", "<html><body><h1>HTTP Error 400</h1><p>Bad request. Please enter a value.</p></body></html>");
   // }
 }
-
+void handlePostStop() {
+  if(Status<0){
+    Status = -3;
+  }else if(Status>0){
+    Status = 3;
+  }
+}
 void handleRoot() {
  String s = MAIN_page; //Read HTML contents
  ajaxserver.send(200, "text/html", s); //Send web page
