@@ -43,16 +43,19 @@ Changelog:
 20221104
 
 ToDo
++ implementovat jmeno rotatoru
++ watchdog na cas a minimalni pohyb spravnym smerem
++ v ochranych zonach zobrazovat azimut sedou barvou
++ hlidat min napeti (11V) pod kterym prestat otacet + warning do /status
++ v html zobrazit target azimuth
+- html ne jako smerova mapa, ale linearni stupnice
 - status endstop true/false - aktivuje ochranne zony na krajich potenciometru ()
 - automaticka detekce smeru otaceni pri MAXpwm = automatikcky reverse rezim
 - kalibrace promene OneTurnCalibrateRaw
 - implementovat ID (vice rotatoru)
-- implementovat jmeno rotatoru
-- watchdog na cas a minimalni pohyb spravnym smerem
 - web form https://github.com/mobizt/ESPForm
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
 - nastaveni MAX PWM
-- hlidat min napeti (9V?) pod kterym prestat otacet + warning do /status
 - vycistit kod
 
 
@@ -72,15 +75,31 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-int StartAzimuth = 180;         // max CCW limit callibrate in real using
-unsigned int AntRadiationAngle = 44;
+// not impemented
 int RotID = 1;
+bool Endstop =  false;
+bool ACmotor =  false;
+bool Reverse =  false;
+
+
+
+// need set from GUI
+String YOUR_CALL = "";
 String RotName = "2+6m yagi";
-String MapUrl = "https://remoteqth.com/xplanet/ok.png" ;
-//$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
+unsigned int AntRadiationAngle = 44;
+String MapUrl = "https://remoteqth.com/xplanet/OK.png" ;
+                //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
+int StartAzimuth = 180;         // max CCW limit callibrate in real using
+unsigned int MaxRotateDegree = 0;
+
+
+
 
 unsigned int PwmUpDelay  = 4;  // [ms]*255
 unsigned int PwmDwnDelay = 3;  // [ms]*255
+long StatusWatchdogTimer = 0;
+long RotateWatchdogTimer = 0;
+int AzimuthWatchdog = 0;
 
 // #define WWWtwo
 
@@ -109,7 +128,7 @@ const char* ssid     = "";
 const char* password = "";
 const float FunelDiaInCM = 10.0; // cm funnel diameter
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230211";
+const char* REV = "20230303";
 
 #include "esp_adc_cal.h"
 const int AzimuthPin    = 39;  // analog
@@ -123,7 +142,6 @@ const int HWidPin       = 34;  // analog
 float HWidValue           = 0.0;
 const int VoltagePin    = 35;  // analog
 float VoltageValue        = 0.0;
-unsigned int MaxRotateDegree = 0;
 
 const int ReversePin    = 16;  //
 const int PwmPin        = 4;   //
@@ -140,7 +158,6 @@ const int PwmResolution = 8;
 // values
 const int keyNumber = 1;
 char key[100];
-String YOUR_CALL = "";
 long MeasureTimer[2]={2800000,300000};   //  millis,timer (5 min)
 long RainTimer[2]={0,5000};   //  <---------------- rain timing
 int RainCount;
@@ -1272,6 +1289,50 @@ if( (Status==0 && millis()-MqttTimer >2000) || (Status!=0 && millis()-MqttTimer 
   MqttTimer=millis();
 }
 
+if(Status!=0){
+  // status watchdog
+  if(millis()-StatusWatchdogTimer > 90000){ // after 90sec
+    if(Status<0){
+      Status=-3;
+    }else{
+      Status=3;
+    }
+    MqttPubString("Debug", "Status0 by time watchdog", false);
+    StatusWatchdogTimer = StatusWatchdogTimer+5000; // next 5sec check
+  }
+  // Azimuth change watchdog
+  if(millis()-RotateWatchdogTimer > 10000){    // check every 10 sec
+    if(abs(AzimuthWatchdog-Azimuth)>5){
+      RotateWatchdogTimer=millis();
+      AzimuthWatchdog=Azimuth;
+    }else{
+      if(Status<0){
+        Status=-3;
+      }else{
+        Status=3;
+      }
+      RotateWatchdogTimer=millis();
+      MqttPubString("Debug", "Status0 by AZ watchdog", false);
+    }
+  }
+}
+
+static long DCunderVoltageWatchdog = 0;
+if(millis()-DCunderVoltageWatchdog > 1000){
+  if(Status==2 || Status==-2){
+      if(VoltageValue < 11.0){
+        if(Status<0){
+          Status=-3;
+        }else{
+          Status=3;
+        }
+        MqttPubString("Debug", "Status0 by under voltage 11V", false);
+      }
+  }
+  DCunderVoltageWatchdog=millis();
+}
+
+
 // debug
 static long DebugTimer = 0;
 if(millis()-DebugTimer > 2000){
@@ -1375,18 +1436,30 @@ StartAzimuth---------HalfPoint---------StartAzimuth+MaxRotateDegree
     if(AzimuthTarget>Azimuth){
       Status=1;
       digitalWrite(ReversePin, LOW); delay(12);
+      StatusWatchdogTimer = millis();
+      RotateWatchdogTimer = millis();
+      AzimuthWatchdog=Azimuth;
     }else{
       Status=-1;
       digitalWrite(ReversePin, HIGH); delay(12);
+      StatusWatchdogTimer = millis();
+      RotateWatchdogTimer = millis();
+      AzimuthWatchdog=Azimuth;
     }
 
   // escape from the forbidden zone
   }else if(Azimuth<0 && AzimuthTarget>0){
     digitalWrite(ReversePin, LOW); delay(12);
     Status=1;
+    StatusWatchdogTimer = millis();
+    RotateWatchdogTimer = millis();
+    AzimuthWatchdog=Azimuth;
   }else if(Azimuth>MaxRotateDegree && AzimuthTarget<MaxRotateDegree){
     digitalWrite(ReversePin, HIGH); delay(12);
     Status=-1;
+    StatusWatchdogTimer = millis();
+    RotateWatchdogTimer = millis();
+    AzimuthWatchdog=Azimuth;
   }else{
     AzimuthTarget=-1;
   }
@@ -4720,8 +4793,8 @@ void handlePostRot() {
  RotCalculate();
  // ajaxserver.send(200, "text/html", s);
 
- MqttPubString("Debug 1 ", String(ajaxserver.hasArg("on")), false);
- MqttPubString("Debug 2 ", String(ajaxserver.arg("on")), false);
+ // MqttPubString("Debug 1 ", String(ajaxserver.hasArg("on")), false);
+ // MqttPubString("Debug 2 ", String(ajaxserver.arg("on")), false);
  // if(ajaxserver.hasArg("on") && (ajaxserver.arg("on").length()>0)){
     // ajaxserver.sendHeader("Location", String("/"), true); //how to do a redirect, next two lines
     // ajaxserver.send ( 302, "text/plain", "");

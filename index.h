@@ -115,6 +115,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var AzimuthTmp = 0;
 	var AntRadiationAngle = 0;
 	var Status = 4;
+	var StatusTmp = 0;
 	var MapUrl = 0;
 
 	var Xcenter = BoxSize/2;
@@ -128,6 +129,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	setTimeout(() => { map(); }, 1000);
 	Static();
 	StaticBot();
+	var AZtarget;
 
 	function getSet() {
 	  var ihttp = new XMLHttpRequest();
@@ -218,6 +220,12 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("StatValue").innerHTML = this.responseText;
 				Status = this.responseText;
+				if( Number(StatusTmp)!=Number(Status) ){
+					AZ(Azimuth);
+					Static();
+					StaticBot();
+					StatusTmp=Status;
+				}
 	    }
 	  };
 	  zhttp.open("GET", "readStat", true);
@@ -233,7 +241,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	mouse.addEventListener("click", function (evt) {
 	    var mousePos = getMousePos(mouse, evt);
 	    // alert(mousePos.x + ',' + mousePos.y);
-			var AZtarget = Math.atan2(BoxSize/2 - Number(mousePos.y), Number(mousePos.x) - BoxSize/2) * 180 / Math.PI;
+			AZtarget = Math.atan2(BoxSize/2 - Number(mousePos.y), Number(mousePos.x) - BoxSize/2) * 180 / Math.PI;
 			AZtarget = AZtarget - 90;
 			if(AZtarget<0){
 				AZtarget = Math.abs(AZtarget);
@@ -296,13 +304,34 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  var az = c.getContext("2d");
 		az.clearRect(0, 0, BoxSize, BoxSize);
 	  az.beginPath();
+		var AZtargetTmp = Number(AZtarget) + Number(AzShift);
+		var AzimuthMapTmp = Azimuth;
+		if(Number(AZtargetTmp) > 360){
+			AZtargetTmp=Number(AZtargetTmp)-360;
+		}
+		if(Number(AzimuthMapTmp) > 360){
+			AzimuthMapTmp=Number(AzimuthMapTmp)-360;
+		}
+			if( Math.abs(Number(AZtargetTmp) - Number(AzimuthMapTmp)) > Number(AntRadiationAngle)/2 ){	// || Status != 4
+				az.moveTo(BoxSize/2, BoxSize/2);
+			  az.lineTo(Xcoordinate(Number(AZtarget), BoxSize/2*0.9), Ycoordinate(Number(AZtarget), BoxSize/2*0.9));
+			}
+			// console.log ('Number(AZtargetTmp) ' +  Number(AZtargetTmp) );
+			// console.log ('Number(Azimuth) ' + Number(Azimuth) );
+
 		  az.lineWidth = 5;
-			if (Status != 4) {
-				az.strokeStyle = "red";
-			}else if (Azimuth > 359) {
-				az.strokeStyle = "orange";
+			if (Number(Azimuth) < 0 || Number(Azimuth) > Number(AzRange) ) {
+				az.strokeStyle = '#c0c0c0';
+				// console.log ('Azimuth ' + Azimuth);
+				// console.log ('AzRange ' + AzRange);
 			}else{
-				az.strokeStyle = '#00aa00';
+				if (Status != 4) {
+					az.strokeStyle = "red";
+				}else if (Azimuth > 359) {
+					az.strokeStyle = "orange";
+				}else{
+					az.strokeStyle = '#00aa00';
+				}
 			}
 		  az.moveTo(Xcoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.9));
 		  az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.7), Ycoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.7));
@@ -324,28 +353,42 @@ const char MAIN_page[] PROGMEM = R"=====(
 			if(ShowAzimuth > 359){
 				ShowAzimuth = Number(ShowAzimuth) - 360;
 			}
-			az.fillStyle = "black";
-			az.fillText(ShowAzimuth+String.fromCharCode(176), Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2)+3, Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2)+3 );
-			if (Status != 4) {
-				az.fillStyle = "red";
-			}else if (Azimuth > 359) {
-		  	az.fillStyle = "orange";
-		  }else{
-		  	az.fillStyle = "green";
-		  }
-		  az.fillText(ShowAzimuth+String.fromCharCode(176), Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
+			if (Number(Azimuth) < 0 || Number(Azimuth) > Number(AzRange) ) {
+				az.font = "bold 30px Arial";
+				az.fillStyle = '#c0c0c0';
+				if (Azimuth < 0) {
+					az.fillText("CCW stop zone", Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
+				}else{
+					az.fillText("CW stop zone", Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
+				}
+			}else{
+				az.fillStyle = "black";
+				az.fillText(ShowAzimuth+String.fromCharCode(176), Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2)+3, Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2)+3 );
+				if (Status != 4) {
+					az.fillStyle = "red";
+				}else if (Azimuth > 359) {
+					az.fillStyle = "orange";
+				}else{
+					az.fillStyle = "green";
+				}
+				az.fillText(ShowAzimuth+String.fromCharCode(176), Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
+			}
 		az.beginPath();
 			az.moveTo(BoxSize/2, BoxSize/2);
 			az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
 			az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift), Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift), Number(BoxSize)/2*0.9));
 			az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
 			// az.arc(Xcenter, Ycenter, BoxSize/2*0.9, 0, 1.8 * Math.PI);
-			if (Status != 4) {
-				az.fillStyle = "rgba(255, 0, 0, 0.25)";
-			}else if (Azimuth > 359) {
-			 az.fillStyle = "rgba(255, 165, 0, 0.25)";
+			if (Number(Azimuth) < 0 || Number(Azimuth) > Number(AzRange) ) {
+				az.fillStyle = "rgba(255, 255, 255, 0.10)";
 			}else{
-				az.fillStyle = "rgba(255, 255, 255, 0.25)";
+				if (Status != 4) {
+					az.fillStyle = "rgba(255, 0, 0, 0.25)";
+				}else if (Azimuth > 359) {
+				 az.fillStyle = "rgba(255, 165, 0, 0.25)";
+				}else{
+					az.fillStyle = "rgba(255, 255, 255, 0.25)";
+				}
 			}
 		az.fill();
 	}
