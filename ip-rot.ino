@@ -1064,6 +1064,7 @@ void setup() {
    ajaxserver.on("/readAnt", handleAnt);
    ajaxserver.on("/readAntName", handleAntName);
    ajaxserver.on("/readMapUrl", handleMapUrl);
+   ajaxserver.on("/set", handleSet);
    ajaxserver.begin();                  //Start server
    Serial.println("HTTP ajax server started");
 
@@ -4784,7 +4785,7 @@ void testFileIO(fs::FS &fs, const char * path){
 
 // ajax
 void handlePostRot() {
- String s = MAIN_page; //Read HTML contents
+ // String s = MAIN_page; //Read HTML contents
  String str = ajaxserver.arg("ROT");
  AzimuthTarget = str.toInt() + StartAzimuth;
  if(AzimuthTarget>359){
@@ -4793,8 +4794,9 @@ void handlePostRot() {
  RotCalculate();
  // ajaxserver.send(200, "text/html", s);
 
- // MqttPubString("Debug 1 ", String(ajaxserver.hasArg("on")), false);
- // MqttPubString("Debug 2 ", String(ajaxserver.arg("on")), false);
+
+
+ // MqttPubString("Debug 4 ", String(ajaxserver.arg("STOP")), false);
  // if(ajaxserver.hasArg("on") && (ajaxserver.arg("on").length()>0)){
     // ajaxserver.sendHeader("Location", String("/"), true); //how to do a redirect, next two lines
     // ajaxserver.send ( 302, "text/plain", "");
@@ -4802,7 +4804,63 @@ void handlePostRot() {
   //   ajaxserver.send(400, "text/html", "<html><body><h1>HTTP Error 400</h1><p>Bad request. Please enter a value.</p></body></html>");
   // }
 }
+// MqttPubString("Debug 3 ", String(ajaxserver.hasArg("STOP")), false);
+void handleSet() {
+  // MqttPubString("Debug 1 ", String(ajaxserver.hasArg("mytext")), false);
+  MqttPubString("Debug 1 ", String(ajaxserver.arg("yourcall")), false);
+  MqttPubString("Debug 2 ", String(ajaxserver.arg("rotname")), false);
+  MqttPubString("Debug 3 ", String(ajaxserver.arg("led1")), false);
+  MqttPubString("Debug 4 ", String(ajaxserver.arg("led2")), false);
+
+
+  // String YOUR_CALL = "";
+  // int RotID = 1;
+  // String RotName = "2+6m yagi";
+  // int StartAzimuth = 180;         // max CCW limit callibrate in real using
+  // unsigned int MaxRotateDegree = 0;
+  // String MapUrl = "https://remoteqth.com/xplanet/OK.png" ;
+  // unsigned int AntRadiationAngle = 44;
+  // bool Endstop =  false;
+  // bool ACmotor =  false;
+
+
+  // bool Reverse =  false;
+  //
+
+  String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
+  HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'><meta http-equiv = 'refresh' content = '600; url = /'>\n";
+  HtmlSrc +="<style type='text/css'> table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #000; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
+  HtmlSrc +=".tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -40px; left: -50%; }";
+  HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
+  HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
+  HtmlSrc +="<H1 style='color: #fff; text-align: center;'>Setup</H1>\n";
+  HtmlSrc +="<div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
+  HtmlSrc += YOUR_CALL;
+  HtmlSrc +="'></td></tr>\n<tr><td class='tdr'><label for='rotid'>Rotator ID:</label></td><td><input type='text' id='rotid' name='rotid' size='2' value='";
+  HtmlSrc += RotID;
+  HtmlSrc +="'><span class='hover-text'>?<span class='tooltip-text' id='right'>0-255</span></span></td></tr>\n<tr><td class='tdr'><label for='rotname'>Rotator name:</label></td><td><input type='text' id='rotname' name='rotname' size='20' value='";
+  HtmlSrc += RotName;
+  HtmlSrc +="'></td></tr>\n<tr><td class='tdr'><label for='startazimuth'>Start CCW azimuth:</label></td><td><input type='text' id='startazimuth' name='startazimuth' size='3' value='";
+  HtmlSrc += StartAzimuth;
+  HtmlSrc +="'>&deg;</td></tr>\n<tr><td class='tdr'><label for='maxrotatedegree'>Rotation range in degrees:</label></td><td><input type='text' id='maxrotatedegree' name='maxrotatedegree' size='3' value='";
+  HtmlSrc += MaxRotateDegree;
+  HtmlSrc +="'>&deg;</td></tr>\n<tr><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
+  HtmlSrc += MapUrl;
+  HtmlSrc +="'><span class='hover-text'>?<span class='tooltip-text' id='top'>DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA.</span></span></td></tr>\n<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
+  HtmlSrc += AntRadiationAngle;
+  HtmlSrc +="'>&deg;</td></tr>\n<tr><td class='tdr'><label for='led1'>Endstops:</label></td><td><input type='checkbox' id='led1' name='led1' value='1' ${postData.led1?'checked':''}><span class='hover-text'>?<span class='tooltip-text' id='right'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='led2'>AC motor:</label></td><td><input type='checkbox' id='led2' name='led2' value='1' ${postData.led2?'checked':''}><span class='hover-text'>?<span class='tooltip-text' id='right'>Disables the PWM and activates the other two relays.</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td><button>Submit</button></td></tr>\n";
+  HtmlSrc +="</form></table></div><div style='display: flex; justify-content: center;'><span><p style='font-size: 25px; color: #000; text-align: center; font-weight: normal; background: #666; margin: 73px 0 0 0; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'><a href='/'>&#8617; Back to CONTROL</a> | <a href='/cal'>CALIBRATE</a></p></span></div>\n";
+  HtmlSrc +="</body></html>\n";
+
+  String s = MAIN_page; //Read HTML contents
+  ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
+}
 void handlePostStop() {
+  // MqttPubString("Debug 3 ", String(ajaxserver.hasArg("on")), false);
+  // MqttPubString("Debug 4 ", String(ajaxserver.arg("on")), false);
   if(Status<0){
     Status = -3;
   }else if(Status>0){

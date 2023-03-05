@@ -64,6 +64,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 			width: 600px;
 			z-index: 0;
 		}
+		a:hover {color: #fff;}
+    a { color: #ccc; text-decoration: underline;}
 	</style>
 	<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'>
 	</head>
@@ -74,29 +76,43 @@ const char MAIN_page[] PROGMEM = R"=====(
 		<canvas class="top" id="Azimuth" width="600" height="600">Your browser does not support the HTML5 canvas tag.</canvas>
 		<canvas class="bot" id="Map" width="600" height="600"></canvas>
 		<canvas class="underbot" id="DirLine" width="600" height="600"></canvas>
+
 		<!--<form class="form1" name="frm0" method="post">
 			<input type="text" name="ROT" size="3" value="303">
 			<input type="submit" value="ROTATE" style="background: #080;">
-		</form>-->
-		<form class="form2" name="frm1" method="post">
-			<input type="submit" value="STOP" style="background: ORANGE;">
 		</form>
+		<form class="form2" name="STOP" method="post">
+			<input type="submit" value="<STOP>" style="background: ORANGE;">
+		</form>-->
+
 		<div class="second">
-			<p style="color: #ccc; margin: 0 0 0 0; text-align: center;">
+			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
 				<span style="color: #000; background: #666; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
 					<span style="color: #fff;" id="AntName"> </span> | PWR
 					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V | raw
-					<span style="font-weight: bold;" id="AZValue">0</span>&deg;
+					<span style="font-weight: bold;" id="AZValue">0</span>&deg; |
+					<a href="/set">SETUP</a>
 				</span>
+
 				<!--<form action="/get">
 					Target <input type="text" name="input1">
 					<input type="submit" value="Submit">
-				</form><br>-->
+				</form><br>
+
+				<form action="/set" method="post" style="color: #ccc; margin: 50 0 0 0; text-align: center;">
+			    <label for="mytext">Some text to send:</label> <input type="text" id="mytext" name="mytext" value="Testing"/><br/>
+			    <label for="led1">LED1 (red):</label> <input type="checkbox" id="led1" name="led1" value="1" ${postData.led1?"checked":""}><br/>
+			    <label for="led2">LED2 (green):</label> <input type="checkbox" id="led2" name="led2" value="1" ${postData.led2?"checked":""}><br/>
+			    <button>Submit</button>
+			  </form>-->
+
 			</p>
 		</div>
 	</div>
 
 	<script>
+	// <form action="#" method="post" style="color: #ccc; margin: 0 0 0 0; text-align: center;">
+
 	// <span style="color: #999; font-size: 800%;">318&deg;</span><br>
 	// <h1 style="color: white;">adc:<span id="ADCValue">0</span></h1><br>
 	// <h1 style="color: white;">az:<span id="AZValue">0</span></h1><br>
