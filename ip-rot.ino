@@ -48,6 +48,7 @@ ToDo
 + v ochranych zonach zobrazovat azimut sedou barvou
 + hlidat min napeti (11V) pod kterym prestat otacet + warning do /status
 + v html zobrazit target azimuth
+- if mqtt_server_ip[0]=0 then disable MQTT
 - html ne jako smerova mapa, ale linearni stupnice
 - status endstop true/false - aktivuje ochranne zony na krajich potenciometru ()
 - automaticka detekce smeru otaceni pri MAXpwm = automatikcky reverse rezim
@@ -76,21 +77,22 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 */
 //-------------------------------------------------------------------------------------------------------
 // not impemented
-int RotID = 1;
-bool Endstop =  false;
-bool ACmotor =  false;
 bool Reverse =  false;
 
+const char* REV = "20230312";
 
 
 // need set from GUI
 String YOUR_CALL = "";
-String RotName = "2+6m yagi";
-unsigned int AntRadiationAngle = 44;
-String MapUrl = "https://remoteqth.com/xplanet/OK.png" ;
+String NET_ID = "";
+String RotName = "";
+int StartAzimuth = 0;         // max CCW limit callibrate in real using
+unsigned int AntRadiationAngle = 10;
+String MapUrl = "" ;
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
-int StartAzimuth = 180;         // max CCW limit callibrate in real using
 unsigned int MaxRotateDegree = 0;
+bool Endstop =  false;
+bool ACmotor =  false;
 
 
 
@@ -128,7 +130,6 @@ const char* ssid     = "";
 const char* password = "";
 const float FunelDiaInCM = 10.0; // cm funnel diameter
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230303";
 
 #include "esp_adc_cal.h"
 const int AzimuthPin    = 39;  // analog
@@ -198,7 +199,6 @@ byte InputByte[21];
 // #define Ser2net                  // Serial to ip proxy - DISABLE if board revision 0.3 or lower
 #define EnableOTA                // Enable flashing ESP32 Over The Air
 int NumberOfEncoderOutputs = 8;  // 2-16
-byte NET_ID = 0x00;              // Unique ID number [0-F] hex format
 int EnableSerialDebug     = 0;
 long FreneticModeTimer ;
 #define HTTP_SERVER_PORT  80     // Web server port
@@ -221,33 +221,41 @@ int i = 0;
 #include <WiFiUdp.h>
 #include "EEPROM.h"
 #define EEPROM_SIZE 244   /*
-0    -listen source
-1    -net ID
-2    -encoder range
-3    -HW_BCD_SW
-4    -EnableGroupPrefix
-5    -EnableGroupButton
-6-13 -GroupButton
-14-17  - SERIAL1_BAUDRATE
-18-21 - SerialServerIPport
-22-25 - IncomingSwitchUdpPort
-26-29 - RebootWatchdog
-30-33 - OutputWatchdog
-34    - Bank0 storage
-35    - Bank1 storage
-36    - Bank2 storage
+
+ 0|Byte    1|128
+ 1|Char    1|A
+ 2|UChar   1|255
+ 3|Short   2|-32768
+ 5|UShort  2|65535
+ 7|Int     4|-2147483648
+11|Uint    4|4294967295
+15|Long    4|-2147483648
+19|Ulong   4|4294967295
+23|Long64  8|0x00FFFF8000FF4180
+31|Ulong64 8|0x00FFFF8000FF4180
+39|Float   4|1234.1234
+43|Double  8|123456789.12345679
+51|Bool    1|1
+52|String   |I love ESP32.
+66|String   |Thank You Espressif!
+
+
+0-1   - NET_ID
+2-22  - RotName
+23  - StartAzimuth UShort
+25  - MaxRotateDegree UShort
+27  - AntRadiationAngle UShort
+29  - Endstop Bool
+30  - ACmotor Bool
+
 37-40 - Authorised telnet client IP
 41-140 - Authorised telnet client key
 141-160 - YOUR_CALL
 161-164 - MQTT broker IP
-165-168? - MQTT broker port 4
-169-172  - MinRpmPulse 4
-173-198  - MinRpmPulseTimestamp
-199   - APRS ON/OFF;
-200-203 - APRS server IP
-204-207 - APRS server port 4
-208-212 - APRS password
-213-230 - APRS coordinate
+165-166 - MQTT_PORT
+167-168 -
+169-219 - MapUrl
+
 231-234 - Altitude 4
 // 232 - SpeedAlert 4
 235-238 - SpeedAlert 4
@@ -688,17 +696,93 @@ void setup() {
       Serial.println("failed to initialise EEPROM"); delay(1);
     }
   }
-  // 0-listen source
-  // TxUdpBuffer[2] = EEPROM.read(0);
-  // if(TxUdpBuffer[2]=='o'||TxUdpBuffer[2]=='r'||TxUdpBuffer[2]=='m'||TxUdpBuffer[2]=='e'){
-  //   // OK
-  // }else{
-    TxUdpBuffer[2]='n';
-  // }
 
-  // 1-net ID
-      NET_ID = EEPROM.read(1);
-      TxUdpBuffer[0] = NET_ID;
+  // 0-1 net ID
+    if(EEPROM.read(0)==0xff){
+      NET_ID="0";
+    }else{
+      for (int i=0; i<2; i++){
+        if(EEPROM.read(i)!=0xff){
+          NET_ID=NET_ID+char(EEPROM.read(i));
+        }
+      }
+    }
+
+  // 2-22 RotName
+  if(EEPROM.read(2)==0xff){
+    RotName="Antenna";
+  }else{
+    for (int i=2; i<23; i++){
+      if(EEPROM.read(i)!=0xff){
+        RotName=RotName+char(EEPROM.read(i));
+      }
+    }
+  }
+
+  // 23 StartAzimuth
+  if(EEPROM.read(23)==0xff){
+    StartAzimuth=0;
+  }else{
+    if(EEPROM.readUShort(23)<359 && EEPROM.readUShort(23)>0){
+      StartAzimuth = EEPROM.readUShort(23);
+    }
+  }
+
+  // 25 MaxRotateDegree
+  if(EEPROM.read(25)==0xff){
+    MaxRotateDegree=360;
+  }else{
+    MaxRotateDegree = EEPROM.readUShort(25);
+  }
+
+  // 27 AntRadiationAngle
+  if(EEPROM.read(27)==0xff){
+    AntRadiationAngle=45;
+  }else{
+    if(EEPROM.readUShort(27)<180 && EEPROM.readUShort(27)>0){
+      AntRadiationAngle = EEPROM.readUShort(27);
+    }else{
+      AntRadiationAngle=46;
+    }
+  }
+
+  // 169-219 - MapUrl
+  if(EEPROM.read(169)==0xff){
+    MapUrl="https://remoteqth.com/xplanet/OK.png";
+  }else{
+    for (int i=169; i<220; i++){
+      if(EEPROM.read(i)!=0xff){
+        MapUrl=MapUrl+char(EEPROM.read(i));
+      }
+    }
+  }
+
+  // 29  - Endstop
+  if(EEPROM.read(29)==0xff){
+    Endstop=false;
+  }else{
+    if(EEPROM.readBool(29)==1){
+      Endstop=true;
+    }else{
+      Endstop=false;
+    }
+  }
+
+  // 30  - ACmotor
+  if(EEPROM.read(30)==0xff){
+    ACmotor=false;
+  }else{
+    if(EEPROM.readBool(30)==1){
+      ACmotor=true;
+    }else{
+      ACmotor=false;
+    }
+  }
+
+
+
+
+
 
   // 2-encoder range
   NumberOfEncoderOutputs = EEPROM.read(2);
@@ -770,17 +854,36 @@ void setup() {
   // move after ETH init
 
   // MQTT broker IP
-  for(int i=0; i<4; i++){
-    mqtt_server_ip[i]=EEPROM.readByte(i+161);
-  }
-  MQTT_PORT = EEPROM.readInt(165);
-  if(mqtt_server_ip[0]==255 && mqtt_server_ip[1]==255 && mqtt_server_ip[2]==255 && mqtt_server_ip[3]==255 && MQTT_PORT==-1){
+  if(EEPROM.read(161)==0xff){
     mqtt_server_ip[0]=54;
-    mqtt_server_ip[1]=38;
-    mqtt_server_ip[2]=157;
-    mqtt_server_ip[3]=134;
-    MQTT_PORT=1883;
+  }else{
+    mqtt_server_ip[0]=EEPROM.readByte(161);
   }
+
+  if(EEPROM.read(162)==0xff){
+    mqtt_server_ip[1]=38;
+  }else{
+    mqtt_server_ip[1]=EEPROM.readByte(162);
+  }
+
+  if(EEPROM.read(163)==0xff){
+    mqtt_server_ip[2]=157;
+  }else{
+    mqtt_server_ip[2]=EEPROM.readByte(163);
+  }
+
+  if(EEPROM.read(164)==0xff){
+    mqtt_server_ip[3]=134;
+  }else{
+    mqtt_server_ip[3]=EEPROM.readByte(164);
+  }
+
+  if(EEPROM.read(164)==0xff){
+    MQTT_PORT=1883;
+  }else{
+    MQTT_PORT = EEPROM.readUShort(165);
+  }
+
 
   // RPM
   MinRpmPulse = EEPROM.readLong(169);
@@ -847,10 +950,7 @@ void setup() {
     Serial.println(REV);
     Serial.println("===============================");
     Serial.print("SLAVE DEVICE NET-ID: 0x");
-    if(NET_ID <=0x0f){
-      Serial.print(F("0"));
-    }
-    Serial.println(NET_ID, HEX);
+    Serial.println(NET_ID);
     Serial.print("Listen MASTER: ");
     if(TxUdpBuffer[2] == 'o'){
       Serial.println("Open Interface III");
@@ -1366,10 +1466,10 @@ if(millis()-WdtTimer > 60000){
 
   if(RebootWatchdog > 0 && millis()-WatchdogTimer > RebootWatchdog*60000){
     Prn(3, 1,"** Activate reboot watchdog - IP switch will be restarted **");
-    EEPROM.writeByte(34, ShiftOutByte[0]);
-    EEPROM.writeByte(35, ShiftOutByte[1]);
-    EEPROM.writeByte(36, ShiftOutByte[2]);
-    EEPROM.commit();
+    // EEPROM.writeByte(34, ShiftOutByte[0]);
+    // EEPROM.writeByte(35, ShiftOutByte[1]);
+    // EEPROM.writeByte(36, ShiftOutByte[2]);
+    // EEPROM.commit();
     delay(1000);
     TelnetServerClients[0].stop();
     ESP.restart();
@@ -1380,10 +1480,10 @@ if(millis()-WdtTimer > 60000){
     ShiftOutByte[0]=0x00;
     ShiftOutByte[1]=0x00;
     ShiftOutByte[2]=0x00;
-    EEPROM.writeByte(34, ShiftOutByte[0]);
-    EEPROM.writeByte(35, ShiftOutByte[1]);
-    EEPROM.writeByte(36, ShiftOutByte[2]);
-    EEPROM.commit();
+    // EEPROM.writeByte(34, ShiftOutByte[0]);
+    // EEPROM.writeByte(35, ShiftOutByte[1]);
+    // EEPROM.writeByte(36, ShiftOutByte[2]);
+    // EEPROM.commit();
     #if defined(ShiftOut)
       // digitalWrite(ShiftOutLatchPin, LOW);  // když dáme latchPin na LOW mužeme do registru poslat data
       // shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, 0x01);
@@ -1936,7 +2036,7 @@ void CLI(){
         }
         if( (i<4 && intBuf>=0 && intBuf<=255) || (i==4 && intBuf>=1 && intBuf<=65535) ){
           if(i==4){
-            EEPROM.writeInt(165, intBuf);
+            EEPROM.writeUShort(165, intBuf);
           }else{
             EEPROM.writeByte(161+i, intBuf);
           }
@@ -2040,10 +2140,10 @@ void CLI(){
       Prn(OUT, 1,"** IP switch will be restarted **");
       if(RebootWatchdog > 0){
         Prn(OUT, 1,"   Activate reboot watchdog - store outputs to EEPROM...");
-        EEPROM.writeByte(34, ShiftOutByte[0]);
-        EEPROM.writeByte(35, ShiftOutByte[1]);
-        EEPROM.writeByte(36, ShiftOutByte[2]);
-        EEPROM.commit();
+        // EEPROM.writeByte(34, ShiftOutByte[0]);
+        // EEPROM.writeByte(35, ShiftOutByte[1]);
+        // EEPROM.writeByte(36, ShiftOutByte[2]);
+        // EEPROM.commit();
         delay(1000);
       }
       TelnetServerClients[0].stop();
@@ -2097,8 +2197,8 @@ void CLI(){
       if(AprsON==true){
         AprsON=false;
         Prn(OUT, 1,"** APRS DISABLE **");
-        EEPROM.write(199, AprsON); // address, value
-        EEPROM.commit();
+        // EEPROM.write(199, AprsON); // address, value
+        // EEPROM.commit();
       }else{
         Prn(OUT, 1,"** Do you own a valid amateur radio license? **");
         EnterChar(OUT);
@@ -2108,8 +2208,8 @@ void CLI(){
           if(incomingByte==78 || incomingByte==110){
             AprsON=true;
             Prn(OUT, 1,"** APRS ENABLE **");
-            EEPROM.write(199, AprsON); // address, value
-            EEPROM.commit();
+            // EEPROM.write(199, AprsON); // address, value
+            // EEPROM.commit();
           }else{
             Prn(OUT, 1,"  bye");
           }
@@ -2131,12 +2231,12 @@ void CLI(){
         for (int i=1; i<6; i++){
           AprsPassword=AprsPassword+char(InputByte[i]);
           if(i<InputByte[0]+1){
-            EEPROM.write(207+i, InputByte[i]);
+            // EEPROM.write(207+i, InputByte[i]);
           }else{
-            EEPROM.write(207+i, 0xff);
+            // EEPROM.write(207+i, 0xff);
           }
         }
-        EEPROM.commit();
+        // EEPROM.commit();
 
       // c
       }else if(incomingByte==99 && AprsON==true){
@@ -2153,9 +2253,9 @@ void CLI(){
         for (int i=1; i<19; i++){
           AprsCoordinates=AprsCoordinates+char(InputByte[i]);
           if(i<InputByte[0]+1){
-            EEPROM.write(212+i, InputByte[i]);
+            // EEPROM.write(212+i, InputByte[i]);
           }else{
-            EEPROM.write(212+i, 0xff);
+            // EEPROM.write(212+i, 0xff);
           }
         }
         EEPROM.commit();
@@ -2182,8 +2282,8 @@ void CLI(){
         }
         if(intBuf>=0 && intBuf<=7300){
           Altitude = intBuf;
-          EEPROM.writeInt(231, Altitude); // address, value
-          EEPROM.commit();
+          // EEPROM.writeInt(231, Altitude); // address, value
+          // EEPROM.commit();
           Prn(OUT, 1," altitude "+String(EEPROM.readInt(231))+"m has been saved");
         }else{
           Prn(OUT, 1," Out of range");
@@ -2211,8 +2311,8 @@ void CLI(){
         }
         if(intBuf>=0 && intBuf<=359){
           WindDirShift = intBuf;
-          EEPROM.writeInt(240, WindDirShift); // address, value
-          EEPROM.commit();
+          // EEPROM.writeInt(240, WindDirShift); // address, value
+          // EEPROM.commit();
           Prn(OUT, 1," shift "+String(EEPROM.readInt(240))+"° has been saved");
         }else{
           Prn(OUT, 1," Out of range");
@@ -2223,8 +2323,8 @@ void CLI(){
       Prn(OUT, 1,"** Erase WindSpeedMax memory? [y/n] **");
       EnterChar(OUT);
       if(incomingByte==89 || incomingByte==121){
-        EEPROM.writeLong(169, 987654321);
-        EEPROM.writeByte(173, 255);
+        // EEPROM.writeLong(169, 987654321);
+        // EEPROM.writeByte(173, 255);
         EEPROM.commit();
         MqttPubString("WindSpeedMax-mps", "", true);
         MqttPubString("WindSpeedMax-utc", "", true);
@@ -2279,7 +2379,47 @@ void CLI(){
     incomingByte=0;
 
   }else if(OUT==0){
-    ListCommands(OUT);
+    // ?
+    if(incomingByte==63){
+      ListCommands(OUT);
+
+    // E
+    }else if(incomingByte==69){
+      Prn(OUT, 1,"  Erase whole eeprom (also telnet key)? (y/n)");
+      EnterChar(OUT);
+      if(incomingByte==89 || incomingByte==121){
+        Prn(OUT, 1,"  Stop erase? (y/n)");
+        EnterChar(OUT);
+        if(incomingByte==78 || incomingByte==110){
+          for(int i=0; i<EEPROM_SIZE; i++){
+            EEPROM.write(i, 0xff);
+            Prn(OUT, 0,".");
+          }
+          EEPROM.commit();
+          Prn(OUT, 1,"");
+          Prn(OUT, 1,"  Eeprom erased done");
+        }else{
+          Prn(OUT, 1,"  Erase aborted");
+        }
+      }else{
+        Prn(OUT, 1,"  Erase aborted");
+      }
+    }
+
+    // e
+    }else if(incomingByte==101){
+        Prn(OUT, 1,"List EEPROM [adr>value]");
+        for (int i=0; i<EEPROM_SIZE; i++){
+          if( (i<41)||(i>140&&i<208)||(i>212) ){  // hiden pass
+            Prn(OUT, 0, String(i));
+            Prn(OUT, 0, ">" );
+            Prn(OUT, 0, String(EEPROM.read(i)) );
+            Prn(OUT, 0, " " );
+          }
+        }
+        Prn(OUT, 1, "" );
+
+
   }
 
 }
@@ -2590,7 +2730,7 @@ void ListCommands(int OUT){
     }
 
     Prn(OUT, 0,"  MqttSubscribe: "+String(mqtt_server_ip[0])+"."+String(mqtt_server_ip[1])+"."+String(mqtt_server_ip[2])+"."+String(mqtt_server_ip[3])+":"+String(MQTT_PORT)+"/");
-      String topic = String(YOUR_CALL) + "/ROT/sub";
+      String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/sub";
       const char *cstr = topic.c_str();
       if(mqttClient.subscribe(cstr)==true){
         Prn(OUT, 1, String(cstr));
@@ -2820,7 +2960,7 @@ void ListCommands(int OUT){
       }
     if(TxUdpBuffer[2]!='n'){
       Prn(OUT, 0,"      #  network ID prefix [");
-      byte ID = NET_ID;
+      byte ID = 0;
       bitClear(ID, 0); // ->
       bitClear(ID, 1);
       bitClear(ID, 2);
@@ -2838,7 +2978,7 @@ void ListCommands(int OUT){
       Prn(OUT, 1,"");
 
       // if(HW_BCD_SW==false){
-        ID = NET_ID;
+        ID = 0;
         bitClear(ID, 4);
         bitClear(ID, 5);
         bitClear(ID, 6);
@@ -3038,7 +3178,7 @@ void RX_UDP(){
     // ID-FROM-TO filter
     if(
       (EnableGroupPrefix==false
-      && String(packetBuffer[0], DEC).toInt()==NET_ID
+      && String(packetBuffer[0], DEC).toInt()==0
       && packetBuffer[1]==TxUdpBuffer[2]  // FROM Switch
       && packetBuffer[2]== 's'  // TO
       && packetBuffer[3]== B00000000
@@ -3046,7 +3186,7 @@ void RX_UDP(){
       && packetBuffer[7]== ';')
       ||
       (EnableGroupPrefix==true
-      && IdSufix(packetBuffer[0])==IdSufix(NET_ID)
+      && IdSufix(packetBuffer[0])==IdSufix(0)
       && packetBuffer[1]==TxUdpBuffer[2]  // FROM Switch
       && packetBuffer[2]== 's'  // TO
       && packetBuffer[3]== B00000000
@@ -3342,7 +3482,7 @@ void TxUDP(byte FROM, byte TO, byte A, byte B, byte C, int DIRECT){
     IPAddress ControllerIP = UdpCommand.remoteIP();
     for (int i=0; i<16; i++){
       if(DetectedRemoteSwPort[i]!=0){
-        TxUdpBuffer[0]=IdSufix(NET_ID) | i<<4;       // NET_ID by destination device
+        TxUdpBuffer[0]=IdSufix(0) | i<<4;       // NET_ID by destination device
         RemoteSwIP = DetectedRemoteSw[i];
         RemoteSwPort = DetectedRemoteSwPort[i];
         if(ControllerIP!=RemoteSwIP){
@@ -3353,7 +3493,7 @@ void TxUDP(byte FROM, byte TO, byte A, byte B, byte C, int DIRECT){
           if(EnableSerialDebug>0){
             Serial.print(F("TX direct ID-"));
             Serial.print(i, HEX);
-            Serial.print(IdSufix(NET_ID), HEX);
+            Serial.print(IdSufix(0), HEX);
             Serial.print(F(" "));
             Serial.print(RemoteSwIP);
             Serial.print(F(":"));
@@ -3400,7 +3540,7 @@ void TxUDP(byte FROM, byte TO, byte A, byte B, byte C, int DIRECT){
       }
       Serial.print("*) ");
       for (int i=0; i<16; i++){
-        TxUdpBuffer[0]=IdSufix(NET_ID) | (i<<4);
+        TxUdpBuffer[0]=IdSufix(0) | (i<<4);
         if(EnableSerialDebug>0){
           Serial.print(TxUdpBuffer[0], HEX);
           Serial.print(" ");
@@ -3489,6 +3629,8 @@ void http(){
           // TOPIC
           webClient.print(F("              defaultTopic: \""));
           webClient.print(YOUR_CALL);
+          webClient.print(F("/"));
+          webClient.print(NET_ID);
           webClient.println(F("/ROT/#\","));
           // END TOPIC
           webClient.println(F("              showCounter: true,"));
@@ -3848,7 +3990,7 @@ void Mqtt(){
 //-------------------------------------------------------------------------------------------------------
 
 bool mqttReconnect() {
-  Prn(3, 0, "MQTT");
+  // Prn(3, 0, "MQTT");
   char charbuf[50];
   // // memcpy( charbuf, ETH.macAddress(), 6);
   // ETH.macAddress().toCharArray(charbuf, 18);
@@ -3863,21 +4005,21 @@ bool mqttReconnect() {
 
     // resubscribe
 
-    String topic = String(YOUR_CALL) + "/ROT/Target";
+    String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/Target";
     const char *cstr = topic.c_str();
     if(mqttClient.subscribe(cstr)==true){
       if(EnableSerialDebug>0){
         Prn(3, 1, " > subscribe "+String(cstr));
       }
     }
-    topic = String(YOUR_CALL) + "/ROT/get";
+    topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/get";
     const char *cstr1 = topic.c_str();
     if(mqttClient.subscribe(cstr1)==true){
       if(EnableSerialDebug>0){
         Prn(3, 1, " > subscribe "+String(cstr1));
       }
     }
-    topic = String(YOUR_CALL) + "/ROT/stop";
+    topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/stop";
     const char *cstr2 = topic.c_str();
     if(mqttClient.subscribe(cstr2)==true){
       if(EnableSerialDebug>0){
@@ -3900,7 +4042,7 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
     Prn(3, 0, "RX MQTT ");
   }
 
-    CheckTopicBase = String(YOUR_CALL) + "/ROT/stop";
+    CheckTopicBase = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/stop";
     if ( CheckTopicBase.equals( String(topic) )){
       if(EnableSerialDebug>0){
         Prn(3, 1, "/stop ");
@@ -3912,7 +4054,7 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
       }
     }
 
-    CheckTopicBase = String(YOUR_CALL) + "/ROT/get";
+    CheckTopicBase = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/get";
     if ( CheckTopicBase.equals( String(topic) )){
       MqttPubString("Azimuth", String(Azimuth), false);
       if(EnableSerialDebug>0){
@@ -3921,7 +4063,7 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
     }
 
     // Target
-    CheckTopicBase = String(YOUR_CALL) + "/ROT/Target";
+    CheckTopicBase = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/Target";
     if ( CheckTopicBase.equals( String(topic) ) ){
       AzimuthTarget = 0;
       unsigned long exp = 1;
@@ -3944,7 +4086,7 @@ void AfterMQTTconnect(){
         IPAddress IPlocalAddr = ETH.localIP();                           // get
         String IPlocalAddrString = String(IPlocalAddr[0]) + "." + String(IPlocalAddr[1]) + "." + String(IPlocalAddr[2]) + "." + String(IPlocalAddr[3]);   // to string
         IPlocalAddrString.toCharArray( mqttTX, 50 );                          // to array
-        String path2 = String(YOUR_CALL) + "/ROT/ip";
+        String path2 = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/ip";
         path2.toCharArray( mqttPath, 100 );
         mqttClient.publish(mqttPath, mqttTX, true);
           Serial.print("MQTT-TX ");
@@ -3954,7 +4096,7 @@ void AfterMQTTconnect(){
 
         // String MAClocalAddrString = ETH.macAddress();   // to string
         // MAClocalAddrString.toCharArray( mqttTX, 50 );                          // to array
-        path2 = String(YOUR_CALL) + "/ROT/mac";
+        path2 = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/mac";
         path2.toCharArray( mqttPath, 100 );
         mqttClient.publish(mqttPath, MACchar, true);
           Serial.print("MQTT-TX ");
@@ -3990,7 +4132,7 @@ void MqttPubString(String TOPIC, String DATA, bool RETAIN){
   // if(EnableEthernet==1 && MQTT_ENABLE==1 && EthLinkStatus==1 && mqttClient.connected()==true){
   if(mqttClient.connected()==true){
     if (mqttClient.connect(MACchar)) {
-      String topic = String(YOUR_CALL) + "/ROT/"+TOPIC;
+      String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/"+TOPIC;
       topic.toCharArray( mqttPath, 50 );
       DATA.toCharArray( mqttTX, 50 );
       mqttClient.publish(mqttPath, mqttTX, RETAIN);
@@ -4806,53 +4948,371 @@ void handlePostRot() {
 }
 // MqttPubString("Debug 3 ", String(ajaxserver.hasArg("STOP")), false);
 void handleSet() {
-  // MqttPubString("Debug 1 ", String(ajaxserver.hasArg("mytext")), false);
-  MqttPubString("Debug 1 ", String(ajaxserver.arg("yourcall")), false);
-  MqttPubString("Debug 2 ", String(ajaxserver.arg("rotname")), false);
-  MqttPubString("Debug 3 ", String(ajaxserver.arg("led1")), false);
-  MqttPubString("Debug 4 ", String(ajaxserver.arg("led2")), false);
+  // MqttPubString("Debug 1 ", String(ajaxserver.arg("yourcall")), false);
+  // MqttPubString("Debug 1b ", String(ajaxserver.hasArg("yourcall")), false);
+  // MqttPubString("Debug 2 ", String(ajaxserver.arg("rotid")), false);
+  // MqttPubString("Debug 3 ", String(ajaxserver.arg("rotname")), false);
+  // MqttPubString("Debug 5 ", String(ajaxserver.arg("maxrotatedegree")), false);
+  // MqttPubString("Debug 6 ", String(ajaxserver.arg("mapurl")), false);
+  // MqttPubString("Debug 7 ", String(ajaxserver.arg("antradiationangle")), false);
+  // MqttPubString("Debug 8 ", String(ajaxserver.arg("edstops")), false);
+  // MqttPubString("Debug startAZ", String(EEPROM.readInt(23)), false);
+  // MqttPubString("Debug endstop eeprom", String(EEPROM.read(26)), false);
+
+  String yourcallERR= "";
+  String rotidERR= "";
+  String rotnameERR= "";
+  String startazimuthERR= "";
+  String maxrotatedegreeERR= "";
+  String antradiationangleERR= "";
+  String mapurlERR= "";
+  String mqttERR= "";
+  String mqttportERR= "";
+  String edstopsCHECKED= "";
+  String acmotorCHECKED= "";
+
+  if ( ajaxserver.hasArg("yourcall") == false \
+    && ajaxserver.hasArg("rotid") == false \
+    && ajaxserver.hasArg("rotname") == false \
+    && ajaxserver.hasArg("startazimuth") == false \
+    && ajaxserver.hasArg("maxrotatedegree") == false \
+    && ajaxserver.hasArg("mapurl") == false \
+    && ajaxserver.hasArg("antradiationangle") == false \
+  ) {
+    MqttPubString("Debug", "Form not valid", false);
+  }else{
+    MqttPubString("Debug", "Form valid", false);
+
+    // YOUR_CALL
+    if ( ajaxserver.arg("yourcall").length()<1 || ajaxserver.arg("yourcall").length()>20){
+      yourcallERR= " Out of range 1-20 characters";
+    }else{
+      String str = String(ajaxserver.arg("yourcall"));
+      if(YOUR_CALL == str){
+        yourcallERR="";
+      }else{
+        yourcallERR=" Warning: MQTT topic has changed.";
+        YOUR_CALL = String(ajaxserver.arg("yourcall"));
+
+        int str_len = str.length();
+        char char_array[str_len];
+        str.toCharArray(char_array, str_len+1);
+        for (int i=0; i<20; i++){
+          if(i < str_len){
+            EEPROM.write(141+i, char_array[i]);
+          }else{
+            EEPROM.write(141+i, 0xff);
+          }
+        }
+        // EEPROM.commit();
+      }
+    }
+
+    // NET_ID
+    if ( ajaxserver.arg("rotid").length()<1 || ajaxserver.arg("rotid").length()>2){
+      rotidERR= " Out of range 1-2 characters";
+    }else{
+      String str = String(ajaxserver.arg("rotid"));
+      if(NET_ID == str){
+        rotidERR="";
+      }else{
+        rotidERR=" Warning: MQTT topic has changed.";
+        NET_ID = String(ajaxserver.arg("rotid"));
+
+        int str_len = str.length();
+        char char_array[str_len];
+        str.toCharArray(char_array, str_len+1);
+        for (int i=0; i<2; i++){
+          if(i < str_len){
+            EEPROM.write(i, char_array[i]);
+          }else{
+            EEPROM.write(i, 0xff);
+          }
+        }
+        // EEPROM.commit();
+      }
+    }
+
+    // RotName
+    if ( ajaxserver.arg("rotname").length()<1 || ajaxserver.arg("rotname").length()>20){
+      rotnameERR= " Out of range 1-20 characters";
+    }else{
+      String str = String(ajaxserver.arg("rotname"));
+      if(RotName == str){
+        rotnameERR="";
+      }else{
+        rotnameERR="";
+        RotName = String(ajaxserver.arg("rotname"));
+
+        int str_len = str.length();
+        char char_array[str_len];
+        str.toCharArray(char_array, str_len+1);
+        for (int i=0; i<19; i++){
+          if(i < str_len){
+            EEPROM.write(2+i, char_array[i]);
+          }else{
+            EEPROM.write(2+i, 0xff);
+          }
+        }
+        // EEPROM.commit();
+      }
+    }
+
+    // StartAzimuth
+    if ( ajaxserver.arg("startazimuth").length()<1 || ajaxserver.arg("startazimuth").toInt()<0 || ajaxserver.arg("startazimuth").toInt()>359){
+      startazimuthERR= " Out of range number 0-359";
+    }else{
+      if(StartAzimuth == ajaxserver.arg("startazimuth").toInt()){
+        startazimuthERR="";
+      }else{
+        startazimuthERR="";
+        StartAzimuth = ajaxserver.arg("startazimuth").toInt();
+        // MqttPubString("Debug StartAzimuth changed", String(StartAzimuth), false);
+        EEPROM.writeUShort(23, StartAzimuth);
+        // EEPROM.commit();
+      }
+    }
+
+    // MaxRotateDegree
+    if ( ajaxserver.arg("maxrotatedegree").length()<1 || ajaxserver.arg("maxrotatedegree").toInt()<0 || ajaxserver.arg("maxrotatedegree").toInt()>719){
+      maxrotatedegreeERR= " Out of range number 0-719";
+    }else{
+      if(MaxRotateDegree == ajaxserver.arg("maxrotatedegree").toInt()){
+        maxrotatedegreeERR="";
+      }else{
+        maxrotatedegreeERR="";
+        MaxRotateDegree = ajaxserver.arg("maxrotatedegree").toInt();
+        EEPROM.writeUShort(25, MaxRotateDegree);
+        // EEPROM.commit();
+      }
+    }
+
+    // AntRadiationAngle
+    if ( ajaxserver.arg("antradiationangle").length()<1 || ajaxserver.arg("antradiationangle").toInt()<0 || ajaxserver.arg("antradiationangle").toInt()>180){
+      antradiationangleERR= " Out of range number 1-180";
+    }else{
+      if(AntRadiationAngle == ajaxserver.arg("antradiationangle").toInt()){
+        antradiationangleERR="";
+      }else{
+        antradiationangleERR="";
+        AntRadiationAngle = ajaxserver.arg("antradiationangle").toInt();
+        EEPROM.writeUShort(27, AntRadiationAngle);
+        // EEPROM.commit();
+      }
+    }
+
+    // MapUrl
+    if ( ajaxserver.arg("mapurl").length()<1 || ajaxserver.arg("mapurl").length()>50){
+      mapurlERR= " Out of range 1-50 characters";
+    }else{
+      String str = String(ajaxserver.arg("mapurl"));
+      if(MapUrl == str){
+        mapurlERR="";
+      }else{
+        mapurlERR="";
+        MapUrl = String(ajaxserver.arg("mapurl"));
+
+        int str_len = str.length();
+        char char_array[str_len];
+        str.toCharArray(char_array, str_len+1);
+        for (int i=0; i<50; i++){
+          if(i < str_len){
+            EEPROM.write(169+i, char_array[i]);
+          }else{
+            EEPROM.write(169+i, 0xff);
+          }
+        }
+        // EEPROM.commit();
+      }
+    }
+
+    // 29  - Endstop
+    if(ajaxserver.arg("edstops").toInt()==1 && Endstop==false){
+      Endstop = true;
+      EEPROM.writeBool(29, 1);
+      // EEPROM.commit();
+    }else if(ajaxserver.arg("edstops").toInt()!=1 && Endstop==true){
+      Endstop = false;
+      EEPROM.writeBool(29, 0);
+      // EEPROM.commit();
+    }
+
+    // 30  - ACmotor
+    if(ajaxserver.arg("edstops").toInt()==1 && ACmotor==false){
+      ACmotor = true;
+      EEPROM.writeBool(30, 1);
+      // EEPROM.commit();
+    }else if(ajaxserver.arg("edstops").toInt()!=1 && ACmotor==true){
+      ACmotor = false;
+      EEPROM.writeBool(30, 0);
+      // EEPROM.commit();
+    }
+
+    // 161-164 - MQTT broker IP
+    if ( ajaxserver.arg("mqttip0").length()<1 || ajaxserver.arg("mqttip0").toInt()>255){
+      mqttERR= " Out of range number 0-255";
+    }else{
+      if(mqtt_server_ip[0] == byte(ajaxserver.arg("mqttip0").toInt()) ){
+        mqttERR="";
+      }else{
+        mqttERR=" Warning: MQTT broker IP has changed.";
+        mqtt_server_ip[0] = byte(ajaxserver.arg("mqttip0").toInt()) ;
+        EEPROM.writeByte(161, mqtt_server_ip[0]);
+      }
+    }
+
+    if ( ajaxserver.arg("mqttip1").length()<1 || ajaxserver.arg("mqttip1").toInt()>255){
+      mqttERR= " Out of range number 0-255";
+    }else{
+      if(mqtt_server_ip[1] == byte(ajaxserver.arg("mqttip1").toInt()) ){
+        mqttERR="";
+      }else{
+        mqttERR=" Warning: MQTT broker IP has changed.";
+        mqtt_server_ip[1] = byte(ajaxserver.arg("mqttip1").toInt()) ;
+        EEPROM.writeByte(162, mqtt_server_ip[1]);
+      }
+    }
+
+    if ( ajaxserver.arg("mqttip2").length()<1 || ajaxserver.arg("mqttip2").toInt()>255){
+      mqttERR= " Out of range number 0-255";
+    }else{
+      if(mqtt_server_ip[2] == byte(ajaxserver.arg("mqttip2").toInt()) ){
+        mqttERR="";
+      }else{
+        mqttERR=" Warning: MQTT broker IP has changed.";
+        mqtt_server_ip[2] = byte(ajaxserver.arg("mqttip2").toInt()) ;
+        EEPROM.writeByte(163, mqtt_server_ip[2]);
+      }
+    }
+
+    if ( ajaxserver.arg("mqttip3").length()<1 || ajaxserver.arg("mqttip3").toInt()>255){
+      mqttERR= " Out of range number 0-255";
+    }else{
+      if(mqtt_server_ip[3] == byte(ajaxserver.arg("mqttip3").toInt()) ){
+        mqttERR="";
+      }else{
+        mqttERR=" Warning: MQTT broker IP has changed.";
+        mqtt_server_ip[3] = byte(ajaxserver.arg("mqttip3").toInt()) ;
+        EEPROM.writeByte(164, mqtt_server_ip[3]);
+      }
+    }
+
+    // 165-166 - MQTT_PORT
+    if ( ajaxserver.arg("mqttport").length()<1 || ajaxserver.arg("mqttport").toInt()<1 || ajaxserver.arg("mqttport").toInt()>65535){
+      mqttportERR= " Out of range number 1-65535";
+    }else{
+      if(MQTT_PORT == ajaxserver.arg("mqttport").toInt()){
+        mqttportERR="";
+      }else{
+        mqttportERR=" Warning: MQTT broker PORT has changed.";
+        MQTT_PORT = ajaxserver.arg("mqttport").toInt();
+        EEPROM.writeUShort(165, MQTT_PORT);
+      }
+    }
 
 
-  // String YOUR_CALL = "";
-  // int RotID = 1;
-  // String RotName = "2+6m yagi";
-  // int StartAzimuth = 180;         // max CCW limit callibrate in real using
-  // unsigned int MaxRotateDegree = 0;
-  // String MapUrl = "https://remoteqth.com/xplanet/OK.png" ;
-  // unsigned int AntRadiationAngle = 44;
-  // bool Endstop =  false;
-  // bool ACmotor =  false;
+    EEPROM.commit();
+  } // else form valid
+
+  // MqttPubString("Debug Endstop", String(Endstop), false);
+if(Endstop==true){
+  edstopsCHECKED= "checked";
+}else{
+  // edstopsCHECKED= "disabled";
+  edstopsCHECKED= "";
+}
+
+if(ACmotor==true){
+  acmotorCHECKED= "checked";
+}else{
+  // edstopsCHECKED= "disabled";
+  acmotorCHECKED= "";
+}
 
 
-  // bool Reverse =  false;
-  //
+
+// MqttPubString("Debug startazimuth", String(ajaxserver.arg("startazimuth")), false);
+// MqttPubString("Debug StartAzimuth", String(StartAzimuth), false);
+// MqttPubString("Debug StartAzimuth EEPROM", String(EEPROM.readUShort(23)), false);
+// MqttPubString("Debug MaxRotateDegree EEPROM", String(EEPROM.readUShort(24)), false);
+// MqttPubString("Debug AntRadiationAngle EEPROM", String(EEPROM.readUShort(25)), false);
+
+
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'><meta http-equiv = 'refresh' content = '600; url = /'>\n";
   HtmlSrc +="<style type='text/css'> table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #000; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
-  HtmlSrc +=".tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -40px; left: -50%; }";
+  HtmlSrc +=".tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
   HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
   HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
   HtmlSrc +="<H1 style='color: #fff; text-align: center;'>Setup</H1>\n";
   HtmlSrc +="<div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
   HtmlSrc += YOUR_CALL;
-  HtmlSrc +="'></td></tr>\n<tr><td class='tdr'><label for='rotid'>Rotator ID:</label></td><td><input type='text' id='rotid' name='rotid' size='2' value='";
-  HtmlSrc += RotID;
-  HtmlSrc +="'><span class='hover-text'>?<span class='tooltip-text' id='right'>0-255</span></span></td></tr>\n<tr><td class='tdr'><label for='rotname'>Rotator name:</label></td><td><input type='text' id='rotname' name='rotname' size='20' value='";
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += yourcallERR;
+  HtmlSrc +="</span></td></tr>\n<tr><td class='tdr'><label for='rotid'>Rotator ID:</label></td><td><input type='text' id='rotid' name='rotid' size='2' value='";
+  HtmlSrc += NET_ID;
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += rotidERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 50px;'>1-2 chars</span></span></td></tr>\n<tr><td class='tdr'><label for='rotname'>Rotator name:</label></td><td><input type='text' id='rotname' name='rotname' size='20' value='";
   HtmlSrc += RotName;
-  HtmlSrc +="'></td></tr>\n<tr><td class='tdr'><label for='startazimuth'>Start CCW azimuth:</label></td><td><input type='text' id='startazimuth' name='startazimuth' size='3' value='";
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += rotnameERR;
+  HtmlSrc +="</span></td></tr>\n<tr><td class='tdr'><label for='startazimuth'>Start CCW azimuth:</label></td><td><input type='text' id='startazimuth' name='startazimuth' size='3' value='";
   HtmlSrc += StartAzimuth;
-  HtmlSrc +="'>&deg;</td></tr>\n<tr><td class='tdr'><label for='maxrotatedegree'>Rotation range in degrees:</label></td><td><input type='text' id='maxrotatedegree' name='maxrotatedegree' size='3' value='";
+  HtmlSrc +="'>&deg; <span style='color:red;'>";
+  HtmlSrc += startazimuthERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range 0-359&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='maxrotatedegree'>Rotation range in degrees:</label></td><td><input type='text' id='maxrotatedegree' name='maxrotatedegree' size='3' value='";
   HtmlSrc += MaxRotateDegree;
-  HtmlSrc +="'>&deg;</td></tr>\n<tr><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
+  HtmlSrc +="'>&deg; <span style='color:red;'>";
+  HtmlSrc += maxrotatedegreeERR;
+  HtmlSrc +="</span></td></tr>\n<tr><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
   HtmlSrc += MapUrl;
-  HtmlSrc +="'><span class='hover-text'>?<span class='tooltip-text' id='top'>DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA.</span></span></td></tr>\n<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += mapurlERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left'>DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA.</span></span> <a href='https://remoteqth.com/xplanet/' target='_blank'>Available list</a></td></tr>\n<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
   HtmlSrc += AntRadiationAngle;
-  HtmlSrc +="'>&deg;</td></tr>\n<tr><td class='tdr'><label for='led1'>Endstops:</label></td><td><input type='checkbox' id='led1' name='led1' value='1' ${postData.led1?'checked':''}><span class='hover-text'>?<span class='tooltip-text' id='right'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='led2'>AC motor:</label></td><td><input type='checkbox' id='led2' name='led2' value='1' ${postData.led2?'checked':''}><span class='hover-text'>?<span class='tooltip-text' id='right'>Disables the PWM and activates the other two relays.</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'></td><td><button>Submit</button></td></tr>\n";
-  HtmlSrc +="</form></table></div><div style='display: flex; justify-content: center;'><span><p style='font-size: 25px; color: #000; text-align: center; font-weight: normal; background: #666; margin: 73px 0 0 0; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'><a href='/'>&#8617; Back to CONTROL</a> | <a href='/cal'>CALIBRATE</a></p></span></div>\n";
+  HtmlSrc +="'>&deg; <span style='color:red;'>";
+  HtmlSrc += antradiationangleERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range 1-180&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='edstops'>Endstops:</label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
+  HtmlSrc += edstopsCHECKED;
+  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>AC motor:</label></td><td><input type='checkbox' id='acmotor' name='acmotor' value='1' ${postData.acmotor?'checked':''} ";
+  HtmlSrc += acmotorCHECKED;
+  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>Disables the PWM and activates the other two relays.</span></span></td></tr>\n";
+
+
+  HtmlSrc +="<tr><td class='tdr'><label for='mqttip0'>MQTT broker IP:</label></td><td>";
+  HtmlSrc +="<input type='text' id='mqttip0' name='mqttip0' size='1' value='" + String(mqtt_server_ip[0]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip1' name='mqttip1' size='1' value='" + String(mqtt_server_ip[1]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip2' name='mqttip2' size='1' value='" + String(mqtt_server_ip[2]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip3' name='mqttip3' size='1' value='" + String(mqtt_server_ip[3]) + "'>";
+  HtmlSrc +="<span style='color:red;'>";
+  HtmlSrc += mqttERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>Default public broker 54.38.157.134</span></span></td></tr>\n";
+
+  HtmlSrc +="<tr><td class='tdr'><label for='mqttport'>MQTT broker PORT:</label></td><td>";
+  HtmlSrc +="<input type='text' id='mqttport' name='mqttport' size='2' value='" + String(MQTT_PORT) + "'>\n";
+  HtmlSrc +="<span style='color:red;'>";
+  HtmlSrc += mqttportERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
+
+
+
+  // // MQTT broker IP
+  // for(int i=0; i<4; i++){
+  //   mqtt_server_ip[i]=EEPROM.readByte(i+161);
+  // }
+  // MQTT_PORT = EEPROM.readInt(165);
+  // if(mqtt_server_ip[0]==255 && mqtt_server_ip[1]==255 && mqtt_server_ip[2]==255 && mqtt_server_ip[3]==255 && MQTT_PORT==-1){
+  //   mqtt_server_ip[0]=54;
+  //   mqtt_server_ip[1]=38;
+  //   mqtt_server_ip[2]=157;
+  //   mqtt_server_ip[3]=134;
+  //   MQTT_PORT=1883;
+  // }
+
+  HtmlSrc +="<tr><td class='tdr'><button>CHANGE</button></form></td><td style='text-align: center;'><a href='/'><button>CANCEL</button></a></td></tr>\n";
+  HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='font-size: 20px; color: #000; text-align: center; font-weight: normal; background: #666; margin: 73px 0 0 0; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'><a href='/'>&#8617; Back to CONTROL</a> | <a href='/cal'>CALIBRATE</a></p>\n";
+  HtmlSrc +="<p style='text-align: center;'><a href='https://remoteqth.com/w/' target='_blank' alt='Rotator Wiki page'>More on Wiki &#10138;</a></p></span></div>\n";
   HtmlSrc +="</body></html>\n";
 
   String s = MAIN_page; //Read HTML contents
