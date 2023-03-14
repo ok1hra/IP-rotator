@@ -391,9 +391,14 @@ const char MAIN_page[] PROGMEM = R"=====(
 			}
 		az.beginPath();
 			az.moveTo(BoxSize/2, BoxSize/2);
-			az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
-			az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift), Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift), Number(BoxSize)/2*0.9));
-			az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
+			// az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
+			// az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift), Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift), Number(BoxSize)/2*0.9));
+			// az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
+
+			var CcwAngle = Number(AntRadiationAngle)/2;
+			for(var i=0;i<17;i++){
+				az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)-Number(CcwAngle)+Number(AntRadiationAngle)/16*i, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)-Number(CcwAngle)+Number(AntRadiationAngle)/16*i, Number(BoxSize)/2*0.9));
+			}
 			// az.arc(Xcenter, Ycenter, BoxSize/2*0.9, 0, 1.8 * Math.PI);
 			if (Number(Azimuth) < 0 || Number(Azimuth) > Number(AzRange) ) {
 				az.fillStyle = "rgba(255, 255, 255, 0.10)";

@@ -3692,9 +3692,9 @@ void http(){
           #if defined(OTAWEB)
             webClient.print(F(" | <a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a> | <a href=\"http://"));
+            webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a> <a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":88\" target=_blank>html preview</a>"));
+            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=700,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Control</button></a>"));
           #endif
           // END STATUS
           webClient.println(F("              </p>"));
@@ -4970,6 +4970,8 @@ void handleSet() {
   String mqttportERR= "";
   String edstopsCHECKED= "";
   String acmotorCHECKED= "";
+  String motorSELECT0= "";
+  String motorSELECT1= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -5138,14 +5140,26 @@ void handleSet() {
     }
 
     // 30  - ACmotor
-    if(ajaxserver.arg("edstops").toInt()==1 && ACmotor==false){
-      ACmotor = true;
-      EEPROM.writeBool(30, 1);
-      // EEPROM.commit();
-    }else if(ajaxserver.arg("edstops").toInt()!=1 && ACmotor==true){
+    // if(ajaxserver.arg("acmotor").toInt()==1 && ACmotor==false){
+    //   ACmotor = true;
+    //   EEPROM.writeBool(30, 1);
+    //   // EEPROM.commit();
+    // }else if(ajaxserver.arg("acmotor").toInt()!=1 && ACmotor==true){
+    //   ACmotor = false;
+    //   EEPROM.writeBool(30, 0);
+    //   // EEPROM.commit();
+    // }
+
+    // motor
+    // MqttPubString("Debug Motor", String(ajaxserver.arg("motor")), false);
+    // MqttPubString("Debug Motor2", String(ajaxserver.hasArg("motor")), false);
+
+    if(ajaxserver.arg("motor").toInt()==0 && ACmotor==true){
       ACmotor = false;
       EEPROM.writeBool(30, 0);
-      // EEPROM.commit();
+    }else if(ajaxserver.arg("motor").toInt()==1 && ACmotor==false){
+      ACmotor = true;
+      EEPROM.writeBool(30, 1);
     }
 
     // 161-164 - MQTT broker IP
@@ -5222,11 +5236,19 @@ if(Endstop==true){
   edstopsCHECKED= "";
 }
 
+// if(ACmotor==true){
+//   acmotorCHECKED= "checked";
+// }else{
+//   // edstopsCHECKED= "disabled";
+//   acmotorCHECKED= "";
+// }
+
 if(ACmotor==true){
-  acmotorCHECKED= "checked";
+  motorSELECT0= "";
+  motorSELECT1= " selected";
 }else{
-  // edstopsCHECKED= "disabled";
-  acmotorCHECKED= "";
+  motorSELECT0= " selected";
+  motorSELECT1= "";
 }
 
 
@@ -5237,11 +5259,9 @@ if(ACmotor==true){
 // MqttPubString("Debug MaxRotateDegree EEPROM", String(EEPROM.readUShort(24)), false);
 // MqttPubString("Debug AntRadiationAngle EEPROM", String(EEPROM.readUShort(25)), false);
 
-
-
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'><meta http-equiv = 'refresh' content = '600; url = /'>\n";
-  HtmlSrc +="<style type='text/css'> table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #000; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
+  HtmlSrc +="<style type='text/css'> button {padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} .button transition-duration: 0.4s;} .button:hover {background-color: #fff;} table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #000; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
   HtmlSrc +=".tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
   HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
   HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
@@ -5275,13 +5295,19 @@ if(ACmotor==true){
   HtmlSrc += AntRadiationAngle;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += antradiationangleERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range 1-180&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='edstops'>Endstops:</label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range 1-180&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='edstops'>Rotator with <span style='color: #c00;'>functional endstops:</span></label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
   HtmlSrc += edstopsCHECKED;
   HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>AC motor:</label></td><td><input type='checkbox' id='acmotor' name='acmotor' value='1' ${postData.acmotor?'checked':''} ";
-  HtmlSrc += acmotorCHECKED;
-  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>Disables the PWM and activates the other two relays.</span></span></td></tr>\n";
 
+  // HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>AC motor:</label></td><td><input type='checkbox' id='acmotor' name='acmotor' value='1' ${postData.acmotor?'checked':''} ";
+  // HtmlSrc += acmotorCHECKED;
+  // HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>Disables the PWM and activates the other two relays.</span></span></td></tr>\n";
+
+  HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>Motor:</label></td><td><select name='motor' id='motor'><option value='0'";
+  HtmlSrc += motorSELECT0;
+  HtmlSrc +=">DC</option><option value='1'";
+  HtmlSrc += motorSELECT1;
+  HtmlSrc +=">AC</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>DC use PWM<br>AC activate the other two relays</span></span></td></tr>\n";
 
   HtmlSrc +="<tr><td class='tdr'><label for='mqttip0'>MQTT broker IP:</label></td><td>";
   HtmlSrc +="<input type='text' id='mqttip0' name='mqttip0' size='1' value='" + String(mqtt_server_ip[0]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip1' name='mqttip1' size='1' value='" + String(mqtt_server_ip[1]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip2' name='mqttip2' size='1' value='" + String(mqtt_server_ip[2]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip3' name='mqttip3' size='1' value='" + String(mqtt_server_ip[3]) + "'>";
@@ -5295,24 +5321,11 @@ if(ACmotor==true){
   HtmlSrc += mqttportERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
 
-
-
-  // // MQTT broker IP
-  // for(int i=0; i<4; i++){
-  //   mqtt_server_ip[i]=EEPROM.readByte(i+161);
-  // }
-  // MQTT_PORT = EEPROM.readInt(165);
-  // if(mqtt_server_ip[0]==255 && mqtt_server_ip[1]==255 && mqtt_server_ip[2]==255 && mqtt_server_ip[3]==255 && MQTT_PORT==-1){
-  //   mqtt_server_ip[0]=54;
-  //   mqtt_server_ip[1]=38;
-  //   mqtt_server_ip[2]=157;
-  //   mqtt_server_ip[3]=134;
-  //   MQTT_PORT=1883;
-  // }
-
-  HtmlSrc +="<tr><td class='tdr'><button>CHANGE</button></form></td><td style='text-align: center;'><a href='/'><button>CANCEL</button></a></td></tr>\n";
-  HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='font-size: 20px; color: #000; text-align: center; font-weight: normal; background: #666; margin: 73px 0 0 0; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'><a href='/'>&#8617; Back to CONTROL</a> | <a href='/cal'>CALIBRATE</a></p>\n";
-  HtmlSrc +="<p style='text-align: center;'><a href='https://remoteqth.com/w/' target='_blank' alt='Rotator Wiki page'>More on Wiki &#10138;</a></p></span></div>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td><button style='background-color: #ccc;'>YES Change</button></form></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td><a href='/cal'><button style='background-color: #666;'>Calibrate prodecure</button></a></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td><a href='/'><button style='background-color: #060;'>&#8617; Back to Control</button></a></td></tr>\n";
+  HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></p></span></div>\n";
   HtmlSrc +="</body></html>\n";
 
   String s = MAIN_page; //Read HTML contents
