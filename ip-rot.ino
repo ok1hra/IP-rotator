@@ -76,13 +76,15 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
+const char* REV = "20230317";
+
 // not impemented
 bool Reverse =  false;
+short CcwRaw = 0;
+short CwRaw = 0;
 
-const char* REV = "20230312";
 
-
-// need set from GUI
+// set from GUI
 String YOUR_CALL = "";
 String NET_ID = "";
 String RotName = "";
@@ -93,9 +95,6 @@ String MapUrl = "" ;
 unsigned int MaxRotateDegree = 0;
 bool Endstop =  false;
 bool ACmotor =  false;
-
-
-
 
 unsigned int PwmUpDelay  = 4;  // [ms]*255
 unsigned int PwmDwnDelay = 3;  // [ms]*255
@@ -247,13 +246,16 @@ int i = 0;
 27  - AntRadiationAngle UShort
 29  - Endstop Bool
 30  - ACmotor Bool
+31-32 - CcwRaw
+33-34 - CwRaw
+35 - Reverse
 
 37-40 - Authorised telnet client IP
 41-140 - Authorised telnet client key
 141-160 - YOUR_CALL
 161-164 - MQTT broker IP
 165-166 - MQTT_PORT
-167-168 -
+167-168 - none
 169-219 - MapUrl
 
 231-234 - Altitude 4
@@ -275,6 +277,7 @@ unsigned long WatchdogTimer=0;
 //ajax
 #include <WebServer.h>
 #include "index.h"  //Web page header file
+#include "index-cal.h"  //Web page header file
 WebServer ajaxserver(HTTP_SERVER_PORT+8);
 
 WiFiServer server(HTTP_SERVER_PORT);
@@ -779,7 +782,30 @@ void setup() {
     }
   }
 
+  // 31-32 CcwRaw
+  if(EEPROM.read(31)==0xff){
+    CcwRaw=392;
+  }else{
+    CcwRaw = EEPROM.readUShort(31);
+  }
 
+  // 33-34  CwRaw
+  if(EEPROM.read(33)==0xff){
+    CwRaw=3000;
+  }else{
+    CwRaw = EEPROM.readUShort(33);
+  }
+
+  // 35 - Reverse
+  if(EEPROM.read(35)==0xff){
+    Reverse=false;
+  }else{
+    if(EEPROM.readBool(35)==1){
+      Reverse=true;
+    }else{
+      Reverse=false;
+    }
+  }
 
 
 
@@ -1158,6 +1184,7 @@ void setup() {
    ajaxserver.on("/", handleRoot);      //This is display page
    ajaxserver.on("/readADC", handleADC);//To get update of ADC Value only
    ajaxserver.on("/readAZ", handleAZ);
+   ajaxserver.on("/readAZadc", handleAZadc);
    ajaxserver.on("/readStat", handleStat);
    ajaxserver.on("/readStart", handleStart);
    ajaxserver.on("/readMax", handleMax);
@@ -1165,6 +1192,11 @@ void setup() {
    ajaxserver.on("/readAntName", handleAntName);
    ajaxserver.on("/readMapUrl", handleMapUrl);
    ajaxserver.on("/set", handleSet);
+   ajaxserver.on("/cal", handleCal);
+   ajaxserver.on("/readEndstop", handleEndstop);
+   ajaxserver.on("/readCwraw", handleCwraw);
+   ajaxserver.on("/readCcwraw", handleCcwraw);
+   // ajaxserver.on("/cal/readAZ", handleAZ);
    ajaxserver.begin();                  //Start server
    Serial.println("HTTP ajax server started");
 
@@ -1536,13 +1568,21 @@ StartAzimuth---------HalfPoint---------StartAzimuth+MaxRotateDegree
   if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
     if(AzimuthTarget>Azimuth){
       Status=1;
-      digitalWrite(ReversePin, LOW); delay(12);
+      if(Reverse==false){
+        digitalWrite(ReversePin, LOW); delay(12);
+      }else{
+        digitalWrite(ReversePin, HIGH); delay(12);
+      }
       StatusWatchdogTimer = millis();
       RotateWatchdogTimer = millis();
       AzimuthWatchdog=Azimuth;
     }else{
       Status=-1;
-      digitalWrite(ReversePin, HIGH); delay(12);
+      if(Reverse==false){
+        digitalWrite(ReversePin, HIGH); delay(12);
+      }else{
+        digitalWrite(ReversePin, LOW); delay(12);
+      }
       StatusWatchdogTimer = millis();
       RotateWatchdogTimer = millis();
       AzimuthWatchdog=Azimuth;
@@ -1550,13 +1590,21 @@ StartAzimuth---------HalfPoint---------StartAzimuth+MaxRotateDegree
 
   // escape from the forbidden zone
   }else if(Azimuth<0 && AzimuthTarget>0){
-    digitalWrite(ReversePin, LOW); delay(12);
+    if(Reverse==false){
+      digitalWrite(ReversePin, LOW); delay(12);
+    }else{
+      digitalWrite(ReversePin, HIGH); delay(12);
+    }
     Status=1;
     StatusWatchdogTimer = millis();
     RotateWatchdogTimer = millis();
     AzimuthWatchdog=Azimuth;
   }else if(Azimuth>MaxRotateDegree && AzimuthTarget<MaxRotateDegree){
-    digitalWrite(ReversePin, HIGH); delay(12);
+    if(Reverse==false){
+      digitalWrite(ReversePin, HIGH); delay(12);
+    }else{
+      digitalWrite(ReversePin, LOW); delay(12);
+    }
     Status=-1;
     StatusWatchdogTimer = millis();
     RotateWatchdogTimer = millis();
@@ -1581,8 +1629,12 @@ static unsigned int dutyCycle = 0;
           ledcWrite(ledChannel, dutyCycle);
           PwmTimer=millis();
           if(dutyCycle<1){
+            if(Reverse==false){
+              digitalWrite(ReversePin, LOW); delay(12);
+            }else{
+              digitalWrite(ReversePin, HIGH); delay(12);
+            }
             Status=0;
-            digitalWrite(ReversePin, LOW); delay(12);
             AzimuthTarget=-1;
           }
         }
@@ -1630,6 +1682,11 @@ static unsigned int dutyCycle = 0;
           ledcWrite(ledChannel, dutyCycle);
           PwmTimer=millis();
           if(dutyCycle<1){
+            if(Reverse==false){
+              digitalWrite(ReversePin, LOW); delay(12);
+            }else{
+              digitalWrite(ReversePin, HIGH); delay(12);
+            }
             Status=0;
             AzimuthTarget=-1;
           }
@@ -1637,8 +1694,6 @@ static unsigned int dutyCycle = 0;
         ; break; }
     }
   // }
-
-
 }
 
 //----------------------------RADIO--------------------------------------------------------------------
@@ -5261,7 +5316,7 @@ if(ACmotor==true){
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'><meta http-equiv = 'refresh' content = '600; url = /'>\n";
-  HtmlSrc +="<style type='text/css'> button {padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} .button transition-duration: 0.4s;} .button:hover {background-color: #fff;} table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #000; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
+  HtmlSrc +="<style type='text/css'> button {padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} .button transition-duration: 0.4s;} .button:hover {background-color: #fff;} table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
   HtmlSrc +=".tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
   HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
   HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
@@ -5321,16 +5376,142 @@ if(ACmotor==true){
   HtmlSrc += mqttportERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
 
-  HtmlSrc +="<tr><td class='tdr'></td><td><button style='background-color: #ccc;'>YES Change</button></form></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td><button style='background-color: #ccc;'>&#10004; Change</button></form></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'></td><td><a href='/cal'><button style='background-color: #666;'>Calibrate prodecure</button></a></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'></td><td><a href='/'><button style='background-color: #060;'>&#8617; Back to Control</button></a></td></tr>\n";
-  HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></p></span></div>\n";
+  HtmlSrc +="<tr><td class='tdr'><a href='/'><button style='background-color: #060;'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal'><button style='background-color: #666;'>Calibrate</button></a></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
+  // HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'></p></span></div>\n";
   HtmlSrc +="</body></html>\n";
 
-  String s = MAIN_page; //Read HTML contents
+  // String s = MAIN_page; //Read HTML contents
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
 }
+
+
+void handleCal() {
+
+  if ( ajaxserver.hasArg("stop")==1 ){
+    if(Status<0){
+      Status = -3;
+    }else if(Status>0){
+      Status = 3;
+    }
+    // MqttPubString("Debug stop", String(stop), false);
+  }
+
+  if ( ajaxserver.hasArg("cw")==1 ){
+    Status=1;
+    // digitalWrite(ReversePin, LOW); delay(12);
+    StatusWatchdogTimer = millis();
+    RotateWatchdogTimer = millis();
+    AzimuthWatchdog=Azimuth;
+  }
+
+  if ( ajaxserver.hasArg("ccw")==1 ){
+    Status=-1;
+    // digitalWrite(ReversePin, LOW); delay(12);
+    StatusWatchdogTimer = millis();
+    RotateWatchdogTimer = millis();
+    AzimuthWatchdog=Azimuth;
+  }
+
+  if ( ajaxserver.hasArg("reverse")==1 ){
+    Reverse = !Reverse;
+    EEPROM.writeBool(35, Reverse);
+    EEPROM.commit();
+  }
+
+  long RawTmp = 0;
+
+  // 31-32 CcwRaw
+  if ( ajaxserver.hasArg("setccw")==1 ){
+    RawTmp = 0;
+    for (int i=0; i<10; i++){
+      RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
+      delay(10);
+    }
+    CcwRaw = RawTmp / 10;
+    EEPROM.writeUShort(31, CcwRaw);
+    EEPROM.commit();
+    // MqttPubString("Debug CcwRaw", String(CcwRaw), false);
+  }
+
+  // 33-34  CwRaw
+  if ( ajaxserver.hasArg("setcw")==1 ){
+    RawTmp = 0;
+    for (int i=0; i<10; i++){
+      RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
+      delay(10);
+    }
+    CwRaw = RawTmp / 10;
+    EEPROM.writeUShort(33, CwRaw);
+    EEPROM.commit();
+    // MqttPubString("Debug CwRaw", String(CwRaw), false);
+  }
+
+    // MqttPubString("Debug setcw", String(ajaxserver.arg("setcw")), false);
+    // MqttPubString("Debug setcw 2", String(ajaxserver.hasArg("setcw")), false);
+
+  String ReverseCOLOR= "";
+  String ReverseSTATUS= "";
+  if(Reverse==true){
+    ReverseCOLOR= " style='background-color: #c00;'";
+    ReverseSTATUS= " style='color: #FFF;'>ON";
+  }else{
+    ReverseCOLOR= "";
+    ReverseSTATUS= ">OFF";
+  }
+
+  String HtmlSrc = "<!DOCTYPE html><html><head><title>CALIBRATE</title>";
+  HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>";
+  HtmlSrc +="<style type='text/css'>button {padding: 5px 20px 5px 20px; border: none;	-webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px; background-color: #ccc; color: #333;}";
+  HtmlSrc +="table, th, td { color: #fff; border: 0px; border-color: #666; border-style: solid; margin: 0px;}";
+  HtmlSrc +=".tdl { text-align: left; padding: 10px;}";
+  HtmlSrc +=".tdc { text-align: center; padding: 10px;}";
+  HtmlSrc +=".tdr { text-align: right; padding: 10px;}";
+  HtmlSrc +="html,body { background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;}";
+  HtmlSrc +="a:hover {color: #fff;}";
+  HtmlSrc +="a {color: #ccc; text-decoration: underline;}";
+  HtmlSrc +="</style><link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>";
+  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Calibrate</H1>";
+  HtmlSrc +="<div style='display: flex; justify-content: center;'>";
+  HtmlSrc +="<table cellspacing='0' cellpadding='0'><form action='/cal' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>";
+  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>ROTATION DIRECTION CALIBRATION</span></td></tr>";
+  HtmlSrc +="<tr style='background-color: #666;'>";
+  HtmlSrc +="<td class='tdr'><button id='ccw' name='ccw'>&#8630; CCW</button></td>";
+  HtmlSrc +="<td class='tdc'><button id='stop' name='stop'>STOP</button></td>";
+  HtmlSrc +="<td class='tdl'><button id='cw' name='cw'>CW &#8631;</button></td>";
+  HtmlSrc +="</tr><tr>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><button id='reverse' name='reverse'";
+  HtmlSrc +=ReverseCOLOR;
+  HtmlSrc +=">REVERSE-CONTROL-<strong";
+  HtmlSrc +=ReverseSTATUS;
+  HtmlSrc +="</strong></button></td>";
+  HtmlSrc +="</tr><tr>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'><span style='color: #ccc;'>Instruction:</span> if it does not rotate according to the buttons, reverse the control</td>";
+  HtmlSrc +="</tr><tr>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td>";
+  HtmlSrc +="</tr><tr>";
+  // HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'>SET AZIMUTH (<span id='AZadcValue'>0</span>V)</td>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>SET AZIMUTH</span></td>";
+  HtmlSrc +="</tr><tr>";
+
+  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='120'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
+  HtmlSrc +="</tr><tr style='background-color: #666;'>";
+  HtmlSrc +="<td class='tdl'><button id='setccw' name='setccw'>&#8676; SAVE CCW</button></td>";
+  HtmlSrc +="<td></td>";
+  HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'>SAVE CW &#8677;</button></td>";
+  HtmlSrc +="</tr><tr>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'><span style='color: #ccc;'>Instruction:</span> rotate to both CW/CCW ends and save</td>";
+  HtmlSrc +="</tr><tr><td></td><td style='height: 42px;'></td></tr>";
+  HtmlSrc +="<tr><td class='tdc' colspan='3'><a href='/'><button style='background-color: #060;'>&#8617; Back to Control</button></a>&nbsp;&nbsp;<a href='/set'><button style='background-color: #666;'>Setup</button></a></td></tr>";
+  HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></p></span></div>";
+
+  String s = CAL_page; //Read HTML contents
+  HtmlSrc +=s;
+  ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
+}
+
 void handlePostStop() {
   // MqttPubString("Debug 3 ", String(ajaxserver.hasArg("on")), false);
   // MqttPubString("Debug 4 ", String(ajaxserver.arg("on")), false);
@@ -5350,6 +5531,9 @@ void handleADC() {
 void handleAZ() {
   ajaxserver.send(200, "text/plane", String(Azimuth) );
 }
+void handleAZadc() {
+  ajaxserver.send(200, "text/plane", String(AzimuthValue) );
+}
 void handleStat() {
   ajaxserver.send(200, "text/plane", String(Status+4) );
 }
@@ -5367,4 +5551,15 @@ void handleAntName() {
 }
 void handleMapUrl() {
   ajaxserver.send(200, "text/plane", MapUrl );
+}
+void handleEndstop() {
+  ajaxserver.send(200, "text/plane", String(Endstop) );
+}
+void handleCwraw() {
+  ajaxserver.send(200, "text/plane", String(CwRaw) );
+  // MqttPubString("Debug CwRaw", String(readADC_Cal(CwRaw)), false);
+}
+void handleCcwraw() {
+  ajaxserver.send(200, "text/plane", String(CcwRaw) );
+  // MqttPubString("Debug CcwRaw", String(readADC_Cal(CcwRaw)), false);
 }
