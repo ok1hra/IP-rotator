@@ -40,7 +40,6 @@ mosquitto_pub -h 54.38.157.134 -t BD:2F/ROT/Target -m '10'
 HARDWARE ESP32-POE
 
 Changelog:
-20221104
 
 ToDo
 + implementovat jmeno rotatoru
@@ -102,8 +101,6 @@ long StatusWatchdogTimer = 0;
 long RotateWatchdogTimer = 0;
 int AzimuthWatchdog = 0;
 
-// #define WWWtwo
-
 //---------------------------------------------------------
 // #define HWREV 8                     // PCB version [7-8]
 #define OTAWEB                      // enable upload firmware via web
@@ -127,7 +124,6 @@ char MACchar[18];
 // #define WIFI                     // Enable ESP32 WIFI (DHCP IPv4) - NOT TESTED
 const char* ssid     = "";
 const char* password = "";
-const float FunelDiaInCM = 10.0; // cm funnel diameter
 //-------------------------------------------------------------------------------------------------------
 
 #include "esp_adc_cal.h"
@@ -156,10 +152,10 @@ const int PwmResolution = 8;
 #include "esp_attr.h"
 
 // values
-const int keyNumber = 1;
 char key[100];
 long MeasureTimer[2]={2800000,300000};   //  millis,timer (5 min)
-long RainTimer[2]={0,5000};   //  <---------------- rain timing
+
+
 int RainCount;
 String RainCountDayOfMonth;
 bool RainStatus;
@@ -167,7 +163,6 @@ bool RainStatus;
 1mm rain = 15,7cm^2/10 = 1,57ml     <- by rain funnel radius
 10ml = 11,5 pulses = 0,87ml/pulse   <- constanta tilting measuring cup
 */
-// float mmInPulse = 0.87/(3.14*(FunelDiaInCM/2)*(FunelDiaInCM/2)/10); // calculate rain mm, in one pulse
 float mmInPulse = 0.2 ; // callibration rain 17,7-20,2 mm with 95 pulse
 
 int WindDir = 0;
@@ -281,9 +276,6 @@ unsigned long WatchdogTimer=0;
 WebServer ajaxserver(HTTP_SERVER_PORT+8);
 
 WiFiServer server(HTTP_SERVER_PORT);
-#if defined(WWWtwo)
-  WiFiServer server2(HTTP_SERVER_PORT+8);
-#endif
 bool DHCP_ENABLE = 1;
 // Client variables
 char linebuf[80];
@@ -1035,9 +1027,6 @@ void setup() {
     }
   #endif
     server.begin();
-    #if defined(WWWtwo)
-      server2.begin();
-    #endif
     UdpCommand.begin(IncomingSwitchUdpPort);    // incoming udp port
     // chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
     //   unsigned long long1 = (unsigned long)((chipid & 0xFFFF0000) >> 16 );
@@ -1064,7 +1053,6 @@ void setup() {
         esp_task_wdt_reset();
         WdtTimer=millis();
 
-        Interrupts(false);
         String type;
         if (ArduinoOTA.getCommand() == U_FLASH)
           type = "sketch";
@@ -1076,7 +1064,6 @@ void setup() {
       })
       .onEnd([]() {
         Serial.println("\nEnd");
-        Interrupts(true);
       })
       .onProgress([](unsigned int progress, unsigned int total) {
         Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
@@ -1088,7 +1075,6 @@ void setup() {
         else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
         else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
         else if (error == OTA_END_ERROR) Serial.println("End Failed");
-        Interrupts(true);
       });
 
     ArduinoOTA.begin();
@@ -1176,7 +1162,6 @@ void setup() {
   //init and get the time
    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
    RainCountDayOfMonth=UtcTime(2);
-   Interrupts(true);
 
    // ajax
    ajaxserver.on("/",HTTP_POST, handlePostRot);
@@ -1206,9 +1191,6 @@ void setup() {
 
 void loop() {
   http();
-  #if defined(WWWtwo)
-    http2();
-  #endif
   Mqtt();
   CLI();
   Telnet();
@@ -1216,76 +1198,6 @@ void loop() {
   RunByStatus();
 
   ajaxserver.handleClient();
-
-  // RX_UDP();
-  // PWM demo
-
-
-  // static long PwmTimer = 0;
-  // static unsigned int dutyCycle = 0;
-  // static unsigned int PwmDemo = 1;
-  //
-  // switch (PwmDemo) {
-  //   case  1: {
-  //     if(millis()-PwmTimer > 5){
-  //       dutyCycle+=2;
-  //       ledcWrite(ledChannel, dutyCycle);
-  //       PwmTimer=millis();
-  //       if(dutyCycle>254){
-  //         PwmDemo=2;
-  //       }
-  //     }
-  //     ; break; }
-  //   case  2: {
-  //     if(millis()-PwmTimer > 0){
-  //       dutyCycle--;
-  //       ledcWrite(ledChannel, dutyCycle);
-  //       PwmTimer=millis();
-  //       if(dutyCycle<1){
-  //         PwmDemo=3;
-  //         digitalWrite(ReversePin, HIGH); delay(12);
-  //       }
-  //     }
-  //     ; break; }
-  //     case  3: {
-  //       if(millis()-PwmTimer > 5){
-  //         dutyCycle+=2;
-  //         ledcWrite(ledChannel, dutyCycle);
-  //         PwmTimer=millis();
-  //         if(dutyCycle>254){
-  //           PwmDemo=4;
-  //         }
-  //       }
-  //       ; break; }
-  //     case  4: {
-  //       if(millis()-PwmTimer > 0){
-  //         dutyCycle--;
-  //         ledcWrite(ledChannel, dutyCycle);
-  //         PwmTimer=millis();
-  //         if(dutyCycle<1){
-  //           PwmDemo=1;
-  //           digitalWrite(ReversePin, LOW); delay(12);
-  //         }
-  //       }
-  //       ; break; }
-  // }
-
-
-
-
-  // for(int dutyCycle = 0; dutyCycle <= 255; dutyCycle++){
-  //   ledcWrite(ledChannel, dutyCycle);
-  //   delay(15);
-  // }
-  // // digitalWrite(ReversePin, HIGH); delay(12);
-  //
-  // for(int dutyCycle = 255; dutyCycle >= 0; dutyCycle--){
-  //   ledcWrite(ledChannel, dutyCycle);
-  //   delay(15);
-  // }
-  //
-  // // digitalWrite(ReversePin, LOW); delay(12);
-
 
   #if defined(EnableOTA)
    ArduinoOTA.handle();
@@ -1301,44 +1213,6 @@ void loop() {
 }
 // SUBROUTINES -------------------------------------------------------------------------------------------------------
 
-void IRAM_ATTR RPMcount(){    // must be before attachInterrupt ;)
-  // Interrupts(false);
-  if(digitalRead(RpmPin)==0){   // because FALLING not work
-    // Serial.println("RPM");
-    RpmPulse = millis()-RpmTimer[0];
-    RpmTimer[0] = millis();
-    // Prn(3, 0,"*");
-    RpmInterrupt = true;
-    // if(RpmPulse<PeriodMinRpmPulse){
-    //   PeriodMinRpmPulse=RpmPulse;
-    //   PeriodMinRpmPulseTimestamp=UtcTime(1);
-    // }
-    // if(RpmPulse<MinRpmPulse && needEEPROMcommit==false){
-    //   MinRpmPulseTimestamp=PeriodMinRpmPulseTimestamp;
-    //   EEPROM.writeLong(169, RpmPulse);
-    //   EEPROM.writeString(173, MinRpmPulseTimestamp);
-    //   MinRpmPulse=RpmPulse;
-    //   needEEPROMcommit = true;
-    // }
-    // if(RpmPulse<RpmTimer[1]){
-    //   RpmAverage[1]=RpmAverage[1]+RpmPulse;
-    //   RpmAverage[0]++;
-    // }
-
-  }
-  // Interrupts(true);
-}
-//-------------------------------------------------------------------------------------------------------
-void Interrupts(boolean ON){
-  if(ON==true){
-    attachInterrupt(RpmPin, RPMcount, FALLING);
-    // attachInterrupt(digitalPinToInterrupt(RpmPin), RPMcount, FALLING);
-    // attachInterrupt(digitalPinToInterrupt(RpmPin), RPMcount, RISING);
-  }else{
-    detachInterrupt(digitalPinToInterrupt(RpmPin));
-  }
-}
-//-------------------------------------------------------------------------------------------------------
 uint32_t readADC_Cal(int ADC_Raw)
 {
   esp_adc_cal_characteristics_t adc_chars;
@@ -1617,9 +1491,8 @@ StartAzimuth---------HalfPoint---------StartAzimuth+MaxRotateDegree
 //-------------------------------------------------------------------------------------------------------
 
 void RunByStatus(){
-
-static long PwmTimer = 0;
-static unsigned int dutyCycle = 0;
+  static long PwmTimer = 0;
+  static unsigned int dutyCycle = 0;
 
   // }else if( (Azimuth>=0 && Azimuth<=450) ){
     switch (Status) {
@@ -1696,265 +1569,12 @@ static unsigned int dutyCycle = 0;
   // }
 }
 
-//----------------------------RADIO--------------------------------------------------------------------
-// https://www.airspayce.com/mikem/arduino/RadioHead/classRH__RF69.html
-
-void check_radio() {
-  #if defined(RF69_EXTERNAL_SENSOR)
-    static long CheckRadioTimer;
-    if ((millis() - CheckRadioTimer) > 2000 && RF69enable==true){
-      Interrupts(false);
-      if (rf69.available()) {
-        if(EnableSerialDebug>0){
-          Prn(3, 0,"RF69 ");
-        }
-        if(rf69.recv(buf, &len)) {
-          if (!len) return;
-          buf[len] = 0;
-          received_data = ((char*)buf);
-          if(EnableSerialDebug>0){
-            Prn(3, 1,"RX: "+String(received_data) );
-          }
-          // Serial.print("Received:" );
-          // Serial.println(received_data);
-          temp_radio = getValue(received_data, ',', 0);
-          humidity_radio = getValue(received_data, ',', 1);
-          vbat_radio = getValue(received_data, ',', 2);
-          MqttPubString("RF-Temperature-Celsius", temp_radio, false);
-          MqttPubString("RF-HumidityRel-Percent", humidity_radio, false);
-          MqttPubString("RF-BattVoltage", vbat_radio, false);
-        }else{
-          if(EnableSerialDebug>0){
-            Prn(3, 1,"receive failed!");
-          }
-        }
-      // }else{
-      //   if(EnableSerialDebug>0){
-      //     Prn(3, 1,"RF69 not available!");
-      //   }
-      }
-      CheckRadioTimer=millis();
-      Interrupts(true);
-    }
-  #endif
-}
-//-------------------------------------------------------------------------------------------------------
-
-// Prepocet tlaku vzduchu z absolutni hodnoty na hladinu more (OK1IRG)
-// double CMain::Babinet(double Pz, double T){
-double Babinet(double Pz, double T){
-  double C, P0;
-  // prepocet provadime podle Babinetova vzorce - nejdriv spocti teplotni korekci
-  C = 16e3 * (1 + T/273);
-  // vypocti tlak na hladine more
-  P0 = Pz * (C + double(Altitude)) / (C - double(Altitude));
-  return(P0);
-}
-
-
-//-------------------------------------------------------------------------------------------------------
-// ToDo
-// https://techtutorialsx.com/2017/10/07/esp32-arduino-timer-interrupts/
-int MpsToMs(int MPS){
-  if(MPS>0){
-    int ms;
-    // ms = 1000*CupRotationCircleCircumferenceInMeters*Kfactor/MPS; // 0,21195 = cup rotaion circle circumference in meters (for 135 mm diameter), 1,3 = K factor
-    ms = pow(MPS/500, 1/-0.784);
-    return ms;
-  }else{
-    return 0;
-    // for (int i = 0; i < MappingRow; i++) {
-    //   if(mapping[i][0] >= PULSE && PULSE >= mapping[i+1][0]){   // find range
-    //     return map(PULSE, mapping[i][0], mapping[i+1][0], mapping[i][1], mapping[i+1][1]);  // map(value, fromLow, fromHigh, toLow, toHigh) //*10 one decimal
-    //     break;
-    //   }
-    // }
-    // return 0;
-  }
-}
-//-------------------------------------------------------------------------------------------------------
-float PulseToMetterBySecond(long PULSE){
-  // < 0,28 m/s
-  if(PULSE>2000 || PULSE==0){
-    return 0;
-  }else{
-    float mps;
-    // ms = 1000/PULSE*CupRotationCircleCircumferenceInMeters*Kfactor; // 0,21195 = cup rotaion circle circumference in meters (for 135 mm diameter), 1,3 = K factor
-    mps = 500*pow(PULSE, -0.784);  // https://mycurvefit.com
-    return mps;
-
-    // for (int i = 0; i < MappingRow; i++) {
-    //   if(mapping[i][0] >= PULSE && PULSE >= mapping[i+1][0]){   // find range
-    //     return map(PULSE, mapping[i][0], mapping[i+1][0], mapping[i][1], mapping[i+1][1]);  // map(value, fromLow, fromHigh, toLow, toHigh) //*10 one decimal
-    //     break;
-    //   }
-    // }
-    // return 0;
-  }
-}
-//-------------------------------------------------------------------------------------------------------
-// byte Azimuth(){    // run from interrupt
-//   byte rxShiftInByte=0x00;
-//   digitalWrite(ShiftInLatchPin,1);   //Set latch pin to 1 to get recent data into the CD4021
-//   delayMicroseconds(10);
-//   // delay(1);
-//   digitalWrite(ShiftInLatchPin,0);     //Set latch pin to 0 to get data from the CD4021
-//
-//   for (int i=0; i<8; i++){                // 16 = two bank
-//     digitalWrite(ShiftInClockPin, 0);
-//     delayMicroseconds(10);
-//     // delay(1);
-//     // rxShiftInByte = rxShiftInByte  | (digitalRead(ShiftInDataPin)<<i);
-//     bitWrite(rxShiftInByte, i, digitalRead(ShiftInDataPin));
-//     digitalWrite(ShiftInClockPin, 1);
-//     delayMicroseconds(10);
-//     // delay(1);
-//   }
-//   switch (rxShiftInByte){
-//     case 0b01111111:
-//       AzShift(180); // 0
-//       break;
-//     case 0b01111110:
-//       AzShift(202); // 22
-//       break;
-//     case 0b11111110:
-//       AzShift(225); // 45
-//       break;
-//     case 0b11111100:
-//       AzShift(247); // 67
-//       break;
-//     case 0b11111101:
-//       AzShift(270); // 90
-//       break;
-//     case 0b11111001:
-//       AzShift(292); // 112
-//       break;
-//     case 0b11111011:
-//       AzShift(315); // 135
-//       break;
-//     case 0b11110011:
-//       AzShift(337); // 157
-//       break;
-//     case 0b11110111:
-//       AzShift(0); // 180
-//       break;
-//     case 0b11100111:
-//       AzShift(22);
-//       break;
-//     case 0b11101111:
-//       AzShift(45);
-//       break;
-//     case 0b11001111:
-//       AzShift(67);
-//       break;
-//     case 0b11011111:
-//       AzShift(90);
-//       break;
-//     case 0b10011111:
-//       AzShift(112);
-//       break;
-//     case 0b10111111:
-//       AzShift(135);
-//       break;
-//     case 0b00111111:
-//       AzShift(157);
-//       break;
-//     default:
-//       WindDir=-1;
-//       break;
-//   }
-//   return rxShiftInByte;
-// }
-
 //-------------------------------------------------------------------------------------------------------
 void AzShift(int AZ){
   WindDir=AZ+WindDirShift;
   if(WindDir>360){
     WindDir=WindDir-360;
   }
-}
-//-------------------------------------------------------------------------------------------------------
-// todo
-// if(BMP280enable==true){
-// if(HTU21Denable==true){
-
-void AprsWxIgate() {
-  #if defined(BMP280) && defined(HTU21D)
-  if(AprsON==true){
-    // digitalWrite(EnablePin,1);
-    // http://czech.aprs2.net:14501/
-    // if (!AprsClient.connect(aprs_server_ip, AprsPort))
-    if (!AprsClient.connect("czech.aprs2.net", 14580)) {  // client.connect(URL, port);  char URL[]="google.com"
-      if(EnableSerialDebug>0){
-        Prn(3, 1,"APRS client connect failed!");
-      }
-      return;
-    }
-
-    // login
-    if(EnableSerialDebug>0){
-      Prn(3, 1,"APRS-TX | user "+YOUR_CALL+" pass "+AprsPassword+" vers esp32wx "+REV+" filter m/1");
-    }
-    AprsClient.println("user "+YOUR_CALL+" pass "+AprsPassword+" vers esp32wx "+REV+" filter m/1");
-    delay (250);
-
-    // send data
-    if(EnableSerialDebug>0){
-      Prn(3, 1,"APRS-TX | "+YOUR_CALL+">APRSWX,TCPIP*,qAS,:="
-      +AprsCoordinates+"_"
-      +LeadingZero(3,WindDir)
-      +"/"+LeadingZero(3,PulseToMetterBySecond(RpmAverage[1]/RpmAverage[0])/0.447)
-      +"g"+LeadingZero(3,PulseToMetterBySecond(PeriodMinRpmPulse)/0.447)
-      +"t"+LeadingZero(3,htu.readTemperature()*1.8+32)
-      +"h"+LeadingZero(3,constrain(htu.readHumidity(), 0, 100))
-      +"b"+LeadingZero(6,Babinet(double(bmp.readPressure()), double(htu.readTemperature()*1.8+32)))
-      +"P"+LeadingZero(3,RainPulseToMM(RainCount)/0.254) );
-    }
-    String StrBuf;
-    // StrBuf=LeadingZero(3,htu.readTemperature()*1.8+32);
-    StrBuf=LeadingZero(3,bmp.readTemperature()*1.8+32);
-
-    // #if defined(DS18B20)
-    //   if(ExtTemp==true){
-    //     sensors.requestTemperatures();
-    //     // float temperatureF = sensors.getTempFByIndex(0);
-    //     float temperatureF = sensors.getTempC(insideThermometer);
-    //     StrBuf=LeadingZero(3,temperatureF*1.8+32);
-    //   }
-    // #endif
-    //
-    // #if defined(RF69_EXTERNAL_SENSOR)
-    //   if(temp_radio.toInt()>0 && RF69enable==true){
-    //     StrBuf=LeadingZero(3,temp_radio.toInt()*1.8+32);
-    //   }
-    // #endif
-
-    AprsClient.println(YOUR_CALL+">APRSWX,TCPIP*,qAS,:="
-    +AprsCoordinates+"_"
-    +LeadingZero(3,WindDir)
-    // Prn(OUT, 1, "             avg ("+String(RpmAverage[1])+"/"+String(RpmAverage[0])+") "+String(RpmAverage[1]/RpmAverage[0])+"ms | "+String(PulseToMetterBySecond(RpmAverage[1]/RpmAverage[0]))+"m/s | "+String(PulseToMetterBySecond(RpmAverage[1]/RpmAverage[0])*3.6)+" km/h");
-    // Prn(OUT, 1, "             MAX in period "+String(PeriodMinRpmPulse)+"ms | "+String(PulseToMetterBySecond(PeriodMinRpmPulse))+"m/s | "+String(PulseToMetterBySecond(PeriodMinRpmPulse)*3.6)+" km/h ("+String(PeriodMinRpmPulseTimestamp)+")");
-    // mps/0.447 = mph
-    +"/"+LeadingZero(3,PulseToMetterBySecond(RpmAverage[1]/RpmAverage[0])/0.447)
-    +"g"+LeadingZero(3,PulseToMetterBySecond(PeriodMinRpmPulse)/0.447)
-    // #if defined(DS18B20)
-    //   +"t"+LeadingZero(3,temperatureF)
-    // #else
-    //   +"t"+LeadingZero(3,htu.readTemperature()*1.8+32)
-    // #endif
-    +"t"+StrBuf
-    +"h"+LeadingZero(3,constrain(htu.readHumidity(), 0, 100))
-    +"b"+LeadingZero(6,Babinet(double(bmp.readPressure()), double(htu.readTemperature()*1.8+32)))
-    +"P"+LeadingZero(3,RainPulseToMM(RainCount)/0.254) );
-
-    if(EnableSerialDebug>0){
-      Prn(3, 1,"APRS-TX | "+YOUR_CALL+">APRSWX,TCPIP*,qAC:> remoteqth.com 3D-printed WX station");
-    }
-    AprsClient.println(YOUR_CALL+">APRSWX,TCPIP*,qAC:> remoteqth.com 3D-printed WX station");
-
-    // digitalWrite(EnablePin,0);
-  }
-  #endif
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -1969,46 +1589,6 @@ String LeadingZero(int NumberOfZero, int NR){
   return StrBuf;
 }
 
-//-------------------------------------------------------------------------------------------------------
-// void Print_SDCard_Info ()
-// {
-//     uint8_t cardType = SD_MMC.cardType();
-//
-//     if(cardType == CARD_NONE){
-//         Serial.println("No SD_MMC card attached");
-//         return;
-//     }
-//
-//     Serial.print("SD_MMC Card Type: ");
-//     if(cardType == CARD_MMC){
-//         Serial.println("MMC");
-//     } else if(cardType == CARD_SD){
-//         Serial.println("SDSC");
-//     } else if(cardType == CARD_SDHC){
-//         Serial.println("SDHC");
-//     } else {
-//         Serial.println("UNKNOWN");
-//     }
-//
-//     uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
-//     Serial.printf("SD_MMC Card Size: %lluMB\n", cardSize);
-//
-//     listDir(SD_MMC, "/", 0);
-//     createDir(SD_MMC, "/mydir");
-//     listDir(SD_MMC, "/", 0);
-//     removeDir(SD_MMC, "/mydir");
-//     listDir(SD_MMC, "/", 2);
-//     writeFile(SD_MMC, "/hello.txt", "Hello ");
-//     appendFile(SD_MMC, "/hello.txt", "World!\n");
-//     readFile(SD_MMC, "/hello.txt");
-//     deleteFile(SD_MMC, "/foo.txt");
-//     renameFile(SD_MMC, "/hello.txt", "/foo.txt");
-//     readFile(SD_MMC, "/foo.txt");
-//     testFileIO(SD_MMC, "/test.txt");
-//     Serial.printf("Total space: %lluMB\n", SD_MMC.totalBytes() / (1024 * 1024));
-//     Serial.printf("Used space: %lluMB\n", SD_MMC.usedBytes() / (1024 * 1024));
-//
-// }
 //---------------------------------------------------------------------------------------------------------
 byte HiByte(int ID){
   bitClear(ID, 0);  // ->
@@ -2161,12 +1741,6 @@ void CLI(){
     }else if(incomingByte==46){
       Prn(OUT, 1,"Reset timer and sent measure");
       MeasureTimer[0]=millis()-MeasureTimer[1];
-
-    #if !defined(BMP280) && !defined(HTU21D)
-      // 2
-      }else if(incomingByte==50){
-        I2cScanner();
-    #endif
 
     // q
     }else if(incomingByte==113 && TelnetServerClients[0].connected() ){
@@ -2627,29 +2201,6 @@ void EnterInt(int OUT){
   }
   // Prn(OUT, 1, "out"+String(CompareInt) );
 }
-//-------------------------------------------------------------------------------------------------------
-
-void EnterIntOld(int OUT){
-  Prn(OUT, 0,"> ");
-  if(OUT==0){
-    while(!Serial.available()) {
-    }
-    delay(3000);
-    CompareInt = Serial.parseInt();
-  }else if(OUT==1){
-    if (TelnetServerClients[0] && TelnetServerClients[0].connected()){
-      delay(5000);
-      if(TelnetServerClients[0].available()){
-        // while(TelnetServerClients[0].available()){
-        //   Prn(OUT, 1, "4" );
-        //   // incomingByte=TelnetServerClients[0].read();
-        // }
-        CompareInt = TelnetServerClients[0].parseInt();
-      }
-    }
-  }
-  Prn(OUT, 1, String(CompareInt) );
-}
 
 //-------------------------------------------------------------------------------------------------------
 void Prn(int OUT, int LN, String STR){
@@ -2845,75 +2396,7 @@ void ListCommands(int OUT){
     // }else{
     // }
     // Azimuth();
-    Prn(3, 0,"  Azimuth ");
-    Prn(3, 0,String(Azimuth));
-    if(WindDir==-1){
-      Prn(OUT, 1,"|sensor malformed!" );
-    }else{
-      Prn(OUT, 1, "|"+String(WindDir)+"° [with shift "+String(WindDirShift)+"°]");
-    }
-    Prn(OUT, 0,"  RpmPin ");
-      Prn(OUT, 0,String(digitalRead(RpmPin)));
-    Prn(OUT, 1, "|Wind speed last   "+String(RpmPulse)+" ms|"+String(PulseToMetterBySecond(RpmPulse))+" m/s|"+String(PulseToMetterBySecond(RpmPulse)*3.6)+" km/h");
-    Prn(OUT, 1, "             avg ("+String(RpmAverage[1])+"/"+String(RpmAverage[0])+") "+String(RpmAverage[1]/RpmAverage[0])+" ms|"+String(PulseToMetterBySecond(RpmAverage[1]/RpmAverage[0]))+" m/s|"+String(PulseToMetterBySecond(RpmAverage[1]/RpmAverage[0])*3.6)+" km/h");
-    Prn(OUT, 1, "             MAX in period   "+String(PeriodMinRpmPulse)+" ms|"+String(PulseToMetterBySecond(PeriodMinRpmPulse))+" m/s|"+String(PulseToMetterBySecond(PeriodMinRpmPulse)*3.6)+" km/h("+String(PeriodMinRpmPulseTimestamp)+")");
-    Prn(OUT, 1, "             lifetime MAX    "+String(MinRpmPulse)+" ms|"+String(PulseToMetterBySecond(MinRpmPulse))+" m/s|"+String(PulseToMetterBySecond(MinRpmPulse)*3.6)+" km/h("+String(MinRpmPulseTimestamp)+")");
-    #if defined(HTU21D)
-      if(HTU21Denable==true){
-        Prn(OUT, 1, "  HTU21D Humidity relative "+String(constrain(htu.readHumidity(), 0, 100))+"% ["+String(htu.readTemperature())+"°C]");
-      }else{
-        Prn(OUT, 1, "  HTU21D Humidity relative n/a");
-      }
-    #endif
-    #if defined(SHT21)
-      internal.read();
-      // external.read();
-      Serial.print("  SHT21 Humidity relative ");
-      Serial.print(internal.getTemperature(), 1);
-      Serial.print("\t");
-      Serial.println(internal.getHumidity(), 1);
-      // Serial.print("\t");
-      // Serial.print(external.getTemperature(), 1);
-      // Serial.print("\t");
-      // Serial.println(external.getHumidity(), 1);
-    #endif
-    #if defined(BMP280)
-      if(BMP280enable==true){
-        Prn(OUT, 1, "  BMP280 Pressure "+String(Babinet(double(bmp.readPressure()), double(htu.readTemperature()*1.8+32))/100)+" hPa ["+String(bmp.readPressure()/100)+" raw] "+String(bmp.readTemperature())+"°C");
-      }else{
-        Prn(OUT, 1, "  BMP280 Pressure n/a");
-      }
-    #endif
-    #if defined(DS18B20)
-      if(ExtTemp==true){
-        if(OUT==0){
-          Serial.flush();
-          Serial.end();
-        }
-        sensors.requestTemperatures();
-        // float temperatureC = sensors.getTempCByIndex(0);
-        float temperatureC = sensors.getTempC(insideThermometer);
-        if(OUT==0){
-          Serial.begin(SERIAL_BAUDRATE);
-          while(!Serial) {
-            ; // wait for serial port to connect. Needed for native USB port only
-          }
-        }
-        Prn(OUT, 1, "  DS18B20 Temperature "+String(temperatureC)+"°C");
-      }
-    #endif
-    #if defined(RF69_EXTERNAL_SENSOR)
-      if(RF69enable==true){
-        Prn(OUT, 1, "  RF sensor: "+String(temp_radio)+"°C, "+String(humidity_radio)+"%, "+String(vbat_radio)+"V");
-      }
-    #endif
 
-    // Prn(OUT, 1, "  Humidity "+String()+"%");
-    // if(cardType!=CARD_NONE){
-    //   uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
-    //   // Serial.printf("SD_MMC Card Size: %lluMB\n", cardSize);
-    //   Prn(OUT, 1," | size "+String(printf("%lluMB", cardSize)));
-    // }
     Prn(OUT, 1,"------------------  Menu  -------------------");
     // Prn(OUT, 1,"  You can change source, with send character:");
     // if(TxUdpBuffer[2]=='m'){
@@ -3199,210 +2682,6 @@ String getValue(String data, char separator, int index)
 }
 
 //-------------------------------------------------------------------------------------------------------
-/*
-ID FROM TO : BROADCAST ;
-ID FROM TO : CONFIRM ;
-ID FROM TO : A B C ;
-ID FROM TO : A B C ;
-
-TX  0ms:b;
-RX  0sm:c;
-TX  0ms:123;
-RX  0sm:123;
-*/
-
-void RX_UDP(){
-  UDPpacketSize = UdpCommand.parsePacket();    // if there's data available, read a packet
-  if (UDPpacketSize){
-    UdpCommand.read(packetBuffer, 10);      // read the packet into packetBufffer
-    // Print RAW
-    if(EnableSerialDebug>0){
-      Serial.println();
-      Serial.print("RXraw [");
-      Serial.print(packetBuffer[0], HEX);
-      for(int i=1; i<8; i++){
-        Serial.print(char(packetBuffer[i]));
-      }
-      Serial.print(F("] "));
-      Serial.print(UdpCommand.remoteIP());
-      Serial.print(":");
-      Serial.print(UdpCommand.remotePort());
-      Serial.println();
-    }
-
-    // ID-FROM-TO filter
-    if(
-      (EnableGroupPrefix==false
-      && String(packetBuffer[0], DEC).toInt()==0
-      && packetBuffer[1]==TxUdpBuffer[2]  // FROM Switch
-      && packetBuffer[2]== 's'  // TO
-      && packetBuffer[3]== B00000000
-      // && packetBuffer[3]== ':'
-      && packetBuffer[7]== ';')
-      ||
-      (EnableGroupPrefix==true
-      && IdSufix(packetBuffer[0])==IdSufix(0)
-      && packetBuffer[1]==TxUdpBuffer[2]  // FROM Switch
-      && packetBuffer[2]== 's'  // TO
-      && packetBuffer[3]== B00000000
-      // && packetBuffer[3]== ':'
-      && packetBuffer[7]== ';')
-    ){
-
-      if( EnableGroupPrefix==true && (
-        DetectedRemoteSwPort [IdPrefix(packetBuffer[0])] == 0
-        || (packetBuffer[4]== 'b' && packetBuffer[5]== 'r' && packetBuffer[6]== 'o')
-        || (packetBuffer[4]== 'c' && packetBuffer[5]== 'f' && packetBuffer[6]== 'm')
-        )
-      ){
-        IPAddress TmpAddr = UdpCommand.remoteIP();
-        DetectedRemoteSw [hexToDecBy4bit(IdPrefix(packetBuffer[0]))] [0]=TmpAddr[0];     // Switch IP addres storage to array
-        DetectedRemoteSw [hexToDecBy4bit(IdPrefix(packetBuffer[0]))] [1]=TmpAddr[1];
-        DetectedRemoteSw [hexToDecBy4bit(IdPrefix(packetBuffer[0]))] [2]=TmpAddr[2];
-        DetectedRemoteSw [hexToDecBy4bit(IdPrefix(packetBuffer[0]))] [3]=TmpAddr[3];
-        DetectedRemoteSwPort [hexToDecBy4bit(IdPrefix(packetBuffer[0]))]=UdpCommand.remotePort();
-        if(EnableSerialDebug>0){
-          Serial.print("Detect controller ID ");
-          Serial.print(IdPrefix(packetBuffer[0]), HEX);
-          Serial.print(" on IP ");
-          Serial.print(DetectedRemoteSw [hexToDecBy4bit(IdPrefix(packetBuffer[0]))] [0]);
-          Serial.print(".");
-          Serial.print(DetectedRemoteSw [hexToDecBy4bit(IdPrefix(packetBuffer[0]))] [1]);
-          Serial.print(".");
-          Serial.print(DetectedRemoteSw [hexToDecBy4bit(IdPrefix(packetBuffer[0]))] [2]);
-          Serial.print(".");
-          Serial.print(DetectedRemoteSw [hexToDecBy4bit(IdPrefix(packetBuffer[0]))] [3]);
-          Serial.print(":");
-          Serial.println(DetectedRemoteSwPort [hexToDecBy4bit(IdPrefix(packetBuffer[0]))] );
-        }
-        if(TxUdpBuffer[2] == 'm'){
-          TxUDP('s', packetBuffer[2], ShiftOutByte[0], ShiftOutByte[1], ShiftOutByte[2], 1);
-        }
-      }
-
-      // RX Broadcast / CFM
-      if((packetBuffer[4]== 'b' && packetBuffer[5]== 'r' && packetBuffer[6]== 'o')
-        || (packetBuffer[4]== 'c' && packetBuffer[5]== 'f' && packetBuffer[6]== 'm')
-        ){
-        if(EnableSerialDebug>0){
-          Serial.print("RX [");
-          Serial.print(packetBuffer[0], HEX);
-          for(int i=1; i<8; i++){
-            Serial.print(char(packetBuffer[i]));
-          }
-          Serial.print(F("] "));
-          Serial.print(UdpCommand.remoteIP());
-          Serial.print(":");
-          Serial.println(UdpCommand.remotePort());
-        }
-        if(packetBuffer[4]== 'b' && packetBuffer[5]== 'r' && packetBuffer[6]== 'o'){
-          TxUDP('s', packetBuffer[2], 'c', 'f', 'm', 1);    // 0=broadcast, 1= direct to RX IP
-          if(TxUdpBuffer[2] == 'm'){
-            TxUDP('s', packetBuffer[2], ShiftOutByte[0], ShiftOutByte[1], ShiftOutByte[2], 1);
-          }
-        }
-
-      // RX DATA
-      }else{
-        if(EnableGroupButton==true){
-          CheckGroup();
-        }else{
-          ShiftOutByte[0] = String(packetBuffer[4], DEC).toInt();    // Bank0
-        }
-        ShiftOutByte[1] = String(packetBuffer[5], DEC).toInt();    // Bank1
-        ShiftOutByte[2] = String(packetBuffer[6], DEC).toInt();    // Bank2
-
-        // SHIFT OUT
-        #if defined(ShiftOut)
-          // digitalWrite(ShiftOutLatchPin, LOW);  // když dáme latchPin na LOW mužeme do registru poslat data
-          // shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftOutByte[2]);
-          // shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftOutByte[1]);
-          // shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftOutByte[0]);
-          // digitalWrite(ShiftOutLatchPin, HIGH);    // jakmile dáme latchPin na HIGH data se objeví na výstupu
-          if(EnableSerialDebug>0){
-            Serial.println("ShiftOut");
-          }
-        #endif
-
-        if(EnableSerialDebug>0){
-          // Serial.println();
-          Serial.print(F("RX ["));
-          Serial.print(packetBuffer[0], HEX);
-          for(int i=1; i<4; i++){
-            Serial.print(char(packetBuffer[i]));
-          }
-          Serial.print((byte)packetBuffer[4], BIN);
-          Serial.print(F("|"));
-          Serial.print((byte)packetBuffer[5], BIN);
-          Serial.print(F("|"));
-          Serial.print((byte)packetBuffer[6], BIN);
-          Serial.print(F(";] "));
-          Serial.print(UdpCommand.remoteIP());
-          Serial.print(F(":"));
-          Serial.println(UdpCommand.remotePort());
-        }
-        if(UdpCommand.remotePort() != DetectedRemoteSwPort[hexToDecBy4bit(IdPrefix(packetBuffer[0]))] && EnableGroupPrefix==true){
-          // if(EnableSerialDebug>0){
-            Serial.print(F("** Change ip-port ID "));
-            Serial.print(IdPrefix(packetBuffer[0]), HEX);
-            Serial.print(F(" (OLD-"));
-            Serial.print(DetectedRemoteSwPort[hexToDecBy4bit(IdPrefix(packetBuffer[0]))]);
-            Serial.print(F(" NEW-"));
-            Serial.print(UdpCommand.remotePort());
-            Serial.println(F(") **"));
-          // }
-          DetectedRemoteSwPort[hexToDecBy4bit(IdPrefix(packetBuffer[0]))]=UdpCommand.remotePort();
-        }
-        TxUDP('s', packetBuffer[2], ShiftOutByte[0], ShiftOutByte[1], ShiftOutByte[2], 0);
-      }
-      WatchdogTimer=millis();
-      // activate
-      if(OutputWatchdog==123456){
-        OutputWatchdog=EEPROM.readUInt(27);
-      }
-    } // filtered end
-    else{
-      if(EnableSerialDebug>0){
-        Serial.println(F("   Different NET-ID, or bad packet format"));
-      }
-    }
-    memset(packetBuffer, 0, sizeof(packetBuffer));   // Clear contents of Buffer
-  } //end IfUdpPacketSice
-}
-//-------------------------------------------------------------------------------------------------------
-
-void CheckGroup(){
-  int ChangeBit=9;
-  int NumberOfChange=0;
-  for (int i=0; i<8; i++){
-    if(bitRead(packetBuffer[4], i)!=bitRead(ShiftOutByte[0], i)){
-      ChangeBit=i;
-      NumberOfChange++;
-    }
-  }
-  // Serial.print("ChangeBit|NumberOfChange ");
-  // Serial.print(ChangeBit+1);
-  // Serial.print(" ");
-  // Serial.println(NumberOfChange);
-
-  ShiftOutByte[0] = String(packetBuffer[4], DEC).toInt();    // Bank0
-  if(NumberOfChange==1){
-    // Serial.println("clearGroup");
-    NumberOfChange=0;
-    for (int i=0; i<8; i++){
-      if(GroupButton[ChangeBit]==GroupButton[i] && ChangeBit!=i){
-        bitClear(ShiftOutByte[0], i);
-        NumberOfChange++;
-        // Serial.print("Bitclear ");
-        // Serial.println(i);
-      }
-    }
-    if(NumberOfChange>0){
-      bitSet(ShiftOutByte[0], ChangeBit);
-    }
-  }
-}
-//-------------------------------------------------------------------------------------------------------
 
 unsigned char hexToDecBy4bit(unsigned char hex)
 // convert a character representation of a hexidecimal digit into the actual hexidecimal value
@@ -3413,211 +2692,10 @@ unsigned char hexToDecBy4bit(unsigned char hex)
 
 //-------------------------------------------------------------------------------------------------------
 
-void TxUDP(byte FROM, byte TO, byte A, byte B, byte C, int DIRECT){
-
-  // TxUdpBuffer[0] = NET_ID;
-  TxUdpBuffer[1] = FROM;
-  // TxUdpBuffer[2] = TO;
-
-  // if(TxUdpBuffer[2]=='m' && ( EnableGroupPrefix==true || EnableGroupButton==true ) ){
-  //   TxUdpBuffer[3] = B00101101;           // -  multi control || GroupButton
-  // }else{
-  //   TxUdpBuffer[3] = B00111010;           // :
-  // }
-
-  TxUdpBuffer[3] = B00000000;
-    // multi control
-    if(TxUdpBuffer[2]=='m' && EnableGroupPrefix==true){
-      bitSet(TxUdpBuffer[3], 0);
-    }
-    // group button
-    if(TxUdpBuffer[2]=='m' && EnableGroupButton==true){
-      bitSet(TxUdpBuffer[3], 1);
-    }
-
-  TxUdpBuffer[4] = A;
-  TxUdpBuffer[5] = B;
-  TxUdpBuffer[6] = C;
-  TxUdpBuffer[7] = B00111011;           // ;
-
-  // BROADCAST
-  if(A=='b' && B=='r' && C=='o'){  // b r o
-    if(TxUdpBuffer[2] == 'm'){
-      TxUdpBuffer[6] = NumberOfEncoderOutputs;
-    }
-    // direct
-    if(DIRECT==0){
-      RemoteSwIP = ~ETH.subnetMask() | ETH.gatewayIP();
-      if(EnableSerialDebug>0){
-        Serial.print(F("TX broadcast ["));
-      }
-    }else{
-      RemoteSwIP = UdpCommand.remoteIP();
-      if(EnableSerialDebug>0){
-        Serial.print(F("TX direct ["));
-      }
-    }
-    UdpCommand.beginPacket(RemoteSwIP, BroadcastPort);
-
-  // CFM
-  }else if(A=='c' && B=='f' && C=='m'){  // cfm
-      if(TxUdpBuffer[2] == 'm'){
-        TxUdpBuffer[6] = NumberOfEncoderOutputs;
-      }
-      if(EnableSerialDebug>0){
-        Serial.print(F("TX direct ["));
-      }
-      UdpCommand.beginPacket(UdpCommand.remoteIP(), UdpCommand.remotePort());
-
-  // DATA
-  }else{
-    RemoteSwIP = UdpCommand.remoteIP();
-    if(EnableSerialDebug>0){
-      Serial.print(F("TX ["));
-    }
-    UdpCommand.beginPacket(RemoteSwIP, UdpCommand.remotePort());
-  }
-
-  // send
-  if(EnableGroupPrefix==false){
-    UdpCommand.write(TxUdpBuffer, sizeof(TxUdpBuffer));   // send buffer
-    UdpCommand.endPacket();
-    if(EnableSerialDebug>0){
-      Serial.print(TxUdpBuffer[0], HEX);
-      Serial.print(char(TxUdpBuffer[1]));
-      Serial.print(char(TxUdpBuffer[2]));
-      Serial.print(F("|"));
-      Serial.print(TxUdpBuffer[3], BIN);
-      Serial.print(F("|"));
-      Serial.print(TxUdpBuffer[4], BIN);
-      Serial.print(F("|"));
-      Serial.print(TxUdpBuffer[5], BIN);
-      Serial.print(F("|"));
-      Serial.print(TxUdpBuffer[6], BIN);
-      Serial.print(char(TxUdpBuffer[7]));
-      Serial.print(F("] "));
-      Serial.print(RemoteSwIP);
-      Serial.print(F(":"));
-      Serial.print(UdpCommand.remotePort());
-      #if defined(WIFI)
-        Serial.print(" | dBm: ");
-        Serial.print(WiFi.RSSI());
-      #endif
-      Serial.println();
-    }
-
-  // send EnableGroupPrefix
-  }else{
-    // answer to RX ip
-    TxUdpBuffer[0]=packetBuffer[0];   // NET_ID by RX NET_ID
-    UdpCommand.write(TxUdpBuffer, sizeof(TxUdpBuffer));   // send buffer
-    UdpCommand.endPacket();
-    if(EnableSerialDebug>0){
-      Serial.print(TxUdpBuffer[0], HEX);
-      for (int i=1; i<4; i++){
-        Serial.print(char(TxUdpBuffer[i]));
-      }
-      Serial.print(TxUdpBuffer[4], BIN);
-      Serial.print(F("|"));
-      Serial.print(TxUdpBuffer[5], BIN);
-      Serial.print(F("|"));
-      Serial.print(TxUdpBuffer[6], BIN);
-      Serial.print(char(TxUdpBuffer[7]));
-      Serial.print(F("] "));
-      Serial.print(RemoteSwIP);
-      Serial.print(F(":"));
-      Serial.print(UdpCommand.remotePort());
-      #if defined(WIFI)
-        Serial.print(" | dBm: ");
-        Serial.print(WiFi.RSSI());
-      #endif
-      Serial.println();
-    }
-    // send to all ip from storage
-    IPAddress ControllerIP = UdpCommand.remoteIP();
-    for (int i=0; i<16; i++){
-      if(DetectedRemoteSwPort[i]!=0){
-        TxUdpBuffer[0]=IdSufix(0) | i<<4;       // NET_ID by destination device
-        RemoteSwIP = DetectedRemoteSw[i];
-        RemoteSwPort = DetectedRemoteSwPort[i];
-        if(ControllerIP!=RemoteSwIP){
-          UdpCommand.beginPacket(RemoteSwIP, RemoteSwPort);
-            UdpCommand.write(TxUdpBuffer, sizeof(TxUdpBuffer));   // send buffer
-          UdpCommand.endPacket();
-
-          if(EnableSerialDebug>0){
-            Serial.print(F("TX direct ID-"));
-            Serial.print(i, HEX);
-            Serial.print(IdSufix(0), HEX);
-            Serial.print(F(" "));
-            Serial.print(RemoteSwIP);
-            Serial.print(F(":"));
-            Serial.print(RemoteSwPort);
-            Serial.print(F(" ["));
-            Serial.print(TxUdpBuffer[0], HEX);
-            for (int i=1; i<8; i++){
-              Serial.print(char(TxUdpBuffer[i]));
-              // Serial.print(F(" "));
-            }
-            Serial.print("]");
-            #if defined(WIFI)
-              Serial.print(" WiFi dBm: ");
-              Serial.print(WiFi.RSSI());
-            #endif
-            Serial.println();
-          }
-        }else{
-          if(EnableSerialDebug>0){
-            Serial.print(F("noTX - RX prefix "));
-            Serial.print(i, HEX);
-            Serial.print(F(" "));
-            Serial.print(RemoteSwIP);
-            Serial.print(F(":"));
-            Serial.println(RemoteSwPort);
-          }
-        }
-      }
-    }
-    // broadcast all prefix
-    if(A=='b' && B=='r' && C=='o' && DIRECT==0 && TxUdpBuffer[2] == 'm'){
-      if(EnableSerialDebug>0){
-        Serial.print("TX all prefix ");
-        Serial.print(RemoteSwIP);
-        Serial.print(":");
-        Serial.print(BroadcastPort);
-        Serial.print(F(" ["));
-        Serial.print("*");
-        for (int i=1; i<8; i++){
-          Serial.print(char(TxUdpBuffer[i]));
-          // Serial.print(F(" "));
-        }
-        Serial.println("]");
-      }
-      Serial.print("*) ");
-      for (int i=0; i<16; i++){
-        TxUdpBuffer[0]=IdSufix(0) | (i<<4);
-        if(EnableSerialDebug>0){
-          Serial.print(TxUdpBuffer[0], HEX);
-          Serial.print(" ");
-        }
-        UdpCommand.beginPacket(RemoteSwIP, BroadcastPort);
-        UdpCommand.write(TxUdpBuffer, sizeof(TxUdpBuffer));   // send buffer
-        UdpCommand.endPacket();
-      }
-      if(EnableSerialDebug>0){
-        Serial.println();
-      }
-    }   // end b r o
-
-  } // end EnableGroupPrefix
-}
-//-------------------------------------------------------------------------------------------------------
-
 void http(){
   // listen for incoming clients
   WiFiClient webClient = server.available();
   if (webClient) {
-    Interrupts(false);
     if(EnableSerialDebug>0){
       Serial.println("WIFI New webClient");
     }
@@ -3810,123 +2888,7 @@ void http(){
      Serial.println("WIFI webClient disconnected");
      MeasureTimer[0]=millis()+5000-MeasureTimer[1];
    }
-   Interrupts(true);
   }
-}
-//-------------------------------------------------------------------------------------------------------
-
-void http2(){
-  #if defined(WWWtwo)
-  // listen for incoming clients
-  WiFiClient webClient2 = server2.available();
-  if (webClient2) {
-    Interrupts(false);
-    if(EnableSerialDebug>0){
-      Serial.println("WIFI New webClient2");
-    }
-    memset(linebuf,0,sizeof(linebuf));
-    charcount=0;
-    // an http request ends with a blank line
-    boolean currentLineIsBlank = true;
-    while (webClient2.connected()) {
-      if (webClient2.available()) {
-        char c = webClient2.read();
-        HTTP_req += c;
-        // if(EnableSerialDebug>0){
-        //   Serial.write(c);
-        // }
-        //read char by char HTTP request
-        linebuf[charcount]=c;
-        if (charcount<sizeof(linebuf)-1) charcount++;
-        // if you've gotten to the end of the line (received a newline
-        // character) and the line is blank, the http request has ended,
-        // so you can send a reply
-        if (c == '\n' && currentLineIsBlank) {
-          // send a standard http response header
-
-          // send a standard http response header
-          webClient2.println(F("HTTP/1.1 200 OK"));
-          webClient2.println(F("Content-Type: text/html"));
-          webClient2.println(F("Connection: close"));  // the connection will be closed after completion of the response
-          webClient2.println();
-          webClient2.print(F("<!doctype html><html><head><title>"));
-          webClient2.print(YOUR_CALL);
-          webClient2.print(F(" ROT</title><meta http-equiv=\"refresh\" content=\"1800\"><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><style type=\"text/css\">body {font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana; background: #444;}</style><link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body><p style=\"color: #ccc; margin: 0 0 0 0; text-align: center;\"><span style=\"color: #999; font-size: 800%;\">"));
-          // if(ExtTemp==true){
-          //   sensors.requestTemperatures();
-          //   int temperatureC = sensors.getTempCByIndex(0);
-          //   // dtostrf(temperatureC, 1, 0, buf);  //1 is mininum width, 0 is precision
-          //   webClient2.print(String(temperatureC));
-          // }else{
-          //   int temperatureC = htu.readTemperature();
-          //   webClient2.print(String(temperatureC));
-          //   Serial.println(temperatureC);
-          // }
-
-          webClient2.print(String(Azimuth));
-          webClient2.println(F("&deg;</span><br><span style=\"color: #000; background: #080; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;\">"));
-          #if defined(HTU21D)
-            if(HTU21Denable==true){
-              webClient2.print(String(constrain(htu.readHumidity(), 0, 100)));
-            }
-          #endif
-          webClient2.print(F("% | "));
-          #if defined(BMP280)
-            if(BMP280enable==true){
-              webClient2.print(String(Babinet(double(bmp.readPressure()), double(htu.readTemperature()*1.8+32))/100));
-            }
-          #endif
-          webClient2.print(F(" hPa "));
-          if(RainCount>0){
-            webClient2.print(F("| <strong style=\"color: #008;\">"));
-            webClient2.print(String(RainPulseToMM(RainCount)));
-            webClient2.print(F(" mm </strong>"));
-          }
-          webClient2.print(F("| <strong style=\"color: #fff;\">"));
-          webClient2.print(String(PulseToMetterBySecond(PeriodMinRpmPulse)));
-          webClient2.print(F(" m/s</strong></span><br><span style=\"font-size: 600%; transform: rotate("));
-          webClient2.print(String(Azimuth));
-          webClient2.print(F("deg); display: inline-block;\">&#10138;</span><br><a href=\""));
-          webClient2.print( ETH.localIP() );
-          webClient2.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=270,height=330,left=0,top=0,menubar=no,location=no,status=no' ); return false;\" style=\"color:#666;text-decoration:none;\">UTC "));
-          webClient2.print(UtcTime(1));
-          webClient2.println(F("</span></p></body></html>"));
-
-          if(EnableSerialDebug>0){
-            Serial.print(HTTP_req);
-          }
-          HTTP_req = "";
-
-          break;
-        }
-        if (c == '\n') {
-          // you're starting a new line
-          currentLineIsBlank = true;
-          // if (strstr(linebuf,"GET /h0 ") > 0){digitalWrite(GPIOS[0], HIGH);}else if (strstr(linebuf,"GET /l0 ") > 0){digitalWrite(GPIOS[0], LOW);}
-          // else if (strstr(linebuf,"GET /h1 ") > 0){digitalWrite(GPIOS[1], HIGH);}else if (strstr(linebuf,"GET /l1 ") > 0){digitalWrite(GPIOS[1], LOW);}
-
-          // you're starting a new line
-          currentLineIsBlank = true;
-          memset(linebuf,0,sizeof(linebuf));
-          charcount=0;
-        } else if (c != '\r') {
-          // you've gotten a character on the current line
-          currentLineIsBlank = false;
-        }
-      }
-    }
-    // give the web browser time to receive the data
-    delay(1);
-
-    // close the connection:
-    webClient2.stop();
-   if(EnableSerialDebug>0){
-     Serial.println("WIFI webClient2 disconnected");
-     MeasureTimer[0]=millis()+5000-MeasureTimer[1];
-   }
-   Interrupts(true);
-  }
-  #endif
 }
 //-------------------------------------------------------------------------------------------------------
 
@@ -3949,10 +2911,10 @@ void EthEvent(WiFiEvent_t event)
       MACString.toCharArray( MACchar, 18 );
       Serial.print("ETH  MAC: ");
       Serial.println(MACString);
-      Serial.println("===============================");
-      Serial.print("   IPv4: ");
-      Serial.println(ETH.localIP());
-      Serial.println("===============================");
+      // Serial.println("===============================");
+      // Serial.print("   IPv4: ");
+      // Serial.println(ETH.localIP());
+      // Serial.println("===============================");
       if (ETH.fullDuplex()) {
         Serial.print("FULL_DUPLEX, ");
       }
@@ -3997,13 +2959,6 @@ void EthEvent(WiFiEvent_t event)
         }
       #endif
       ListCommands(0);
-
-      // EnableSerialDebug=1;
-      TxUDP('s', packetBuffer[2], 'b', 'r', 'o', 0);    // 0=broadcast, 1= direct to RX IP
-      if(TxUdpBuffer[2] == 'm'){
-        TxUDP('s', packetBuffer[2], ShiftOutByte[0], ShiftOutByte[1], ShiftOutByte[2], 0);
-      }
-      // EnableSerialDebug=0;
       break;
 
     // case SYSTEM_EVENT_ETH_DISCONNECTED:
@@ -4183,7 +3138,6 @@ void MqttPubString(String TOPIC, String DATA, bool RETAIN){
    // // memcpy( charbuf, mac, 6);
    // ETH.macAddress().toCharArray(charbuf, 10);
    // charbuf[6] = 0;
-  Interrupts(false);
   // if(EnableEthernet==1 && MQTT_ENABLE==1 && EthLinkStatus==1 && mqttClient.connected()==true){
   if(mqttClient.connected()==true){
     if (mqttClient.connect(MACchar)) {
@@ -4193,7 +3147,6 @@ void MqttPubString(String TOPIC, String DATA, bool RETAIN){
       mqttClient.publish(mqttPath, mqttTX, RETAIN);
     }
   }
-  Interrupts(true);
 }
 //-----------------------------------------------------------------------------------
 
@@ -4426,325 +3379,6 @@ void Telnet(){
 
 //-------------------------------------------------------------------------------------------------------
 
-void SerialToIp(){
-  #if defined(Ser2net)
-  uint8_t i;
-  // if (wifiMulti.run() == WL_CONNECTED) {
-  if (eth_connected==true) {
-    //check if there are any new clients
-    if (SerialServer.hasClient()){
-      for(i = 0; i < MAX_SRV_CLIENTS; i++){
-        //find free/disconnected spot
-        if (!SerialServerClients[i] || !SerialServerClients[i].connected()){
-          if(SerialServerClients[i]) SerialServerClients[i].stop();
-          SerialServerClients[i] = SerialServer.available();
-          if (!SerialServerClients[i]) Serial.println("available broken");
-          if(EnableSerialDebug>0){
-            Serial.println();
-            Serial.print("New Ser2net client: ");
-            Serial.print(i); Serial.print(' ');
-            Serial.println(SerialServerClients[i].remoteIP());
-          }
-          break;
-        }
-      }
-      if (i >= MAX_SRV_CLIENTS) {
-        //no free/disconnected spot so reject
-        SerialServer.available().stop();
-      }
-    }
-    //check clients for data
-    for(i = 0; i < MAX_SRV_CLIENTS; i++){
-      if (SerialServerClients[i] && SerialServerClients[i].connected()){
-        if(SerialServerClients[i].available()){
-          //get data from the telnet client and push it to the UART
-          // while(SerialServerClients[i].available()) Serial_one.write(SerialServerClients[i].read());
-          if(EnableSerialDebug>0){
-            Serial.println();
-            Serial.print("rx-");
-          }
-
-/*
-Zapinaci pakety
-< 2019/04/17 22:05:29.670771  length=1 from=2009 to=2009
- 0d
-< 2019/04/17 22:05:29.734563  length=3 from=2010 to=2012
- 30 31 0d
-> 2019/04/17 22:05:29.924267  length=2 from=3338 to=3339
- 0d 0d
-> 2019/04/17 22:05:29.972263  length=3 from=3340 to=3342
- 30 31 0d
-< 2019/04/17 22:05:30.086153  length=1 from=2013 to=2013
- 0d
-> 2019/04/17 22:05:30.249406  length=3 from=3343 to=3345
- 30 31 0d
-< 2019/04/17 22:05:30.261738  length=2 from=2014 to=2015
- ff 0d
-
-Udrzovaci pakety
-> 2019/04/17 21:59:00.549347  length=2 from=3319 to=3320
- ff 0d
-< 2019/04/17 21:59:00.559100  length=2 from=1998 to=1999
- ff 0d
-< 2019/04/17 21:59:02.555837  length=1 from=2000 to=2000
- 0d
-< 2019/04/17 21:59:04.568329  length=1 from=2001 to=2001
- 0d
-> 2019/04/17 21:59:05.549832  length=2 from=3321 to=3322
- ff 0d
-< 2019/04/17 21:59:05.558790  length=2 from=2002 to=2003
- ff 0d
-
-Vypinaci Paket
- < 2019/04/17 21:59:10.382425  length=3 from=2006 to=2008
- 30 30 0d
-> 2019/04/17 21:59:10.388125  length=15 from=3323 to=3337
- 0d 0d 0d 0d 0d 0d 0d 0d 0d 0d 0d 0d 30 30 0d
-
-*/
-
-
-          while(SerialServerClients[i].available()){
-            byte RX;
-            RX=SerialServerClients[i].read();
-            Serial_one.write(RX);
-            if(EnableSerialDebug>0){
-              Serial.write(RX);
-            }
-          }
-        }
-      }
-      else {
-        if (SerialServerClients[i]) {
-          SerialServerClients[i].stop();
-        }
-      }
-    }
-    //check UART for data
-    if(Serial_one.available()){
-      size_t len = Serial_one.available();
-      uint8_t sbuf[len];
-      Serial_one.readBytes(sbuf, len);
-      //push UART data to all connected telnet clients
-      for(i = 0; i < MAX_SRV_CLIENTS; i++){
-        if (SerialServerClients[i] && SerialServerClients[i].connected()){
-          SerialServerClients[i].write(sbuf, len);
-          // delay(1);
-          if(EnableSerialDebug>0){
-            Serial.println();
-            Serial.print("tx-");
-            Serial.write(sbuf, len);
-          }
-        }
-      }
-    }
-  }
-  else {
-    if(EnableSerialDebug>0){
-      Serial.println("Ser2net not connected!");
-    }
-    for(i = 0; i < MAX_SRV_CLIENTS; i++) {
-      if (SerialServerClients[i]) SerialServerClients[i].stop();
-    }
-    delay(1000);
-  }
-  #endif
-}
-//-------------------------------------------------------------------------------------------------------
-// void bmp280(){
-//   unsigned int b1[24];
-//   unsigned int data[8];
-//   for (int i = 0; i < 24; i++)
-//   {
-//     // Start I2C Transmission
-//     Wire.beginTransmission(BMP280Addr);
-//     // Select data register
-//     Wire.write((136 + i));
-//     // Stop I2C Transmission
-//     Wire.endTransmission();
-//
-//     // Request 1 byte of data
-//     Wire.requestFrom(BMP280Addr, 1);
-//
-//     // Read 1 byte of data
-//     if (Wire.available() == 1)
-//     {
-//       b1[i] = Wire.read();
-//     }
-//   }
-//   // Convert the data
-//   // temp coefficients
-//   unsigned int dig_T1 = (b1[0] & 0xFF) + ((b1[1] & 0xFF) * 256);
-//   int dig_T2 = b1[2] + (b1[3] * 256);
-//   int dig_T3 = b1[4] + (b1[5] * 256);
-//
-//   // pressure coefficients
-//   unsigned int dig_P1 = (b1[6] & 0xFF) + ((b1[7] & 0xFF) * 256);
-//   int dig_P2 = b1[8] + (b1[9] * 256);
-//   int dig_P3 = b1[10] + (b1[11] * 256);
-//   int dig_P4 = b1[12] + (b1[13] * 256);
-//   int dig_P5 = b1[14] + (b1[15] * 256);
-//   int dig_P6 = b1[16] + (b1[17] * 256);
-//   int dig_P7 = b1[18] + (b1[19] * 256);
-//   int dig_P8 = b1[20] + (b1[21] * 256);
-//   int dig_P9 = b1[22] + (b1[23] * 256);
-//
-//   // Start I2C Transmission
-//   Wire.beginTransmission(BMP280Addr);
-//   // Select control measurement register
-//   Wire.write(0xF4);
-//   // Normal mode, temp and pressure over sampling rate = 1
-//   Wire.write(0x27);
-//   // Stop I2C Transmission
-//   Wire.endTransmission();
-//
-//   // Start I2C Transmission
-//   Wire.beginTransmission(BMP280Addr);
-//   // Select config register
-//   Wire.write(0xF5);
-//   // Stand_by time = 1000ms
-//   Wire.write(0xA0);
-//   // Stop I2C Transmission
-//   Wire.endTransmission();
-//
-//   for (int i = 0; i < 8; i++)
-//   {
-//     // Start I2C Transmission
-//     Wire.beginTransmission(BMP280Addr);
-//     // Select data register
-//     Wire.write((247 + i));
-//     // Stop I2C Transmission
-//     Wire.endTransmission();
-//
-//     // Request 1 byte of data
-//     Wire.requestFrom(BMP280Addr, 1);
-//
-//     // Read 1 byte of data
-//     if (Wire.available() == 1)
-//     {
-//       data[i] = Wire.read();
-//     }
-//   }
-//
-//   // Convert pressure and temperature data to 19-bits
-//   long adc_p = (((long)(data[0] & 0xFF) * 65536) + ((long)(data[1] & 0xFF) * 256) + (long)(data[2] & 0xF0)) / 16;
-//   long adc_t = (((long)(data[3] & 0xFF) * 65536) + ((long)(data[4] & 0xFF) * 256) + (long)(data[5] & 0xF0)) / 16;
-//
-//   // Temperature offset calculations
-//   double var1 = (((double)adc_t) / 16384.0 - ((double)dig_T1) / 1024.0) * ((double)dig_T2);
-//   double var2 = ((((double)adc_t) / 131072.0 - ((double)dig_T1) / 8192.0) *
-//                  (((double)adc_t) / 131072.0 - ((double)dig_T1) / 8192.0)) * ((double)dig_T3);
-//   double t_fine = (long)(var1 + var2);
-//   double cTemp = (var1 + var2) / 5120.0;
-//   double fTemp = cTemp * 1.8 + 32;
-//
-//   // Pressure offset calculations
-//   var1 = ((double)t_fine / 2.0) - 64000.0;
-//   var2 = var1 * var1 * ((double)dig_P6) / 32768.0;
-//   var2 = var2 + var1 * ((double)dig_P5) * 2.0;
-//   var2 = (var2 / 4.0) + (((double)dig_P4) * 65536.0);
-//   var1 = (((double) dig_P3) * var1 * var1 / 524288.0 + ((double) dig_P2) * var1) / 524288.0;
-//   var1 = (1.0 + var1 / 32768.0) * ((double)dig_P1);
-//   double p = 1048576.0 - (double)adc_p;
-//   p = (p - (var2 / 4096.0)) * 6250.0 / var1;
-//   var1 = ((double) dig_P9) * p * p / 2147483648.0;
-//   var2 = p * ((double) dig_P8) / 32768.0;
-//   double pressure = (p + (var1 + var2 + ((double)dig_P7)) / 16.0) / 100;
-//
-//   float height = 44330 * (1 - pow((pressure / 1013.25), 0.1903));
-//   float h = height * 0.3048;
-//
-//   // Output data to serial monitor
-//  Serial.print("Altitude : ");
-//  Serial.print(height);
-//  Serial.println(" m");
-//  Serial.print("Altitude in Feet : ");
-//  Serial.println(h);
-//
-//  Serial.print("Pressure : ");
-//  Serial.print(pressure);
-//  Serial.println(" hPa");
-//  Serial.print("Temperature in Celsius : ");
-//  Serial.print(cTemp);
-//  Serial.println(" C");
-//  Serial.print("Temperature in Fahrenheit : ");
-//  Serial.print(fTemp);
-//  Serial.println(" F");
-//
-//   //volatile float tempc, tempf, presr, altim, altif
-//
-//   // tempc = cTemp;
-//   // tempf = fTemp;
-//   // presr = pressure;
-//   // altm = height;
-//   // altf = h;
-//   // delay(1000);
-// }
-//-------------------------------------------------------------------------------------------------------
-// void printBME() {
-//   Serial.print("Temperature = ");
-//   Serial.print(bme.readTemperature());
-//   Serial.println(" *C");
-//
-//   // Convert temperature to Fahrenheit
-//   /*Serial.print("Temperature = ");
-//   Serial.print(1.8 * bme.readTemperature() + 32);
-//   Serial.println(" *F");*/
-//
-//   Serial.print("Pressure = ");
-//   Serial.print(bme.readPressure() / 100.0F);
-//   Serial.println(" hPa");
-//
-//   // Serial.print("Approx. Altitude = ");
-//   // Serial.print(bme.readAltitude(SEALEVELPRESSURE_HPA));
-//   // Serial.println(" m");
-//
-//   Serial.println();
-// }
-//-------------------------------------------------------------------------------------------------------
-void I2cScanner() {
-  byte error, address;
-  int nDevices;
-  // Serial.println("Scanning...");
-  Prn(3, 1,"Scanning...");
-  nDevices = 0;
-  for(address = 1; address < 127; address++ ) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-    if (error == 0) {
-      // Serial.print("I2C device found at address 0x");
-      Prn(3, 0,"I2C device found at address 0x");
-      if (address<16) {
-        // Serial.print("0");
-        Prn(3, 0,"0");
-      }
-      // Serial.println(address,HEX);
-      Prn(3, 1,String(address,HEX));
-      nDevices++;
-    }
-    else if (error==4) {
-      // Serial.print("Unknow error at address 0x");
-      Prn(3, 1,"Unknow error at address 0x");
-      if (address<16) {
-        // Serial.print("0");
-        Prn(3, 0,"0");
-      }
-      // Serial.println(address,HEX);
-      Prn(3, 1,String(address,HEX));
-    }
-  }
-  if (nDevices == 0) {
-    // Serial.println("No I2C devices found\n");
-    Prn(3, 1,"No I2C devices found");
-  }
-  else {
-    // Serial.println("done\n");
-    Prn(3, 1,"done");
-  }
-  // delay(5000);
-}
-
-//-------------------------------------------------------------------------------------------------------
 String UtcTime(int format){
   tm timeinfo;
   char buf[50]; //50 chars should be enough
@@ -4778,207 +3412,7 @@ String Timestamp(){
   return String(timestamp);
 }
 
-//--SD-----------------------------------------------------------------------------------------------------
-
-void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
-    Serial.printf("Listing directory: %s\n", dirname);
-
-    File root = fs.open(dirname);
-    if(!root){
-        Serial.println("Failed to open directory");
-        return;
-    }
-    if(!root.isDirectory()){
-        Serial.println("Not a directory");
-        return;
-    }
-
-    File file = root.openNextFile();
-    while(file){
-        if(file.isDirectory()){
-            Serial.print("  DIR : ");
-            Serial.println(file.name());
-            if(levels){
-                listDir(fs, file.name(), levels -1);
-            }
-        } else {
-            Serial.print("  FILE: ");
-            Serial.print(file.name());
-            Serial.print("  SIZE: ");
-            Serial.println(file.size());
-        }
-        file = root.openNextFile();
-    }
-}
-
-void createDir(fs::FS &fs, const char * path){
-    Serial.printf("Creating Dir: %s\n", path);
-    if(fs.mkdir(path)){
-        Serial.println("Dir created");
-    } else {
-        Serial.println("mkdir failed");
-    }
-}
-
-void removeDir(fs::FS &fs, const char * path){
-    Serial.printf("Removing Dir: %s\n", path);
-    if(fs.rmdir(path)){
-        Serial.println("Dir removed");
-    } else {
-        Serial.println("rmdir failed");
-    }
-}
-
-void readFile(fs::FS &fs, const char * path){
-    Serial.printf("Reading file: %s\n", path);
-
-    File file = fs.open(path);
-    if(!file){
-        Serial.println("Failed to open file for reading");
-        return;
-    }
-
-    Serial.print("Read from file: ");
-    while(file.available()){
-        Serial.write(file.read());
-    }
-}
-
-void writeFile(fs::FS &fs, const char * path, const char * message){
-    Serial.printf("Writing file: %s\n", path);
-
-    File file = fs.open(path, FILE_WRITE);
-    if(!file){
-        Serial.println("Failed to open file for writing");
-        return;
-    }
-    if(file.print(message)){
-        Serial.println("File written");
-    } else {
-        Serial.println("Write failed");
-    }
-}
-
-void appendFile(fs::FS &fs, const char * path, const char * message){
-    Serial.printf("Appending to file: %s\n", path);
-
-    File file = fs.open(path, FILE_APPEND);
-    if(!file){
-        Serial.println("Failed to open file for appending");
-        return;
-    }
-    if(file.print(message)){
-        Serial.println("Message appended");
-    } else {
-        Serial.println("Append failed");
-    }
-}
-
-void renameFile(fs::FS &fs, const char * path1, const char * path2){
-    Serial.printf("Renaming file %s to %s\n", path1, path2);
-    if (fs.rename(path1, path2)) {
-        Serial.println("File renamed");
-    } else {
-        Serial.println("Rename failed");
-    }
-}
-
-void deleteFile(fs::FS &fs, const char * path){
-    Serial.printf("Deleting file: %s\n", path);
-    if(fs.remove(path)){
-        Serial.println("File deleted");
-    } else {
-        Serial.println("Delete failed");
-    }
-}
-
-void testFileIO(fs::FS &fs, const char * path){
-    File file = fs.open(path);
-    static uint8_t buf[512];
-    size_t len = 0;
-    uint32_t start = millis();
-    uint32_t end = start;
-    if(file){
-        len = file.size();
-        size_t flen = len;
-        start = millis();
-        while(len){
-            size_t toRead = len;
-            if(toRead > 512){
-                toRead = 512;
-            }
-            file.read(buf, toRead);
-            len -= toRead;
-        }
-        end = millis() - start;
-        Serial.printf("%u bytes read for %u ms\n", flen, end);
-        file.close();
-    } else {
-        Serial.println("Failed to open file for reading");
-    }
-
-
-    file = fs.open(path, FILE_WRITE);
-    if(!file){
-        Serial.println("Failed to open file for writing");
-        return;
-    }
-
-    size_t i;
-    start = millis();
-    for(i=0; i<2048; i++){
-        file.write(buf, 512);
-    }
-    end = millis() - start;
-    Serial.printf("%u bytes written for %u ms\n", 2048 * 512, end);
-    file.close();
-}
-
-#if defined(DS18B20)
-  // function to print a device address
-  void printAddress(DeviceAddress deviceAddress)
-  {
-    for (uint8_t i = 0; i < 8; i++)
-    {
-      // zero pad the address if necessary
-      if (deviceAddress[i] < 16) Serial.print("0");
-      Serial.print(deviceAddress[i], HEX);
-    }
-  }
-
-  // function to print the temperature for a device
-  void printTemperature(DeviceAddress deviceAddress)
-  {
-    float tempC = sensors.getTempC(deviceAddress);
-    if(tempC == DEVICE_DISCONNECTED_C)
-    {
-      Serial.println("DS18B20 Error: Could not read temperature data");
-      return;
-    }
-    // Serial.print("Temp C: ");
-    Serial.print(tempC);
-  //  Serial.print(" Temp F: ");
-  //  Serial.print(DallasTemperature::toFahrenheit(tempC));
-  }
-
-  // function to print a device's resolution
-  void printResolution(DeviceAddress deviceAddress)
-  {
-    Serial.print("Resolution: ");
-    Serial.print(sensors.getResolution(deviceAddress));
-    Serial.println();
-  }
-
-  // main function to print information about a device
-  void printData(DeviceAddress deviceAddress)
-  {
-    Serial.print("DS18B20 address: ");
-    printAddress(deviceAddress);
-    Serial.print(" ");
-    printTemperature(deviceAddress);
-    Serial.println();
-  }
-#endif
+//-------------------------------------------------------------------------------------------------------
 
 // ajax
 void handlePostRot() {
@@ -4989,30 +3423,9 @@ void handlePostRot() {
    AzimuthTarget = AzimuthTarget - 360;
  }
  RotCalculate();
- // ajaxserver.send(200, "text/html", s);
-
-
-
- // MqttPubString("Debug 4 ", String(ajaxserver.arg("STOP")), false);
- // if(ajaxserver.hasArg("on") && (ajaxserver.arg("on").length()>0)){
-    // ajaxserver.sendHeader("Location", String("/"), true); //how to do a redirect, next two lines
-    // ajaxserver.send ( 302, "text/plain", "");
-  // } else {
-  //   ajaxserver.send(400, "text/html", "<html><body><h1>HTTP Error 400</h1><p>Bad request. Please enter a value.</p></body></html>");
-  // }
 }
-// MqttPubString("Debug 3 ", String(ajaxserver.hasArg("STOP")), false);
+
 void handleSet() {
-  // MqttPubString("Debug 1 ", String(ajaxserver.arg("yourcall")), false);
-  // MqttPubString("Debug 1b ", String(ajaxserver.hasArg("yourcall")), false);
-  // MqttPubString("Debug 2 ", String(ajaxserver.arg("rotid")), false);
-  // MqttPubString("Debug 3 ", String(ajaxserver.arg("rotname")), false);
-  // MqttPubString("Debug 5 ", String(ajaxserver.arg("maxrotatedegree")), false);
-  // MqttPubString("Debug 6 ", String(ajaxserver.arg("mapurl")), false);
-  // MqttPubString("Debug 7 ", String(ajaxserver.arg("antradiationangle")), false);
-  // MqttPubString("Debug 8 ", String(ajaxserver.arg("edstops")), false);
-  // MqttPubString("Debug startAZ", String(EEPROM.readInt(23)), false);
-  // MqttPubString("Debug endstop eeprom", String(EEPROM.read(26)), false);
 
   String yourcallERR= "";
   String rotidERR= "";
@@ -5194,21 +3607,9 @@ void handleSet() {
       // EEPROM.commit();
     }
 
-    // 30  - ACmotor
-    // if(ajaxserver.arg("acmotor").toInt()==1 && ACmotor==false){
-    //   ACmotor = true;
-    //   EEPROM.writeBool(30, 1);
-    //   // EEPROM.commit();
-    // }else if(ajaxserver.arg("acmotor").toInt()!=1 && ACmotor==true){
-    //   ACmotor = false;
-    //   EEPROM.writeBool(30, 0);
-    //   // EEPROM.commit();
-    // }
-
     // motor
     // MqttPubString("Debug Motor", String(ajaxserver.arg("motor")), false);
     // MqttPubString("Debug Motor2", String(ajaxserver.hasArg("motor")), false);
-
     if(ajaxserver.arg("motor").toInt()==0 && ACmotor==true){
       ACmotor = false;
       EEPROM.writeBool(30, 0);
@@ -5291,13 +3692,6 @@ if(Endstop==true){
   edstopsCHECKED= "";
 }
 
-// if(ACmotor==true){
-//   acmotorCHECKED= "checked";
-// }else{
-//   // edstopsCHECKED= "disabled";
-//   acmotorCHECKED= "";
-// }
-
 if(ACmotor==true){
   motorSELECT0= "";
   motorSELECT1= " selected";
@@ -5305,14 +3699,6 @@ if(ACmotor==true){
   motorSELECT0= " selected";
   motorSELECT1= "";
 }
-
-
-
-// MqttPubString("Debug startazimuth", String(ajaxserver.arg("startazimuth")), false);
-// MqttPubString("Debug StartAzimuth", String(StartAzimuth), false);
-// MqttPubString("Debug StartAzimuth EEPROM", String(EEPROM.readUShort(23)), false);
-// MqttPubString("Debug MaxRotateDegree EEPROM", String(EEPROM.readUShort(24)), false);
-// MqttPubString("Debug AntRadiationAngle EEPROM", String(EEPROM.readUShort(25)), false);
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'><meta http-equiv = 'refresh' content = '600; url = /'>\n";
@@ -5354,10 +3740,6 @@ if(ACmotor==true){
   HtmlSrc += edstopsCHECKED;
   HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
 
-  // HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>AC motor:</label></td><td><input type='checkbox' id='acmotor' name='acmotor' value='1' ${postData.acmotor?'checked':''} ";
-  // HtmlSrc += acmotorCHECKED;
-  // HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>Disables the PWM and activates the other two relays.</span></span></td></tr>\n";
-
   HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>Motor:</label></td><td><select name='motor' id='motor'><option value='0'";
   HtmlSrc += motorSELECT0;
   HtmlSrc +=">DC</option><option value='1'";
@@ -5380,10 +3762,8 @@ if(ACmotor==true){
   HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><a href='/'><button style='background-color: #060;'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal'><button style='background-color: #666;'>Calibrate</button></a></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
-  // HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'></p></span></div>\n";
   HtmlSrc +="</body></html>\n";
 
-  // String s = MAIN_page; //Read HTML contents
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
 }
 
@@ -5455,11 +3835,11 @@ void handleCal() {
   String ReverseCOLOR= "";
   String ReverseSTATUS= "";
   if(Reverse==true){
-    ReverseCOLOR= " style='background-color: #c00;'";
-    ReverseSTATUS= " style='color: #FFF;'>ON";
+    ReverseCOLOR= " style='background-color: #c00; color: #FFF;'";
+    ReverseSTATUS= "ON";
   }else{
     ReverseCOLOR= "";
-    ReverseSTATUS= ">OFF";
+    ReverseSTATUS= "OFF";
   }
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>CALIBRATE</title>";
@@ -5484,7 +3864,7 @@ void handleCal() {
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><button id='reverse' name='reverse'";
   HtmlSrc +=ReverseCOLOR;
-  HtmlSrc +=">REVERSE-CONTROL-<strong";
+  HtmlSrc +=">REVERSE-CONTROL-<strong>";
   HtmlSrc +=ReverseSTATUS;
   HtmlSrc +="</strong></button></td>";
   HtmlSrc +="</tr><tr>";
@@ -5513,8 +3893,6 @@ void handleCal() {
 }
 
 void handlePostStop() {
-  // MqttPubString("Debug 3 ", String(ajaxserver.hasArg("on")), false);
-  // MqttPubString("Debug 4 ", String(ajaxserver.arg("on")), false);
   if(Status<0){
     Status = -3;
   }else if(Status>0){
@@ -5557,9 +3935,7 @@ void handleEndstop() {
 }
 void handleCwraw() {
   ajaxserver.send(200, "text/plane", String(CwRaw) );
-  // MqttPubString("Debug CwRaw", String(readADC_Cal(CwRaw)), false);
 }
 void handleCcwraw() {
   ajaxserver.send(200, "text/plane", String(CcwRaw) );
-  // MqttPubString("Debug CcwRaw", String(readADC_Cal(CcwRaw)), false);
 }
