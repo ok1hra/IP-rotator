@@ -170,11 +170,11 @@ const char CAL_page[] PROGMEM = R"=====(
 			endstop.lineTo((Number(BoxSize)-60)/33*3.90+30, 45);
 			endstop.moveTo(BoxSize-30, 45);
 			endstop.lineTo( (Number(BoxSize)-30)-(Number(BoxSize)-60)/33*3.90, 45);
-			// endstop.fillStyle = "orange";
-			// endstop.font = "20px Arial";
-			// endstop.textAlign = 'center';
-			// endstop.textBaseline = 'middle';
-			// endstop.fillText( "Hardware Endstop disable", 300, 120);
+			endstop.fillStyle = "orange";
+			endstop.font = "bold 10px Arial";
+			endstop.textAlign = 'center';
+			endstop.textBaseline = 'middle';
+			endstop.fillText( "HW Endstops NOT available", 275-163, 20);
 			endstop.stroke();
 		}
 

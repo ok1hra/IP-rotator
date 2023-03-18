@@ -353,14 +353,21 @@ const char MAIN_page[] PROGMEM = R"=====(
 		  az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.7), Ycoordinate(Number(Azimuth) + Number(AzShift), BoxSize/2*0.7));
 		az.stroke();
 
-		// let myFont = new FontFace("Roboto", "url(http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext)");
-		// myFont.load().then((font) => {
-		//   document.fonts.add(font);
-		//   // var ctx = image.getContext("2d");
-		//   ctx.fillStyle = "#292929";
-		//   ctx.font = "100px Roboto";
-		//   ctx.fillText("330", 0, 30);
-		// });
+		// cw/ccw arrow
+		var Ofset = 0;
+		az.beginPath();
+			if (Status != 4) {
+				az.fillStyle = "red";
+				if(Status<4){
+					Ofset = -12;
+				}else{
+					Ofset = 12;
+				}
+				az.moveTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/3, BoxSize/2*0.85), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/3, BoxSize/2*0.85));
+			  az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/3, BoxSize/2*0.75), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/3, BoxSize/2*0.75));
+				az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset), BoxSize/2*0.8), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset), BoxSize/2*0.8));
+			}
+		az.fill();
 
 		az.font = "bold 100px Arial";
 			az.textAlign = 'center';

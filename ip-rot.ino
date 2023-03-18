@@ -1,11 +1,8 @@
 /*
 
-python /home/dan/Arduino/hardware/espressif/esp32/tools/esptool/esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 115200 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 80m --flash_size 4MB 0x10000 /home/dan/Arduino/hra/ok1hra/esp32/wx/20210407-wx.ino.esp32-poe.bin
-
 3D printed IP rotator
 ----------------------
-https://remoteqth.com/w/doku.php?id=3d_print_wx_station
-TNX OK1IAK for code help
+Compile for HARDWARE ESP32-POE
 
  ___               _        ___ _____ _  _
 | _ \___ _ __  ___| |_ ___ / _ \_   _| || |  __ ___ _ __
@@ -27,37 +24,31 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 MQTT monitor
-------------
 mosquitto_sub -v -h 192.168.1.200 -t 'OK1HRA/ROT/#'
 mosquitto_sub -v -h 54.38.157.134 -t 'BD:2F/ROT/#'
 
 MQTT topic
-------------
 mosquitto_pub -h 192.168.1.200 -t OK1HRA/ROT/Target -m '10'
 mosquitto_pub -h 54.38.157.134 -t BD:2F/ROT/Target -m '10'
 
 
-HARDWARE ESP32-POE
-
 Changelog:
-
-ToDo
 + implementovat jmeno rotatoru
 + watchdog na cas a minimalni pohyb spravnym smerem
 + v ochranych zonach zobrazovat azimut sedou barvou
 + hlidat min napeti (11V) pod kterym prestat otacet + warning do /status
 + v html zobrazit target azimuth
++ implementovat ID (vice rotatoru)
+
+ToDo
 - if mqtt_server_ip[0]=0 then disable MQTT
-- html ne jako smerova mapa, ale linearni stupnice
 - status endstop true/false - aktivuje ochranne zony na krajich potenciometru ()
-- automaticka detekce smeru otaceni pri MAXpwm = automatikcky reverse rezim
-- kalibrace promene OneTurnCalibrateRaw
-- implementovat ID (vice rotatoru)
-- web form https://github.com/mobizt/ESPForm
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
 - nastaveni MAX PWM
 - vycistit kod
-
+x html ne jako smerova mapa, ale linearni stupnice
+x automaticka detekce smeru otaceni pri MAXpwm = automatikcky reverse rezim
+x kalibrace promene OneTurnCalibrateRaw
 
 Použití knihovny WiFi ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/WiFi
 Použití knihovny EEPROM ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/EEPROM
@@ -1235,134 +1226,134 @@ void Watchdog(){
                                                  0         9?   9
   */
 
-// read ADC
-const unsigned int CCWlimitRaw = 142+2997/12;
-static unsigned int OneTurnCalibrateRaw = 2600;     // ----------------- need procedure fo callibrate
-const unsigned int CWlimit = 3139-2997/12;
-MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
-// static unsigned int MaxRotateDegree = CalibrateRawToDeg(CWlimit);     // *[1]
-// static unsigned int MaxLimitDegree = map(3139, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[2]
-static unsigned int MaxLimitDegree = map(3139, 392, 2600, 0, 360);     // *[2]
-// static unsigned int MaxLimitDegree = CalibrateRawToDeg(3139);
-static long ADCTimer = 0;
-if(millis()-ADCTimer > 100){
-  AzimuthValue = readADC_Cal(analogRead(AzimuthPin));
-  CwCcwButtValue = analogRead(CwCcwButtPin);
-  // R divider | 12,95/2,95=4,38983050847458
-  VoltageValue = readADC_Cal(analogRead(VoltagePin))/1000.0*4.39;
-  // Azimuth=map(AzimuthValue, 142, 3139, -45, 495);
-  Azimuth=map(AzimuthValue, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);
+  // read ADC
+  const unsigned int CCWlimitRaw = 142+2997/12;
+  static unsigned int OneTurnCalibrateRaw = 2600;     // ----------------- need procedure fo callibrate
+  const unsigned int CWlimit = 3139-2997/12;
+  MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
+  // static unsigned int MaxRotateDegree = CalibrateRawToDeg(CWlimit);     // *[1]
+  // static unsigned int MaxLimitDegree = map(3139, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[2]
+  static unsigned int MaxLimitDegree = map(3139, 392, 2600, 0, 360);     // *[2]
+  // static unsigned int MaxLimitDegree = CalibrateRawToDeg(3139);
+  static long ADCTimer = 0;
+  if(millis()-ADCTimer > 100){
+    AzimuthValue = readADC_Cal(analogRead(AzimuthPin));
+    CwCcwButtValue = analogRead(CwCcwButtPin);
+    // R divider | 12,95/2,95=4,38983050847458
+    VoltageValue = readADC_Cal(analogRead(VoltagePin))/1000.0*4.39;
+    // Azimuth=map(AzimuthValue, 142, 3139, -45, 495);
+    Azimuth=map(AzimuthValue, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);
 
-  // Azimuth=CalibrateRawToDeg(AzimuthValue);
-  ADCTimer=millis();
-}
-
-// MQTT pub
-static long MqttTimer = 0;
-static int AzimuthTmp = 0;
-static float VoltageValueTmp = 0;
-static int StatusTmp = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
-static String StatusStr = "";
-
-if(StatusTmp!=Status){
-  switch (Status) {
-    case -3: {StatusStr = "PwmDwn-CCW"; break; }
-    case -2: {StatusStr = "CCW"; break; }
-    case -1: {StatusStr = "PwmUp-CCW"; break; }
-    case  0: {StatusStr = "STOP"; break; }
-    case  1: {StatusStr = "PwmUp-CW"; break; }
-    case  2: {StatusStr = "CW"; break; }
-    case  3: {StatusStr = "PwmDwn-CW"; break; }
+    // Azimuth=CalibrateRawToDeg(AzimuthValue);
+    ADCTimer=millis();
   }
-  MqttPubString("StatusHuman", StatusStr, false);
-  MqttPubString("Status", String(Status+4), false);
-  StatusTmp=Status;
-}
 
-// info if change
-if( (Status==0 && millis()-MqttTimer >2000) || (Status!=0 && millis()-MqttTimer >100) ){
-  if(abs(AzimuthTmp-Azimuth)>2){
-    MqttPubString("Azimuth", String(Azimuth), false);
-    if(Status==0){
-      // MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
-      MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
+  // MQTT pub
+  static long MqttTimer = 0;
+  static int AzimuthTmp = 0;
+  static float VoltageValueTmp = 0;
+  static int StatusTmp = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
+  static String StatusStr = "";
+
+  if(StatusTmp!=Status){
+    switch (Status) {
+      case -3: {StatusStr = "PwmDwn-CCW"; break; }
+      case -2: {StatusStr = "CCW"; break; }
+      case -1: {StatusStr = "PwmUp-CCW"; break; }
+      case  0: {StatusStr = "STOP"; break; }
+      case  1: {StatusStr = "PwmUp-CW"; break; }
+      case  2: {StatusStr = "CW"; break; }
+      case  3: {StatusStr = "PwmDwn-CW"; break; }
     }
-    AzimuthTmp=Azimuth;
+    MqttPubString("StatusHuman", StatusStr, false);
+    // MqttPubString("Status", String(Status+4), false);
+    StatusTmp=Status;
   }
-  if(abs(VoltageValueTmp-VoltageValue)>0.5){
-    MqttPubString("VoltageValue", String(VoltageValue), false);
-    VoltageValueTmp=VoltageValue;
-  }
-  MqttTimer=millis();
-}
 
-if(Status!=0){
-  // status watchdog
-  if(millis()-StatusWatchdogTimer > 90000){ // after 90sec
-    if(Status<0){
-      Status=-3;
-    }else{
-      Status=3;
+  // info if change
+  if( (Status==0 && millis()-MqttTimer >2000) || (Status!=0 && millis()-MqttTimer >100) ){
+    if(abs(AzimuthTmp-Azimuth)>2){
+      MqttPubString("Azimuth", String(Azimuth), false);
+      if(Status==0){
+        // MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
+        MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
+      }
+      AzimuthTmp=Azimuth;
     }
-    MqttPubString("Debug", "Status0 by time watchdog", false);
-    StatusWatchdogTimer = StatusWatchdogTimer+5000; // next 5sec check
+    if(abs(VoltageValueTmp-VoltageValue)>0.5){
+      MqttPubString("VoltageValue", String(VoltageValue), false);
+      VoltageValueTmp=VoltageValue;
+    }
+    MqttTimer=millis();
   }
-  // Azimuth change watchdog
-  if(millis()-RotateWatchdogTimer > 10000){    // check every 10 sec
-    if(abs(AzimuthWatchdog-Azimuth)>5){
-      RotateWatchdogTimer=millis();
-      AzimuthWatchdog=Azimuth;
-    }else{
+
+  if(Status!=0){
+    // status watchdog
+    if(millis()-StatusWatchdogTimer > 90000){ // after 90sec
       if(Status<0){
         Status=-3;
       }else{
         Status=3;
       }
-      RotateWatchdogTimer=millis();
-      MqttPubString("Debug", "Status0 by AZ watchdog", false);
+      MqttPubString("Debug", "Status0 by time watchdog", false);
+      StatusWatchdogTimer = StatusWatchdogTimer+5000; // next 5sec check
     }
-  }
-}
-
-static long DCunderVoltageWatchdog = 0;
-if(millis()-DCunderVoltageWatchdog > 1000){
-  if(Status==2 || Status==-2){
-      if(VoltageValue < 11.0){
+    // Azimuth change watchdog
+    if(millis()-RotateWatchdogTimer > 10000){    // check every 10 sec
+      if(abs(AzimuthWatchdog-Azimuth)>5){
+        RotateWatchdogTimer=millis();
+        AzimuthWatchdog=Azimuth;
+      }else{
         if(Status<0){
           Status=-3;
         }else{
           Status=3;
         }
-        MqttPubString("Debug", "Status0 by under voltage 11V", false);
+        RotateWatchdogTimer=millis();
+        MqttPubString("Debug", "Status0 by AZ watchdog", false);
       }
+    }
   }
-  DCunderVoltageWatchdog=millis();
-}
 
-
-// debug
-static long DebugTimer = 0;
-if(millis()-DebugTimer > 2000){
-    // MqttPubString("AzimuthRAW", String(analogRead(AzimuthPin)), false);
-    // MqttPubString("MaxRotateDegree", String(MaxRotateDegree), false);
-    // MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
-    // MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
-    // MqttPubString("AzimuthValue", String(AzimuthValue/1000.0), false);
-    // MqttPubString("CwCcwButtValue", String(CwCcwButtValue/1000.0), false);
-    // MqttPubString("HWidValue", String(HWidValue/1000.0), false);
-
-    DebugTimer=millis();
-}
-
-// WDT
-if(millis()-WdtTimer > 60000){
-  esp_task_wdt_reset();
-  WdtTimer=millis();
-  if(EnableSerialDebug>0){
-    Prn(3, 0,"WDT reset ");
-    Prn(3, 1, UtcTime(1));
+  //POE voltage check
+  static long DCunderVoltageWatchdog = 0;
+  if(millis()-DCunderVoltageWatchdog > 1000){
+    if(Status==2 || Status==-2){
+        if(VoltageValue < 11.0){
+          if(Status<0){
+            Status=-3;
+          }else{
+            Status=3;
+          }
+          MqttPubString("Debug", "Status0 by under voltage 11V POE", false);
+        }
+    }
+    DCunderVoltageWatchdog=millis();
   }
-}
+
+  // debug
+  static long DebugTimer = 0;
+  if(millis()-DebugTimer > 2000){
+      // MqttPubString("AzimuthRAW", String(analogRead(AzimuthPin)), false);
+      // MqttPubString("MaxRotateDegree", String(MaxRotateDegree), false);
+      // MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
+      // MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
+      // MqttPubString("AzimuthValue", String(AzimuthValue/1000.0), false);
+      // MqttPubString("CwCcwButtValue", String(CwCcwButtValue/1000.0), false);
+      // MqttPubString("HWidValue", String(HWidValue/1000.0), false);
+
+      DebugTimer=millis();
+  }
+
+  // WDT
+  if(millis()-WdtTimer > 60000){
+    esp_task_wdt_reset();
+    WdtTimer=millis();
+    if(EnableSerialDebug>0){
+      Prn(3, 0,"WDT reset ");
+      Prn(3, 1, UtcTime(1));
+    }
+  }
 
   // frenetic mode
   if(EnableSerialDebug>1 && millis()-FreneticModeTimer > 1000){
@@ -1420,7 +1411,7 @@ void RotCalculate(){
   const unsigned int HalfPoint = MaxRotateDegree/2;
 
   // if(EnableSerialDebug>0){
-    MqttPubString("MaxRotateDegree", String(MaxRotateDegree), true);
+    // MqttPubString("MaxRotateDegree", String(MaxRotateDegree), true);
     MqttPubString("HalfPoint", String(HalfPoint), true);
 // }
 /*
@@ -1442,50 +1433,29 @@ StartAzimuth---------HalfPoint---------StartAzimuth+MaxRotateDegree
   if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
     if(AzimuthTarget>Azimuth){
       Status=1;
-      if(Reverse==false){
-        digitalWrite(ReversePin, LOW); delay(12);
-      }else{
-        digitalWrite(ReversePin, HIGH); delay(12);
-      }
-      StatusWatchdogTimer = millis();
-      RotateWatchdogTimer = millis();
-      AzimuthWatchdog=Azimuth;
+      RunTimer();
     }else{
       Status=-1;
-      if(Reverse==false){
-        digitalWrite(ReversePin, HIGH); delay(12);
-      }else{
-        digitalWrite(ReversePin, LOW); delay(12);
-      }
-      StatusWatchdogTimer = millis();
-      RotateWatchdogTimer = millis();
-      AzimuthWatchdog=Azimuth;
+      RunTimer();
     }
 
   // escape from the forbidden zone
   }else if(Azimuth<0 && AzimuthTarget>0){
-    if(Reverse==false){
-      digitalWrite(ReversePin, LOW); delay(12);
-    }else{
-      digitalWrite(ReversePin, HIGH); delay(12);
-    }
     Status=1;
-    StatusWatchdogTimer = millis();
-    RotateWatchdogTimer = millis();
-    AzimuthWatchdog=Azimuth;
+    RunTimer();
   }else if(Azimuth>MaxRotateDegree && AzimuthTarget<MaxRotateDegree){
-    if(Reverse==false){
-      digitalWrite(ReversePin, HIGH); delay(12);
-    }else{
-      digitalWrite(ReversePin, LOW); delay(12);
-    }
     Status=-1;
-    StatusWatchdogTimer = millis();
-    RotateWatchdogTimer = millis();
-    AzimuthWatchdog=Azimuth;
+    RunTimer();
   }else{
     AzimuthTarget=-1;
   }
+}
+
+//-------------------------------------------------------------------------------------------------------
+void RunTimer(){
+  StatusWatchdogTimer = millis();
+  RotateWatchdogTimer = millis();
+  AzimuthWatchdog=Azimuth;
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -1502,11 +1472,8 @@ void RunByStatus(){
           ledcWrite(ledChannel, dutyCycle);
           PwmTimer=millis();
           if(dutyCycle<1){
-            if(Reverse==false){
-              digitalWrite(ReversePin, LOW); delay(12);
-            }else{
-              digitalWrite(ReversePin, HIGH); delay(12);
-            }
+            // ReverseProcedure(false);
+            digitalWrite(ReversePin, LOW);
             Status=0;
             AzimuthTarget=-1;
           }
@@ -1516,10 +1483,9 @@ void RunByStatus(){
         if(abs(Azimuth-AzimuthTarget)<10){
           Status=-3;
         }
-
-        // watchdog - pokud se nemeni azimut, tak stop !!!
         ; break; }
       case -1: {
+        ReverseProcedure(true);
         if(millis()-PwmTimer > PwmUpDelay){
           dutyCycle+=2;
           ledcWrite(ledChannel, dutyCycle);
@@ -1533,6 +1499,7 @@ void RunByStatus(){
         // nill
         ; break; }
       case  1: {
+        ReverseProcedure(false);
         if(millis()-PwmTimer > PwmUpDelay){
           dutyCycle+=2;
           ledcWrite(ledChannel, dutyCycle);
@@ -1546,8 +1513,6 @@ void RunByStatus(){
         if(abs(AzimuthTarget-Azimuth)<10){
           Status=3;
         }
-
-        // watchdog - pokud se nemeni azimut, tak stop !!!
         ; break; }
       case  3: {
         if(millis()-PwmTimer > PwmDwnDelay){
@@ -1555,11 +1520,8 @@ void RunByStatus(){
           ledcWrite(ledChannel, dutyCycle);
           PwmTimer=millis();
           if(dutyCycle<1){
-            if(Reverse==false){
-              digitalWrite(ReversePin, LOW); delay(12);
-            }else{
-              digitalWrite(ReversePin, HIGH); delay(12);
-            }
+            // ReverseProcedure(false);
+            digitalWrite(ReversePin, LOW);
             Status=0;
             AzimuthTarget=-1;
           }
@@ -1568,6 +1530,41 @@ void RunByStatus(){
     }
   // }
 }
+
+//-------------------------------------------------------------------------------------------------------
+void ReverseProcedure(bool CCW){
+
+  if(CCW==false){
+    if(ACmotor==false){
+      //DC
+      if(Reverse==false){
+        digitalWrite(ReversePin, LOW);
+      }else{
+        digitalWrite(ReversePin, HIGH);
+      }
+    }else{
+      //AC
+
+    }
+  }else{
+    if(ACmotor==false){
+      //DC
+      if(Reverse==false){
+        digitalWrite(ReversePin, HIGH);
+      }else{
+        digitalWrite(ReversePin, LOW);
+      }
+    }else{
+      //AC
+
+    }
+
+  }
+   delay(12);
+}
+
+
+
 
 //-------------------------------------------------------------------------------------------------------
 void AzShift(int AZ){
@@ -2825,9 +2822,9 @@ void http(){
           #if defined(OTAWEB)
             webClient.print(F(" | <a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a> <a href=\"http://"));
+            webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a><br><a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=700,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Control</button></a>"));
+            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=700,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Azimuth Map Control</button></a>"));
           #endif
           // END STATUS
           webClient.println(F("              </p>"));
@@ -3058,9 +3055,9 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
         Prn(3, 1, "/stop ");
       }
       if(Status<0){
-        Status = -3;
+        Status=-3;
       }else if(Status>0){
-        Status = 3;
+        Status=3;
       }
     }
 
@@ -3114,8 +3111,8 @@ void AfterMQTTconnect(){
           Serial.print(" ");
           Serial.println(MACchar);
 
-        MqttPubString("StartAzimuth", String(StartAzimuth), true);
-        MqttPubString("Name", String(RotName), true);
+        // MqttPubString("StartAzimuth", String(StartAzimuth), true);
+        // MqttPubString("Name", String(RotName), true);
 
         // String pcbString = String(HWREV);   // to string
         // pcbString.toCharArray( mqttTX, 2 );                          // to array
@@ -3414,7 +3411,7 @@ String Timestamp(){
 
 //-------------------------------------------------------------------------------------------------------
 
-// ajax
+// ajax rx
 void handlePostRot() {
  // String s = MAIN_page; //Read HTML contents
  String str = ajaxserver.arg("ROT");
@@ -3422,6 +3419,7 @@ void handlePostRot() {
  if(AzimuthTarget>359){
    AzimuthTarget = AzimuthTarget - 360;
  }
+ MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
  RotCalculate();
 }
 
@@ -3437,6 +3435,7 @@ void handleSet() {
   String mqttERR= "";
   String mqttportERR= "";
   String edstopsCHECKED= "";
+  String edstopsSTYLE= "";
   String acmotorCHECKED= "";
   String motorSELECT0= "";
   String motorSELECT1= "";
@@ -3525,6 +3524,7 @@ void handleSet() {
           }
         }
         // EEPROM.commit();
+        MqttPubString("Name", String(RotName), true);
       }
     }
 
@@ -3540,6 +3540,7 @@ void handleSet() {
         // MqttPubString("Debug StartAzimuth changed", String(StartAzimuth), false);
         EEPROM.writeUShort(23, StartAzimuth);
         // EEPROM.commit();
+        MqttPubString("StartAzimuth", String(StartAzimuth), true);
       }
     }
 
@@ -3554,6 +3555,7 @@ void handleSet() {
         MaxRotateDegree = ajaxserver.arg("maxrotatedegree").toInt();
         EEPROM.writeUShort(25, MaxRotateDegree);
         // EEPROM.commit();
+        MqttPubString("MaxRotateDegree", String(MaxRotateDegree), true);
       }
     }
 
@@ -3568,6 +3570,7 @@ void handleSet() {
         AntRadiationAngle = ajaxserver.arg("antradiationangle").toInt();
         EEPROM.writeUShort(27, AntRadiationAngle);
         // EEPROM.commit();
+        MqttPubString("AntRadiationAngle", String(AntRadiationAngle), true);
       }
     }
 
@@ -3601,10 +3604,12 @@ void handleSet() {
       Endstop = true;
       EEPROM.writeBool(29, 1);
       // EEPROM.commit();
+      MqttPubString("EndstopUse", String(Endstop), true);
     }else if(ajaxserver.arg("edstops").toInt()!=1 && Endstop==true){
       Endstop = false;
       EEPROM.writeBool(29, 0);
       // EEPROM.commit();
+      MqttPubString("EndstopUse", String(Endstop), true);
     }
 
     // motor
@@ -3613,9 +3618,11 @@ void handleSet() {
     if(ajaxserver.arg("motor").toInt()==0 && ACmotor==true){
       ACmotor = false;
       EEPROM.writeBool(30, 0);
+      MqttPubString("Motor", "DC", true);
     }else if(ajaxserver.arg("motor").toInt()==1 && ACmotor==false){
       ACmotor = true;
       EEPROM.writeBool(30, 1);
+      MqttPubString("Motor", "AC", true);
     }
 
     // 161-164 - MQTT broker IP
@@ -3687,9 +3694,10 @@ void handleSet() {
   // MqttPubString("Debug Endstop", String(Endstop), false);
 if(Endstop==true){
   edstopsCHECKED= "checked";
+  edstopsSTYLE="";
 }else{
-  // edstopsCHECKED= "disabled";
   edstopsCHECKED= "";
+  edstopsSTYLE=" style='text-decoration: line-through;'";
 }
 
 if(ACmotor==true){
@@ -3724,7 +3732,7 @@ if(ACmotor==true){
   HtmlSrc += StartAzimuth;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += startazimuthERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range 0-359&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='maxrotatedegree'>Rotation range in degrees:</label></td><td><input type='text' id='maxrotatedegree' name='maxrotatedegree' size='3' value='";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>0-359&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='maxrotatedegree'>Rotation range in degrees:</label></td><td><input type='text' id='maxrotatedegree' name='maxrotatedegree' size='3' value='";
   HtmlSrc += MaxRotateDegree;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += maxrotatedegreeERR;
@@ -3736,11 +3744,13 @@ if(ACmotor==true){
   HtmlSrc += AntRadiationAngle;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += antradiationangleERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range 1-180&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='edstops'>Rotator with <span style='color: #c00;'>functional endstops:</span></label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-180&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='edstops'>Endstops <span";
+  HtmlSrc += edstopsSTYLE;
+  HtmlSrc +=">AVAILABLE</span>:</label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
   HtmlSrc += edstopsCHECKED;
   HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
 
-  HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>Motor:</label></td><td><select name='motor' id='motor'><option value='0'";
+  HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>Motor supply:</label></td><td><select name='motor' id='motor'><option value='0'";
   HtmlSrc += motorSELECT0;
   HtmlSrc +=">DC</option><option value='1'";
   HtmlSrc += motorSELECT1;
@@ -3772,33 +3782,28 @@ void handleCal() {
 
   if ( ajaxserver.hasArg("stop")==1 ){
     if(Status<0){
-      Status = -3;
+      Status=-3;
     }else if(Status>0){
-      Status = 3;
+      Status=3;
     }
     // MqttPubString("Debug stop", String(stop), false);
   }
 
   if ( ajaxserver.hasArg("cw")==1 ){
     Status=1;
-    // digitalWrite(ReversePin, LOW); delay(12);
-    StatusWatchdogTimer = millis();
-    RotateWatchdogTimer = millis();
-    AzimuthWatchdog=Azimuth;
+    RunTimer();
   }
 
   if ( ajaxserver.hasArg("ccw")==1 ){
     Status=-1;
-    // digitalWrite(ReversePin, LOW); delay(12);
-    StatusWatchdogTimer = millis();
-    RotateWatchdogTimer = millis();
-    AzimuthWatchdog=Azimuth;
+    RunTimer();
   }
 
   if ( ajaxserver.hasArg("reverse")==1 ){
     Reverse = !Reverse;
     EEPROM.writeBool(35, Reverse);
     EEPROM.commit();
+    MqttPubString("ReverseControl", String(Reverse), true);
   }
 
   long RawTmp = 0;
@@ -3813,7 +3818,7 @@ void handleCal() {
     CcwRaw = RawTmp / 10;
     EEPROM.writeUShort(31, CcwRaw);
     EEPROM.commit();
-    // MqttPubString("Debug CcwRaw", String(CcwRaw), false);
+    MqttPubString("CcwRaw", String(CcwRaw), true);
   }
 
   // 33-34  CwRaw
@@ -3826,7 +3831,7 @@ void handleCal() {
     CwRaw = RawTmp / 10;
     EEPROM.writeUShort(33, CwRaw);
     EEPROM.commit();
-    // MqttPubString("Debug CwRaw", String(CwRaw), false);
+    MqttPubString("CwRaw", String(CwRaw), true);
   }
 
     // MqttPubString("Debug setcw", String(ajaxserver.arg("setcw")), false);
@@ -3856,7 +3861,7 @@ void handleCal() {
   HtmlSrc +="<H1 style='color: #666; text-align: center;'>Calibrate</H1>";
   HtmlSrc +="<div style='display: flex; justify-content: center;'>";
   HtmlSrc +="<table cellspacing='0' cellpadding='0'><form action='/cal' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>";
-  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>ROTATION DIRECTION CALIBRATION</span></td></tr>";
+  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>ROTATE DIRECTION CALIBRATE</span></td></tr>";
   HtmlSrc +="<tr style='background-color: #666;'>";
   HtmlSrc +="<td class='tdr'><button id='ccw' name='ccw'>&#8630; CCW</button></td>";
   HtmlSrc +="<td class='tdc'><button id='stop' name='stop'>STOP</button></td>";
@@ -3873,7 +3878,7 @@ void handleCal() {
   HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td>";
   HtmlSrc +="</tr><tr>";
   // HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'>SET AZIMUTH (<span id='AZadcValue'>0</span>V)</td>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>SET AZIMUTH</span></td>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>AZIMUTH CALIBRATE</span></td>";
   HtmlSrc +="</tr><tr>";
 
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='120'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
@@ -3894,9 +3899,9 @@ void handleCal() {
 
 void handlePostStop() {
   if(Status<0){
-    Status = -3;
+    Status=-3;
   }else if(Status>0){
-    Status = 3;
+    Status=3;
   }
 }
 void handleRoot() {
