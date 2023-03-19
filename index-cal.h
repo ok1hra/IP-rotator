@@ -51,6 +51,18 @@ const char CAL_page[] PROGMEM = R"=====(
 	  ihttp.open("GET", "readEndstop", true);
 	  ihttp.send();
 
+	  var lhttp = new XMLHttpRequest();
+	  lhttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+	      // document.getElementById("StartValue").innerHTML = this.responseText;
+				NoEndstopZone = this.responseText;
+				// console.log ('Endstop ' + Endstop);
+				// Static();
+	    }
+	  };
+	  lhttp.open("GET", "readEndstopZone", true);
+	  lhttp.send();
+
 	  var jhttp = new XMLHttpRequest();
 	  jhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
@@ -167,9 +179,9 @@ const char CAL_page[] PROGMEM = R"=====(
 			endstop.lineWidth = 8;
 			endstop.strokeStyle = 'orange';
 			endstop.moveTo(30, 45);
-			endstop.lineTo((Number(BoxSize)-60)/33*3.90+30, 45);
+			endstop.lineTo((Number(BoxSize)-60)/3.3*Number(NoEndstopZone)+30, 45);
 			endstop.moveTo(BoxSize-30, 45);
-			endstop.lineTo( (Number(BoxSize)-30)-(Number(BoxSize)-60)/33*3.90, 45);
+			endstop.lineTo( (Number(BoxSize)-30)-(Number(BoxSize)-60)/3.3*Number(NoEndstopZone), 45);
 			endstop.fillStyle = "orange";
 			endstop.font = "bold 10px Arial";
 			endstop.textAlign = 'center';

@@ -39,6 +39,7 @@ Changelog:
 + hlidat min napeti (11V) pod kterym prestat otacet + warning do /status
 + v html zobrazit target azimuth
 + implementovat ID (vice rotatoru)
++ NoEndstopHighZone/NoEndstopLowZone set from Calibrate gui
 
 ToDo
 - if mqtt_server_ip[0]=0 then disable MQTT
@@ -66,7 +67,11 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230317";
+const char* REV = "20230320";
+
+float NoEndstopZone = 0;
+float NoEndstopHighZone = 0;
+float NoEndstopLowZone = 0;
 
 // not impemented
 bool Reverse =  false;
@@ -86,8 +91,10 @@ unsigned int MaxRotateDegree = 0;
 bool Endstop =  false;
 bool ACmotor =  false;
 
+
 unsigned int PwmUpDelay  = 4;  // [ms]*255
 unsigned int PwmDwnDelay = 3;  // [ms]*255
+byte dutyCycle = 0;
 long StatusWatchdogTimer = 0;
 long RotateWatchdogTimer = 0;
 int AzimuthWatchdog = 0;
@@ -235,7 +242,7 @@ int i = 0;
 31-32 - CcwRaw
 33-34 - CwRaw
 35 - Reverse
-
+36 - NoEndstopZone
 37-40 - Authorised telnet client IP
 41-140 - Authorised telnet client key
 141-160 - YOUR_CALL
@@ -790,8 +797,18 @@ void setup() {
     }
   }
 
-
-
+  // 36 - NoEndstopZone
+  if(EEPROM.read(36)==0xff){
+    NoEndstopZone = 0.4;
+  }else{
+    if(EEPROM.readByte(36)<16){
+      NoEndstopZone = float(EEPROM.readByte(36))/10;
+    }else{
+      NoEndstopZone = 0.4;
+    }
+  }
+  NoEndstopHighZone = 3.3 - NoEndstopZone;
+  NoEndstopLowZone = NoEndstopZone;
 
   // 2-encoder range
   NumberOfEncoderOutputs = EEPROM.read(2);
@@ -1170,6 +1187,7 @@ void setup() {
    ajaxserver.on("/set", handleSet);
    ajaxserver.on("/cal", handleCal);
    ajaxserver.on("/readEndstop", handleEndstop);
+   ajaxserver.on("/readEndstopZone", handleEndstopZone);
    ajaxserver.on("/readCwraw", handleCwraw);
    ajaxserver.on("/readCcwraw", handleCcwraw);
    // ajaxserver.on("/cal/readAZ", handleAZ);
@@ -1248,13 +1266,13 @@ void Watchdog(){
     ADCTimer=millis();
   }
 
-  // MQTT pub
   static long MqttTimer = 0;
   static int AzimuthTmp = 0;
   static float VoltageValueTmp = 0;
   static int StatusTmp = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
   static String StatusStr = "";
 
+  // Status change
   if(StatusTmp!=Status){
     switch (Status) {
       case -3: {StatusStr = "PwmDwn-CCW"; break; }
@@ -1270,7 +1288,7 @@ void Watchdog(){
     StatusTmp=Status;
   }
 
-  // info if change
+  // info if change AZ and voltage
   if( (Status==0 && millis()-MqttTimer >2000) || (Status!=0 && millis()-MqttTimer >100) ){
     if(abs(AzimuthTmp-Azimuth)>2){
       MqttPubString("Azimuth", String(Azimuth), false);
@@ -1295,7 +1313,7 @@ void Watchdog(){
       }else{
         Status=3;
       }
-      MqttPubString("Debug", "Status0 by time watchdog", false);
+      MqttPubString("Debug", "STOP by time watchdog", false);
       StatusWatchdogTimer = StatusWatchdogTimer+5000; // next 5sec check
     }
     // Azimuth change watchdog
@@ -1310,7 +1328,7 @@ void Watchdog(){
           Status=3;
         }
         RotateWatchdogTimer=millis();
-        MqttPubString("Debug", "Status0 by AZ watchdog", false);
+        MqttPubString("Debug", "STOP by AZ watchdog", false);
       }
     }
   }
@@ -1325,7 +1343,7 @@ void Watchdog(){
           }else{
             Status=3;
           }
-          MqttPubString("Debug", "Status0 by under voltage 11V POE", false);
+          MqttPubString("Debug", "STOP by under voltage 11V POE", false);
         }
     }
     DCunderVoltageWatchdog=millis();
@@ -1354,12 +1372,6 @@ void Watchdog(){
       Prn(3, 1, UtcTime(1));
     }
   }
-
-  // frenetic mode
-  if(EnableSerialDebug>1 && millis()-FreneticModeTimer > 1000){
-    FreneticModeTimer=millis();
-  }
-
 
   if(RebootWatchdog > 0 && millis()-WatchdogTimer > RebootWatchdog*60000){
     Prn(3, 1,"** Activate reboot watchdog - IP switch will be restarted **");
@@ -1459,19 +1471,61 @@ void RunTimer(){
 }
 
 //-------------------------------------------------------------------------------------------------------
+void DetectEndstopZone(){
+  if(Endstop==false){
+    if(Status==-1 || Status==-2){  // run status CCW
+      if(CcwRaw<CwRaw){ // standard az potentiometer
+        if(AzimuthValue/1000>NoEndstopLowZone){
+          // run
+        }else{
+          Status=-3;
+        }
+      }else{ // reverse az potentiometer value
+        if(AzimuthValue/1000<NoEndstopHighZone){
+          // run
+        }else{
+          Status=-3;
+        }
+      }
+    }
+    if(Status==1 || Status==2){  // run status CW
+      if(CcwRaw<CwRaw){ // standard az potentiometer
+        if(AzimuthValue/1000<NoEndstopHighZone){
+          // MqttPubString("Debug +", String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
+          // run
+        }else{
+          // MqttPubString("Debug +3", String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
+          Status=3;
+        }
+      }else{ // reverse az potentiometer value
+        if(AzimuthValue/1000>NoEndstopLowZone){
+          // run
+        }else{
+          Status=3;
+        }
+      }
+    }
+  }
+}
+
+//-------------------------------------------------------------------------------------------------------
 
 void RunByStatus(){
   static long PwmTimer = 0;
-  static unsigned int dutyCycle = 0;
+  DetectEndstopZone();
 
   // }else if( (Azimuth>=0 && Azimuth<=450) ){
     switch (Status) {
       case -3: {
         if(millis()-PwmTimer > PwmDwnDelay){
-          dutyCycle--;
+          if(dutyCycle!=0){
+            dutyCycle--;
+          }
           ledcWrite(ledChannel, dutyCycle);
           PwmTimer=millis();
           if(dutyCycle<1){
+            dutyCycle=0;
+            ledcWrite(ledChannel, 0);
             // ReverseProcedure(false);
             digitalWrite(ReversePin, LOW);
             Status=0;
@@ -1490,7 +1544,8 @@ void RunByStatus(){
           dutyCycle+=2;
           ledcWrite(ledChannel, dutyCycle);
           PwmTimer=millis();
-          if(dutyCycle>254){
+          if(dutyCycle>253){
+            ledcWrite(ledChannel, 255);
             Status=-2;
           }
         }
@@ -1504,7 +1559,8 @@ void RunByStatus(){
           dutyCycle+=2;
           ledcWrite(ledChannel, dutyCycle);
           PwmTimer=millis();
-          if(dutyCycle>254){
+          if(dutyCycle>253){
+            ledcWrite(ledChannel, 255);
             Status=2;
           }
         }
@@ -1516,10 +1572,14 @@ void RunByStatus(){
         ; break; }
       case  3: {
         if(millis()-PwmTimer > PwmDwnDelay){
-          dutyCycle--;
+          if(dutyCycle!=0){
+            dutyCycle--;
+          }
           ledcWrite(ledChannel, dutyCycle);
           PwmTimer=millis();
           if(dutyCycle<1){
+            dutyCycle=0;
+            ledcWrite(ledChannel, 0);
             // ReverseProcedure(false);
             digitalWrite(ReversePin, LOW);
             Status=0;
@@ -3434,6 +3494,9 @@ void handleSet() {
   String mapurlERR= "";
   String mqttERR= "";
   String mqttportERR= "";
+  String edstopszoneERR= "";
+  String edstopszoneSTYLE= "";
+  String edstopszoneDisable= "";
   String edstopsCHECKED= "";
   String edstopsSTYLE= "";
   String acmotorCHECKED= "";
@@ -3447,6 +3510,7 @@ void handleSet() {
     && ajaxserver.hasArg("maxrotatedegree") == false \
     && ajaxserver.hasArg("mapurl") == false \
     && ajaxserver.hasArg("antradiationangle") == false \
+    && ajaxserver.hasArg("edstopszone") == false \
   ) {
     MqttPubString("Debug", "Form not valid", false);
   }else{
@@ -3537,7 +3601,6 @@ void handleSet() {
       }else{
         startazimuthERR="";
         StartAzimuth = ajaxserver.arg("startazimuth").toInt();
-        // MqttPubString("Debug StartAzimuth changed", String(StartAzimuth), false);
         EEPROM.writeUShort(23, StartAzimuth);
         // EEPROM.commit();
         MqttPubString("StartAzimuth", String(StartAzimuth), true);
@@ -3610,6 +3673,23 @@ void handleSet() {
       EEPROM.writeBool(29, 0);
       // EEPROM.commit();
       MqttPubString("EndstopUse", String(Endstop), true);
+    }
+
+    // 36 - NoEndstopZone
+    if ( ajaxserver.arg("edstopszone").length()<1 || ajaxserver.arg("edstopszone").toInt()<1 || ajaxserver.arg("edstopszone").toInt()>15){
+      edstopszoneERR= " Out of range number 1-15";
+    }else{
+      if(NoEndstopZone == float(ajaxserver.arg("edstopszone").toInt())/10 ) {
+        edstopszoneERR="";
+      }else{
+        edstopszoneERR="";
+        NoEndstopZone = float(ajaxserver.arg("edstopszone").toInt())/10;
+        NoEndstopHighZone = 3.3 - NoEndstopZone;
+        NoEndstopLowZone = NoEndstopZone;
+        EEPROM.writeByte(36, int(NoEndstopZone*10));
+        // EEPROM.commit();
+        MqttPubString("NoEndstopZone", String(NoEndstopZone), true);
+      }
     }
 
     // motor
@@ -3695,6 +3775,8 @@ void handleSet() {
 if(Endstop==true){
   edstopsCHECKED= "checked";
   edstopsSTYLE="";
+  edstopszoneDisable=" disabled";
+  edstopszoneSTYLE=" style='text-decoration: line-through;'";
 }else{
   edstopsCHECKED= "";
   edstopsSTYLE=" style='text-decoration: line-through;'";
@@ -3707,6 +3789,7 @@ if(ACmotor==true){
   motorSELECT0= " selected";
   motorSELECT1= "";
 }
+
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'><meta http-equiv = 'refresh' content = '600; url = /'>\n";
@@ -3749,6 +3832,15 @@ if(ACmotor==true){
   HtmlSrc +=">AVAILABLE</span>:</label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
   HtmlSrc += edstopsCHECKED;
   HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
+    HtmlSrc +="<tr><td class='tdr'><label for='edstopszone'><span";
+    HtmlSrc += edstopszoneSTYLE;
+    HtmlSrc +=">Forbidden zones (software endstops):</span></label></td><td><input type='text' id='edstopszone' name='edstopszone' size='3' value='";
+    HtmlSrc += int(NoEndstopZone*10);
+    HtmlSrc +="'";
+    HtmlSrc += edstopszoneDisable;
+    HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
+    HtmlSrc += edstopszoneERR;
+    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-15 tenths of a Volt</span></span></td></tr>\n";
 
   HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>Motor supply:</label></td><td><select name='motor' id='motor'><option value='0'";
   HtmlSrc += motorSELECT0;
@@ -3937,6 +4029,9 @@ void handleMapUrl() {
 }
 void handleEndstop() {
   ajaxserver.send(200, "text/plane", String(Endstop) );
+}
+void handleEndstopZone() {
+  ajaxserver.send(200, "text/plane", String(NoEndstopZone) );
 }
 void handleCwraw() {
   ajaxserver.send(200, "text/plane", String(CwRaw) );

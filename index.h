@@ -359,13 +359,17 @@ const char MAIN_page[] PROGMEM = R"=====(
 			if (Status != 4) {
 				az.fillStyle = "red";
 				if(Status<4){
-					Ofset = -12;
+					Ofset = -6;
 				}else{
-					Ofset = 12;
+					Ofset = 6;
 				}
-				az.moveTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/3, BoxSize/2*0.85), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/3, BoxSize/2*0.85));
-			  az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/3, BoxSize/2*0.75), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/3, BoxSize/2*0.75));
-				az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset), BoxSize/2*0.8), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset), BoxSize/2*0.8));
+				az.moveTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/2, BoxSize/2*0.85), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/2, BoxSize/2*0.85));
+			  az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/2, BoxSize/2*0.75), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)/2, BoxSize/2*0.75));
+				az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)*1.3, BoxSize/2*0.8), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)*1.3, BoxSize/2*0.8));
+
+				az.moveTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)*1.5, BoxSize/2*0.83), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)*1.5, BoxSize/2*0.83));
+			  az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)*1.5, BoxSize/2*0.77), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)*1.5, BoxSize/2*0.77));
+				az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)*2, BoxSize/2*0.8), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(Ofset)*2, BoxSize/2*0.8));
 			}
 		az.fill();
 
