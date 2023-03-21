@@ -158,10 +158,16 @@ const char CAL_page[] PROGMEM = R"=====(
 			pointer.moveTo( Number(Position), 55);
 		  pointer.lineTo( Number(Position)+5, 75);
 		  pointer.lineTo( Number(Position)-5, 75);
+			// console.log ('PointerValue ' + PointerValue);
+			// console.log ('NoEndstopZone ' + NoEndstopZone);
 			if (Status != 4) {
 				pointer.fillStyle = "#c00000";
 			}else{
-				pointer.fillStyle = "#00c000";
+				if(Number(PointerValue)/1000 > Number(NoEndstopZone) && Number(PointerValue)/1000 < 3.3-Number(NoEndstopZone)){
+					pointer.fillStyle = "#00c000";
+				}else{
+					pointer.fillStyle = "orange";
+				}
 			}
 			pointer.fillText( Number(PointerValue)/1000 + "V", Number(Position), 90);
 		pointer.fill();

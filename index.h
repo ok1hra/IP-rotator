@@ -93,19 +93,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 					<span style="font-weight: bold;" id="AZValue">0</span>&deg; |
 					<a href="/set">SETUP</a>
 				</span>
-
-				<!--<form action="/get">
-					Target <input type="text" name="input1">
-					<input type="submit" value="Submit">
-				</form><br>
-
-				<form action="/set" method="post" style="color: #ccc; margin: 50 0 0 0; text-align: center;">
-			    <label for="mytext">Some text to send:</label> <input type="text" id="mytext" name="mytext" value="Testing"/><br/>
-			    <label for="led1">LED1 (red):</label> <input type="checkbox" id="led1" name="led1" value="1" ${postData.led1?"checked":""}><br/>
-			    <label for="led2">LED2 (green):</label> <input type="checkbox" id="led2" name="led2" value="1" ${postData.led2?"checked":""}><br/>
-			    <button>Submit</button>
-			  </form>-->
-
+				<br><br>
+				<span style="color: #333;" id="mac"> </span>
 			</p>
 		</div>
 	</div>
@@ -202,6 +191,17 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  };
 	  mhttp.open("GET", "readMapUrl", true);
 	  mhttp.send();
+
+	  var nhttp = new XMLHttpRequest();
+	  nhttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+	      document.getElementById("mac").innerHTML = this.responseText;
+				// MapUrl = this.responseText;
+				// console.log ('MapUrl ' + MapUrl);
+	    }
+	  };
+	  nhttp.open("GET", "readMAC", true);
+	  nhttp.send();
 	}
 
 	function getData() {
@@ -219,7 +219,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    if (this.readyState == 4 && this.status == 200) {
 	      document.getElementById("AZValue").innerHTML = this.responseText;
 				Azimuth = this.responseText;
-				if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>1 ){	// || Status != 4
+				// if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>1 ){	// || Status != 4
+				if( Number(AzimuthTmp) != Number(Azimuth) ){
 					AZ(Azimuth);
 					Static();
 					StaticBot();

@@ -40,10 +40,21 @@ Changelog:
 + v html zobrazit target azimuth
 + implementovat ID (vice rotatoru)
 + NoEndstopHighZone/NoEndstopLowZone set from Calibrate gui
++ status endstop true/false - aktivuje ochranne zony na krajich potenciometru ()
 
 ToDo
+- implement
+  - HW detection and show in GUI
+  - AC functionality
+  - AZ potentiometer
+  - AZ key
+  - LED
+  - serial protocol
+- web online signalisation (timeout 10s?)
+- on hover button
+- if range < 360, shown ends or dark another azimuth map
+- fix calibrate button url
 - if mqtt_server_ip[0]=0 then disable MQTT
-- status endstop true/false - aktivuje ochranne zony na krajich potenciometru ()
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
 - nastaveni MAX PWM
 - vycistit kod
@@ -67,7 +78,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230320";
+const char* REV = "20230321";
 
 float NoEndstopZone = 0;
 float NoEndstopHighZone = 0;
@@ -84,13 +95,12 @@ String YOUR_CALL = "";
 String NET_ID = "";
 String RotName = "";
 int StartAzimuth = 0;         // max CCW limit callibrate in real using
+unsigned int MaxRotateDegree = 0;
 unsigned int AntRadiationAngle = 10;
 String MapUrl = "" ;
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
-unsigned int MaxRotateDegree = 0;
 bool Endstop =  false;
 bool ACmotor =  false;
-
 
 unsigned int PwmUpDelay  = 4;  // [ms]*255
 unsigned int PwmDwnDelay = 3;  // [ms]*255
@@ -1190,6 +1200,7 @@ void setup() {
    ajaxserver.on("/readEndstopZone", handleEndstopZone);
    ajaxserver.on("/readCwraw", handleCwraw);
    ajaxserver.on("/readCcwraw", handleCcwraw);
+   ajaxserver.on("/readMAC", handleMAC);
    // ajaxserver.on("/cal/readAZ", handleAZ);
    ajaxserver.begin();                  //Start server
    Serial.println("HTTP ajax server started");
@@ -1231,7 +1242,7 @@ uint32_t readADC_Cal(int ADC_Raw)
 }
 //-------------------------------------------------------------------------------------------------------
 void Watchdog(){
-  /* Azimuth potentiometer to antenna transfer ratio: 2x
+  /* 3D print rotator azimuth potentiometer to antenna transfer ratio: 2x
   RAW         0-4095
   calibrate 142-3139 (dif 2997)
 
@@ -1245,22 +1256,36 @@ void Watchdog(){
   */
 
   // read ADC
-  const unsigned int CCWlimitRaw = 142+2997/12;
-  static unsigned int OneTurnCalibrateRaw = 2600;     // ----------------- need procedure fo callibrate
-  const unsigned int CWlimit = 3139-2997/12;
-  MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
-  // static unsigned int MaxRotateDegree = CalibrateRawToDeg(CWlimit);     // *[1]
-  // static unsigned int MaxLimitDegree = map(3139, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[2]
-  static unsigned int MaxLimitDegree = map(3139, 392, 2600, 0, 360);     // *[2]
-  // static unsigned int MaxLimitDegree = CalibrateRawToDeg(3139);
+  // const unsigned int CCWlimitRaw = 142+2997/12;
+  // static unsigned int OneTurnCalibrateRaw = 2600;     // ----------------- need procedure fo callibrate
+  // const unsigned int CWlimit = 3139-2997/12;
+  // MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
+  // // static unsigned int MaxRotateDegree = CalibrateRawToDeg(CWlimit);     // *[1]
+  // // static unsigned int MaxLimitDegree = map(3139, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[2]
+  // static unsigned int MaxLimitDegree = map(3139, 392, 2600, 0, 360);     // *[2]
+  // // static unsigned int MaxLimitDegree = CalibrateRawToDeg(3139);
+
   static long ADCTimer = 0;
-  if(millis()-ADCTimer > 100){
-    AzimuthValue = readADC_Cal(analogRead(AzimuthPin));
-    CwCcwButtValue = analogRead(CwCcwButtPin);
+  static long ADCCounter = 0;
+  static int AZBuffer = 0;
+  static float VoltageBuffer = 0;
+  if(millis()-ADCTimer > 5){
+    AZBuffer = AZBuffer + readADC_Cal(analogRead(AzimuthPin));
     // R divider | 12,95/2,95=4,38983050847458
-    VoltageValue = readADC_Cal(analogRead(VoltagePin))/1000.0*4.39;
+    VoltageBuffer = VoltageBuffer + readADC_Cal(analogRead(VoltagePin))/1000.0*4.39;
+    ADCCounter ++;
+    if(ADCCounter > 34){
+      AzimuthValue = AZBuffer/35;
+      VoltageValue = VoltageBuffer/35;
+      ADCCounter = 0;
+      AZBuffer = 0;
+      VoltageBuffer = 0;
+      CwCcwButtValue = analogRead(CwCcwButtPin);
+    }
+
     // Azimuth=map(AzimuthValue, 142, 3139, -45, 495);
-    Azimuth=map(AzimuthValue, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);
+    // Azimuth=map(AzimuthValue, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);
+    Azimuth=map(AzimuthValue, CcwRaw, CwRaw, 0, MaxRotateDegree);
 
     // Azimuth=CalibrateRawToDeg(AzimuthValue);
     ADCTimer=millis();
@@ -1290,12 +1315,13 @@ void Watchdog(){
 
   // info if change AZ and voltage
   if( (Status==0 && millis()-MqttTimer >2000) || (Status!=0 && millis()-MqttTimer >100) ){
-    if(abs(AzimuthTmp-Azimuth)>2){
+    // if(abs(AzimuthTmp-Azimuth)>2){
+    if(AzimuthTmp!=Azimuth){
       MqttPubString("Azimuth", String(Azimuth), false);
-      if(Status==0){
-        // MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
-        MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
-      }
+      // if(Status==0){
+      //   // MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
+      //   MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
+      // }
       AzimuthTmp=Azimuth;
     }
     if(abs(VoltageValueTmp-VoltageValue)>0.5){
@@ -1415,25 +1441,8 @@ void Watchdog(){
 //-------------------------------------------------------------------------------------------------------
 
 void RotCalculate(){
-
-  const unsigned int CCWlimitRaw = 142+2997/12;
-  static unsigned int OneTurnCalibrateRaw = 2600;     // ----------------- need procedure fo callibrate
-  const unsigned int CWlimit = 3139-2997/12;
-  MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
-  const unsigned int HalfPoint = MaxRotateDegree/2;
-
-  // if(EnableSerialDebug>0){
-    // MqttPubString("MaxRotateDegree", String(MaxRotateDegree), true);
-    MqttPubString("HalfPoint", String(HalfPoint), true);
-// }
-/*
-StartAzimuth---------HalfPoint---------StartAzimuth+MaxRotateDegree
- 0                     203,5           360       407
-                                        0         47
-*/
-
-  // overlap
-  if(Azimuth < HalfPoint && AzimuthTarget < HalfPoint){
+  // overlap detect
+  if(Azimuth < MaxRotateDegree/2 && AzimuthTarget < MaxRotateDegree/2){ // MaxRotateDegree/2 = HalfPoint
     //CCW
   }else{
     if(AzimuthTarget<MaxRotateDegree-360){  // if in overlap
@@ -1442,6 +1451,7 @@ StartAzimuth---------HalfPoint---------StartAzimuth+MaxRotateDegree
     //CW
   }
 
+  // direction
   if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
     if(AzimuthTarget>Azimuth){
       Status=1;
@@ -2884,7 +2894,7 @@ void http(){
             webClient.println(ETH.localIP());
             webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a><br><a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=700,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Azimuth Map Control</button></a>"));
+            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=740,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Azimuth Map Control</button></a>"));
           #endif
           // END STATUS
           webClient.println(F("              </p>"));
@@ -3797,8 +3807,9 @@ if(ACmotor==true){
   HtmlSrc +=".tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
   HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
   HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
-  HtmlSrc +="<H1 style='color: #fff; text-align: center;'>Setup</H1>\n";
-  HtmlSrc +="<div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
+  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Setup<br><span style='font-size: 50%;'>(";
+  HtmlSrc +=MACString;
+  HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
   HtmlSrc += YOUR_CALL;
   HtmlSrc +="'><span style='color:red;'>";
@@ -3862,13 +3873,14 @@ if(ACmotor==true){
 
   HtmlSrc +="<tr><td class='tdr'></td><td><button style='background-color: #ccc;'>&#10004; Change</button></form></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><a href='/'><button style='background-color: #060;'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal'><button style='background-color: #666;'>Calibrate</button></a></td></tr>\n";
+
+  HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
+  HtmlSrc +="<tr><td class='tdr'><a href='/'><button style='background-color: #060;'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal'><button style='background-color: #666;'>Calibrate</button></a></td></tr>";
   HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
   HtmlSrc +="</body></html>\n";
 
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
 }
-
 
 void handleCal() {
 
@@ -3950,10 +3962,11 @@ void handleCal() {
   HtmlSrc +="a:hover {color: #fff;}";
   HtmlSrc +="a {color: #ccc; text-decoration: underline;}";
   HtmlSrc +="</style><link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>";
-  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Calibrate</H1>";
-  HtmlSrc +="<div style='display: flex; justify-content: center;'>";
+  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Two calibration steps:<br><span style='font-size: 50%;'>(";
+  HtmlSrc +=MACString;
+  HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'>";
   HtmlSrc +="<table cellspacing='0' cellpadding='0'><form action='/cal' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>";
-  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>ROTATE DIRECTION CALIBRATE</span></td></tr>";
+  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>1. Rotate direction calibrate</span></td></tr>";
   HtmlSrc +="<tr style='background-color: #666;'>";
   HtmlSrc +="<td class='tdr'><button id='ccw' name='ccw'>&#8630; CCW</button></td>";
   HtmlSrc +="<td class='tdc'><button id='stop' name='stop'>STOP</button></td>";
@@ -3970,7 +3983,7 @@ void handleCal() {
   HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td>";
   HtmlSrc +="</tr><tr>";
   // HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'>SET AZIMUTH (<span id='AZadcValue'>0</span>V)</td>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>AZIMUTH CALIBRATE</span></td>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>2. Azimuth calibrate</span></td>";
   HtmlSrc +="</tr><tr>";
 
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='120'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
@@ -4038,4 +4051,7 @@ void handleCwraw() {
 }
 void handleCcwraw() {
   ajaxserver.send(200, "text/plane", String(CcwRaw) );
+}
+void handleMAC() {
+  ajaxserver.send(200, "text/plane", String(MACString) );
 }
