@@ -33,34 +33,32 @@ mosquitto_pub -h 54.38.157.134 -t BD:2F/ROT/Target -m '10'
 
 
 Changelog:
-+ implementovat jmeno rotatoru
-+ watchdog na cas a minimalni pohyb spravnym smerem
-+ v ochranych zonach zobrazovat azimut sedou barvou
-+ hlidat min napeti (11V) pod kterym prestat otacet + warning do /status
-+ v html zobrazit target azimuth
-+ implementovat ID (vice rotatoru)
-+ NoEndstopHighZone/NoEndstopLowZone set from Calibrate gui
-+ status endstop true/false - aktivuje ochranne zony na krajich potenciometru ()
++ rotator name
++ watchdog timer, azimuth change
++ stop zone gray color
++ under 11V POE voltage watchdog
++ azimuth target
++ rotator ID for more units mqtt identification
++ calibrate gui set
++ software endstop zone
++ darkzone map, if range < 360
 
 ToDo
-- implement
+- need implement
   - HW detection and show in GUI
   - AC functionality
   - AZ potentiometer
   - AZ key
   - LED
   - serial protocol
+- watchdog az change se to gui
 - web online signalisation (timeout 10s?)
 - on hover button
-- if range < 360, shown ends or dark another azimuth map
 - fix calibrate button url
 - if mqtt_server_ip[0]=0 then disable MQTT
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
 - nastaveni MAX PWM
 - vycistit kod
-x html ne jako smerova mapa, ale linearni stupnice
-x automaticka detekce smeru otaceni pri MAXpwm = automatikcky reverse rezim
-x kalibrace promene OneTurnCalibrateRaw
 
 Použití knihovny WiFi ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/WiFi
 Použití knihovny EEPROM ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/EEPROM
@@ -78,7 +76,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230321";
+const char* REV = "20230324";
 
 float NoEndstopZone = 0;
 float NoEndstopHighZone = 0;
@@ -88,6 +86,7 @@ float NoEndstopLowZone = 0;
 bool Reverse =  false;
 short CcwRaw = 0;
 short CwRaw = 0;
+short HardwareRev = 0;
 
 
 // set from GUI
@@ -1444,31 +1443,40 @@ void RotCalculate(){
   // overlap detect
   if(Azimuth < MaxRotateDegree/2 && AzimuthTarget < MaxRotateDegree/2){ // MaxRotateDegree/2 = HalfPoint
     //CCW
+    MqttPubString("Debug 1", String(AzimuthTarget), false);
   }else{
-    if(AzimuthTarget<MaxRotateDegree-360){  // if in overlap
+    MqttPubString("Debug 2", String(MaxRotateDegree), false);
+    if(MaxRotateDegree>360 && AzimuthTarget<MaxRotateDegree-360){  // if in overlap
       AzimuthTarget=AzimuthTarget+360;      // go to overlap
+      MqttPubString("Debug 3", String(AzimuthTarget), false);
     }
     //CW
   }
 
   // direction
   if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
+    MqttPubString("Debug 4", String(AzimuthTarget), false);
     if(AzimuthTarget>Azimuth){
+      MqttPubString("Debug 5", String(AzimuthTarget), false);
       Status=1;
       RunTimer();
     }else{
+      MqttPubString("Debug 6", String(AzimuthTarget), false);
       Status=-1;
       RunTimer();
     }
 
   // escape from the forbidden zone
   }else if(Azimuth<0 && AzimuthTarget>0){
+    MqttPubString("Debug 7", String(AzimuthTarget), false);
     Status=1;
     RunTimer();
   }else if(Azimuth>MaxRotateDegree && AzimuthTarget<MaxRotateDegree){
+    MqttPubString("Debug 8", String(AzimuthTarget), false);
     Status=-1;
     RunTimer();
   }else{
+    MqttPubString("Debug 9", String(MaxRotateDegree), false);
     AzimuthTarget=-1;
   }
 }
@@ -2860,10 +2868,10 @@ void http(){
             webClient.print(millis()/86400000);
             webClient.print(F(" days"));
           }
-          webClient.print(F(" | version: "));
+          webClient.print(F(" | FW: "));
           webClient.println(REV);
-          // webClient.print(F(" | PCB: "));
-          // webClient.println(HWREV);
+          webClient.print(F(" | HW: "));
+          webClient.println(HardwareRev);
           webClient.print(F(" | eth mac: "));
           webClient.print(MACString);
           webClient.println();
@@ -3809,6 +3817,10 @@ if(ACmotor==true){
   HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
   HtmlSrc +="<H1 style='color: #666; text-align: center;'>Setup<br><span style='font-size: 50%;'>(";
   HtmlSrc +=MACString;
+  HtmlSrc +="|";
+  HtmlSrc +=REV;
+  HtmlSrc +="|";
+  HtmlSrc +=String(HardwareRev);
   HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
   HtmlSrc += YOUR_CALL;
@@ -3964,6 +3976,10 @@ void handleCal() {
   HtmlSrc +="</style><link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>";
   HtmlSrc +="<H1 style='color: #666; text-align: center;'>Two calibration steps:<br><span style='font-size: 50%;'>(";
   HtmlSrc +=MACString;
+  HtmlSrc +="|";
+  HtmlSrc +=REV;
+  HtmlSrc +="|";
+  HtmlSrc +=String(HardwareRev);
   HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'>";
   HtmlSrc +="<table cellspacing='0' cellpadding='0'><form action='/cal' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>";
   HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>1. Rotate direction calibrate</span></td></tr>";

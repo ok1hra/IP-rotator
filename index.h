@@ -20,25 +20,31 @@ const char MAIN_page[] PROGMEM = R"=====(
 			position: absolute;
 			left: 0;
 			top: 0;
-			z-index: 1;
+			z-index: 2;
 		}
 		.form1{
 			margin: auto;
 			position: absolute;
 			left: 0;
 			top: 600px;
-			z-index: 1;
+			z-index: 2;
 		}
 		.form2{
 			margin: auto;
 			position: absolute;
 			left: 540px;
 			top: 600px;
-			z-index: 1;
+			z-index: 2;
 		}
 		.top{
 			margin: auto;
 			border: 0px solid #222222;
+			position: absolute;
+			left: 0;
+			top: 0;
+			z-index: 1;
+		}
+		.middle{
 			position: absolute;
 			left: 0;
 			top: 0;
@@ -74,17 +80,9 @@ const char MAIN_page[] PROGMEM = R"=====(
 	<div style="position: relative;">
 		<canvas class="mouse" id="Mouse" height="600" width="600"></canvas>
 		<canvas class="top" id="Azimuth" width="600" height="600">Your browser does not support the HTML5 canvas tag.</canvas>
+		<canvas class="middle" id="Static" width="600" height="600"></canvas>
 		<canvas class="bot" id="Map" width="600" height="600"></canvas>
 		<canvas class="underbot" id="DirLine" width="600" height="600"></canvas>
-
-		<!--<form class="form1" name="frm0" method="post">
-			<input type="text" name="ROT" size="3" value="303">
-			<input type="submit" value="ROTATE" style="background: #080;">
-		</form>
-		<form class="form2" name="STOP" method="post">
-			<input type="submit" value="<STOP>" style="background: ORANGE;">
-		</form>-->
-
 		<div class="second">
 			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
 				<span style="color: #000; background: #666; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
@@ -115,7 +113,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var BoxSize = 600;
 	var Target  = 0;
 	var AzShift = 0;
-	var AzRange = 450;
+	var AzRange = 0;
 	// var Azimuth = 122;
 	var AzimuthTmp = 0;
 	var AntRadiationAngle = 0;
@@ -154,6 +152,9 @@ const char MAIN_page[] PROGMEM = R"=====(
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				AzRange = this.responseText;
 				// console.log ('AzRange ' + AzRange);
+				AZ(Azimuth);
+				Static();
+				StaticBot();
 	    }
 	  };
 	  jhttp.open("GET", "readMax", true);
@@ -300,12 +301,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 				img1.onload = function () {
 						ctx.drawImage(img1, 0, 0, BoxSize, BoxSize);
 				};
-				// img1.src = 'https://hra.remoteqth.com/map.png';
 				img1.src = String(MapUrl);
-
-				// img1.src = "https://" + String(MapUrl);
-				// console.log ('img1 ' + img1);
-		    // img1.setAttribute("src", MapUrl);
 		}
 	}
 
@@ -333,14 +329,11 @@ const char MAIN_page[] PROGMEM = R"=====(
 				az.moveTo(BoxSize/2, BoxSize/2);
 			  az.lineTo(Xcoordinate(Number(AZtarget), BoxSize/2*0.9), Ycoordinate(Number(AZtarget), BoxSize/2*0.9));
 			}
-			// console.log ('Number(AZtargetTmp) ' +  Number(AZtargetTmp) );
 			// console.log ('Number(Azimuth) ' + Number(Azimuth) );
 
 		  az.lineWidth = 5;
 			if (Number(Azimuth) < 0 || Number(Azimuth) > Number(AzRange) ) {
 				az.strokeStyle = '#c0c0c0';
-				// console.log ('Azimuth ' + Azimuth);
-				// console.log ('AzRange ' + AzRange);
 			}else{
 				if (Status != 4) {
 					az.strokeStyle = "red";
@@ -403,15 +396,10 @@ const char MAIN_page[] PROGMEM = R"=====(
 			}
 		az.beginPath();
 			az.moveTo(BoxSize/2, BoxSize/2);
-			// az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)+Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)+Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
-			// az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift), Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift), Number(BoxSize)/2*0.9));
-			// az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
-
 			var CcwAngle = Number(AntRadiationAngle)/2;
 			for(var i=0;i<17;i++){
 				az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)-Number(CcwAngle)+Number(AntRadiationAngle)/16*i, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)-Number(CcwAngle)+Number(AntRadiationAngle)/16*i, Number(BoxSize)/2*0.9));
 			}
-			// az.arc(Xcenter, Ycenter, BoxSize/2*0.9, 0, 1.8 * Math.PI);
 			if (Number(Azimuth) < 0 || Number(Azimuth) > Number(AzRange) ) {
 				az.fillStyle = "rgba(255, 255, 255, 0.10)";
 			}else{
@@ -427,21 +415,20 @@ const char MAIN_page[] PROGMEM = R"=====(
 	}
 
 	function Static(){
-	  var con = document.getElementById("Azimuth");
-	  var angle = con.getContext("2d");
+	  var con = document.getElementById("Static");
 
 	  // overlap
 	  var overlap = con.getContext("2d");
-	  overlap.beginPath();
-	  // overlap.rotate(90 * Math.PI / 180);
-	  overlap.lineWidth = 8;
-	  overlap.strokeStyle = 'orange';
+		overlap.clearRect(0, 0, BoxSize, BoxSize);
+		overlap.lineWidth = 8;
+		overlap.strokeStyle = 'orange';
 		var START = 270+Number(AzShift);
 		var STOP  = 270+Number(AzShift)+Number(AzRange)-360;
-	  overlap.arc(Xcenter, Ycenter, BoxSize/2*0.9-8, Number(START) * Math.PI/180, Number(STOP) * Math.PI/180 );
-		// console.log ('start ' + START);
-		// console.log ('stop ' + STOP);
-	  overlap.stroke();
+		if(Number(AzRange)>360){
+		  overlap.beginPath();
+		  overlap.arc(Xcenter, Ycenter, BoxSize/2*0.9-8, Number(START) * Math.PI/180, Number(STOP) * Math.PI/180 );
+		  overlap.stroke();
+		}
 
 	  // direction
 	  var direction = con.getContext("2d");
@@ -450,6 +437,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  direction.lineWidth = 2;
 	  direction.strokeStyle = '#c0c0c0';
 	  direction.font = "20px Arial";
+		direction.textAlign = 'center';
+		direction.textBaseline = 'middle';
 	  direction.fillStyle = "#808080";
 	    for(var i=0;i<36;i++){
 	  		if(i %9 === 0){
@@ -463,20 +452,47 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  				direction.fillText(i*10, Xcoordinate(i*10, BoxSize/2), Ycoordinate(i*10, BoxSize/2));
 	  			}
 	  		}
-	    }
-	  	direction.fillStyle = "white";
+    	}
+  	direction.fillStyle = "white";
 	  direction.fillText("N", BoxSize/2, BoxSize*0.025);
 	  direction.fillText("E", BoxSize*0.975, BoxSize/2);
 	  direction.fillText("S", BoxSize/2, BoxSize* 0.975);
 	  direction.fillText("W", BoxSize*0.025, BoxSize/2);
 	  direction.stroke();
+
+		// darkzone if <360
+		if(AzRange<360){
+			direction.beginPath();
+			direction.lineWidth = 1;
+		  direction.strokeStyle = 'white';
+			direction.moveTo(BoxSize/2, BoxSize/2);
+			direction.lineTo(Xcoordinate(Number(AzShift), Number(BoxSize)/2*0.9), Ycoordinate(Number(AzShift), Number(BoxSize)/2*0.9));
+			direction.moveTo(BoxSize/2, BoxSize/2);
+			direction.lineTo(Xcoordinate(Number(AzShift) + Number(AzRange), Number(BoxSize)/2*0.9), Ycoordinate(Number(AzShift) + Number(AzRange), Number(BoxSize)/2*0.9));
+			direction.stroke();
+
+			if(Number(AzRange)+Number(AntRadiationAngle)<360){
+				direction.beginPath();
+					direction.fillStyle = "rgba(0, 0, 0, 0.5)";
+					var DarkRange = 360-Number(AzRange)-Number(AntRadiationAngle);
+					var Steps = (Number(DarkRange)-20)/10;
+					direction.moveTo(BoxSize/2, BoxSize/2);
+					direction.lineTo(Xcoordinate(Number(AzShift) + Number(AzRange) + Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(AzShift) + Number(AzRange) + Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
+					for(var i=0;i<Steps;i++){
+						direction.lineTo(Xcoordinate(Number(AzShift) + Number(AzRange) + Number(AntRadiationAngle)/2 + 10*(Number(i)+1), Number(BoxSize)/2*0.9), Ycoordinate(Number(AzShift) + Number(AzRange) + Number(AntRadiationAngle)/2 + 10*(Number(i)+1), Number(BoxSize)/2*0.9));
+					}
+					direction.lineTo(Xcoordinate(Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9), Ycoordinate(Number(AzShift)-Number(AntRadiationAngle)/2, Number(BoxSize)/2*0.9));
+				direction.fill();
+			}
+		}
+
 	}
 
 	function StaticBot(){
 	  var con = document.getElementById("DirLine");
 	  var dirline = con.getContext("2d");
 
-	  // direction line
+	  // direction line under map
 	  dirline.beginPath();
 	  dirline.lineWidth = 1;
 	  dirline.strokeStyle = '#606060';
