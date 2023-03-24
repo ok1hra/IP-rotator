@@ -89,6 +89,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 					<span style="color: #fff;" id="AntName"> </span> | PWR
 					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V | raw
 					<span style="font-weight: bold;" id="AZValue">0</span>&deg; |
+					<span id="OnlineStatus"></span> |
 					<a href="/set">SETUP</a>
 				</span>
 				<br><br>
@@ -120,6 +121,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var Status = 4;
 	var StatusTmp = 0;
 	var MapUrl = 0;
+	var OnlineTimeStamp = 0;
 
 	var Xcenter = BoxSize/2;
 	var Ycenter = BoxSize/2;
@@ -128,11 +130,20 @@ const char MAIN_page[] PROGMEM = R"=====(
 	// setInterval(function.reload(){ map();}, 600000); //mSeconds update rate
 	setInterval(function() { map();}, 600000); //mSeconds update rate
 	setInterval(function() { getData();}, 500); //mSeconds update rate
+	setInterval(function() { CheckOnline();}, 2000); //mSeconds update rate
 	getSet();
 	setTimeout(() => { map(); }, 1000);
 	Static();
 	StaticBot();
 	var AZtarget;
+
+	function CheckOnline() {
+		if( new Date().getTime() - Number(OnlineTimeStamp) > 1500){
+			document.getElementById("OnlineStatus").innerHTML = "<span style='color: red;'>&#8226;</span>";
+		}else{
+			document.getElementById("OnlineStatus").innerHTML = "<span style='color: white;'>&#8226;</span>";
+		}
+	}
 
 	function getSet() {
 	  var ihttp = new XMLHttpRequest();
@@ -227,7 +238,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 					StaticBot();
 					AzimuthTmp=Azimuth;
 				}
-				// console.log ('getData.Azimuth ' + Azimuth);
+				OnlineTimeStamp = new Date().getTime();
+				// console.log ('OnlineTimer ' + OnlineTimer);
 	    }
 	  };
 	  yhttp.open("GET", "readAZ", true);

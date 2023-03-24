@@ -43,21 +43,22 @@ Changelog:
 + software endstop zone
 + darkzone map, if range < 360
 
++ watchdog speed limit in gui
++ HW detection show in GUI
++ web online status (timeout 2s)
++ on hover button
++ fix url button
+
+
 ToDo
 - need implement
-  - HW detection and show in GUI
   - AC functionality
   - AZ potentiometer
   - AZ key
   - LED
   - serial protocol
-- watchdog az change se to gui
-- web online signalisation (timeout 10s?)
-- on hover button
-- fix calibrate button url
 - if mqtt_server_ip[0]=0 then disable MQTT
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
-- nastaveni MAX PWM
 - vycistit kod
 
 Použití knihovny WiFi ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/WiFi
@@ -86,7 +87,8 @@ float NoEndstopLowZone = 0;
 bool Reverse =  false;
 short CcwRaw = 0;
 short CwRaw = 0;
-short HardwareRev = 0;
+short HardwareRev = 99;
+unsigned int OneTurnLimitSec = 0;
 
 
 // set from GUI
@@ -135,19 +137,30 @@ const char* password = "";
 
 #include "esp_adc_cal.h"
 const int AzimuthPin    = 39;  // analog
-float AzimuthValue        = 0.0;
-int Azimuth              = 0;
-int AzimuthTarget        = 0;
-int Status               = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
-const int CwCcwButtPin  = 36;  // analog
-int CwCcwButtValue      = 0;
-const int HWidPin       = 34;  // analog
-float HWidValue           = 0.0;
+float AzimuthValue      = 0.0;
+int Azimuth             = 0;
+int AzimuthTarget       = 0;
+int Status              = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
 const int VoltagePin    = 35;  // analog
-float VoltageValue        = 0.0;
-
+float VoltageValue      = 0.0;
 const int ReversePin    = 16;  //
 const int PwmPin        = 4;   //
+
+const int HWidPin       = 34;  // analog
+int HWidValue           = 0;
+// need implemented
+
+// HardwareRev 1
+const int ACcwPin       = 2;
+const int BrakePin      = 33;
+const int CwCcwButtPin  = 36;  // analog
+int CwCcwButtValue      = 0;
+const int AZmasterPin   = 32;  // analog
+float AZmasterValue     = 0.0;
+const int LedRPin       = 14;
+const int LedGPin       = 13;
+const int LedBPin       = 12;
+
 // setting PWM properties
 const int PwmFreq = 1000;
 const int ledChannel = 0;
@@ -237,9 +250,6 @@ int i = 0;
 39|Float   4|1234.1234
 43|Double  8|123456789.12345679
 51|Bool    1|1
-52|String   |I love ESP32.
-66|String   |Thank You Espressif!
-
 
 0-1   - NET_ID
 2-22  - RotName
@@ -259,6 +269,7 @@ int i = 0;
 165-166 - MQTT_PORT
 167-168 - none
 169-219 - MapUrl
+220-221 - OneTurnLimitSec
 
 231-234 - Altitude 4
 // 232 - SpeedAlert 4
@@ -530,17 +541,29 @@ String AprsCoordinates;
 
 void setup() {
 
-
   pinMode(AzimuthPin, INPUT);
   pinMode(CwCcwButtPin, INPUT);
   pinMode(HWidPin, INPUT);
     HWidValue = readADC_Cal(analogRead(HWidPin));
+    if(HWidValue<500){
+      HardwareRev=0;
+    }else if(HWidValue>500){
+      HardwareRev=1;
+    }
   pinMode(VoltagePin, INPUT);
   pinMode(ReversePin, OUTPUT);
 
   ledcSetup(ledChannel, PwmFreq, PwmResolution);
   ledcAttachPin(PwmPin, ledChannel);
-  // ledcWrite(ledChannel, 0);
+  ledcWrite(ledChannel, 0);
+
+  // HardwareRev 1
+  pinMode(AZmasterPin, INPUT);
+  pinMode(ACcwPin, OUTPUT);
+  pinMode(BrakePin, OUTPUT);
+  pinMode(LedRPin, OUTPUT);
+  pinMode(LedGPin, OUTPUT);
+  pinMode(LedBPin, OUTPUT);
 
   // for (int i = 0; i < 8; i++) {
   //   pinMode(TestPin[i], INPUT);
@@ -919,6 +942,14 @@ void setup() {
     MQTT_PORT = EEPROM.readUShort(165);
   }
 
+  // OneTurnLimitSec
+  if(EEPROM.read(220)==0xff){
+    OneTurnLimitSec=360;
+  }else{
+    OneTurnLimitSec = EEPROM.readUShort(220);
+  }
+
+
 
   // RPM
   MinRpmPulse = EEPROM.readLong(169);
@@ -1290,7 +1321,7 @@ void Watchdog(){
     ADCTimer=millis();
   }
 
-  static long MqttTimer = 0;
+  static long AZchangeTimer = 0;
   static int AzimuthTmp = 0;
   static float VoltageValueTmp = 0;
   static int StatusTmp = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
@@ -1313,37 +1344,32 @@ void Watchdog(){
   }
 
   // info if change AZ and voltage
-  if( (Status==0 && millis()-MqttTimer >2000) || (Status!=0 && millis()-MqttTimer >100) ){
-    // if(abs(AzimuthTmp-Azimuth)>2){
+  if( (Status==0 && millis()-AZchangeTimer >2000) || (Status!=0 && millis()-AZchangeTimer >100) ){
     if(AzimuthTmp!=Azimuth){
       MqttPubString("Azimuth", String(Azimuth), false);
-      // if(Status==0){
-      //   // MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
-      //   MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
-      // }
       AzimuthTmp=Azimuth;
     }
     if(abs(VoltageValueTmp-VoltageValue)>0.5){
       MqttPubString("VoltageValue", String(VoltageValue), false);
       VoltageValueTmp=VoltageValue;
     }
-    MqttTimer=millis();
+    AZchangeTimer=millis();
   }
 
   if(Status!=0){
-    // status watchdog
-    if(millis()-StatusWatchdogTimer > 90000){ // after 90sec
+    // status watchdog timeout
+    if(millis()-StatusWatchdogTimer > 120000){ // after 90sec
       if(Status<0){
         Status=-3;
       }else{
         Status=3;
       }
-      MqttPubString("Debug", "STOP by time watchdog", false);
+      MqttPubString("Debug", "Stopped by 120s timeout", false);
       StatusWatchdogTimer = StatusWatchdogTimer+5000; // next 5sec check
     }
     // Azimuth change watchdog
     if(millis()-RotateWatchdogTimer > 10000){    // check every 10 sec
-      if(abs(AzimuthWatchdog-Azimuth)>5){
+      if(abs(AzimuthWatchdog-Azimuth)> 360/(OneTurnLimitSec/10) ){ // OneTurnLimitSec 90 = 360/90/10
         RotateWatchdogTimer=millis();
         AzimuthWatchdog=Azimuth;
       }else{
@@ -1353,7 +1379,7 @@ void Watchdog(){
           Status=3;
         }
         RotateWatchdogTimer=millis();
-        MqttPubString("Debug", "STOP by AZ watchdog", false);
+        MqttPubString("Debug", "Stopped after not reaching "+String(360/(OneTurnLimitSec/10) )+"° change in 10s", false);
       }
     }
   }
@@ -1368,7 +1394,7 @@ void Watchdog(){
           }else{
             Status=3;
           }
-          MqttPubString("Debug", "STOP by under voltage 11V POE", false);
+          MqttPubString("Debug", "Stopped by under voltage 11V POE", false);
         }
     }
     DCunderVoltageWatchdog=millis();
@@ -1443,40 +1469,31 @@ void RotCalculate(){
   // overlap detect
   if(Azimuth < MaxRotateDegree/2 && AzimuthTarget < MaxRotateDegree/2){ // MaxRotateDegree/2 = HalfPoint
     //CCW
-    MqttPubString("Debug 1", String(AzimuthTarget), false);
   }else{
-    MqttPubString("Debug 2", String(MaxRotateDegree), false);
     if(MaxRotateDegree>360 && AzimuthTarget<MaxRotateDegree-360){  // if in overlap
       AzimuthTarget=AzimuthTarget+360;      // go to overlap
-      MqttPubString("Debug 3", String(AzimuthTarget), false);
     }
     //CW
   }
 
   // direction
   if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
-    MqttPubString("Debug 4", String(AzimuthTarget), false);
     if(AzimuthTarget>Azimuth){
-      MqttPubString("Debug 5", String(AzimuthTarget), false);
       Status=1;
       RunTimer();
     }else{
-      MqttPubString("Debug 6", String(AzimuthTarget), false);
       Status=-1;
       RunTimer();
     }
 
   // escape from the forbidden zone
   }else if(Azimuth<0 && AzimuthTarget>0){
-    MqttPubString("Debug 7", String(AzimuthTarget), false);
     Status=1;
     RunTimer();
   }else if(Azimuth>MaxRotateDegree && AzimuthTarget<MaxRotateDegree){
-    MqttPubString("Debug 8", String(AzimuthTarget), false);
     Status=-1;
     RunTimer();
   }else{
-    MqttPubString("Debug 9", String(MaxRotateDegree), false);
     AzimuthTarget=-1;
   }
 }
@@ -2902,7 +2919,7 @@ void http(){
             webClient.println(ETH.localIP());
             webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a><br><a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=740,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Azimuth Map Control</button></a>"));
+            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=740,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Azimuth Map Control</button></a>"));
           #endif
           // END STATUS
           webClient.println(F("              </p>"));
@@ -3509,6 +3526,7 @@ void handleSet() {
   String startazimuthERR= "";
   String maxrotatedegreeERR= "";
   String antradiationangleERR= "";
+  String oneturnlimitsecERR= "";
   String mapurlERR= "";
   String mqttERR= "";
   String mqttportERR= "";
@@ -3530,9 +3548,9 @@ void handleSet() {
     && ajaxserver.hasArg("antradiationangle") == false \
     && ajaxserver.hasArg("edstopszone") == false \
   ) {
-    MqttPubString("Debug", "Form not valid", false);
+    // MqttPubString("Debug", "Form not valid", false);
   }else{
-    MqttPubString("Debug", "Form valid", false);
+    // MqttPubString("Debug", "Form valid", false);
 
     // YOUR_CALL
     if ( ajaxserver.arg("yourcall").length()<1 || ajaxserver.arg("yourcall").length()>20){
@@ -3710,6 +3728,21 @@ void handleSet() {
       }
     }
 
+    // 220 OneTurnLimitSec
+    if ( ajaxserver.arg("oneturnlimitsec").length()<2 || ajaxserver.arg("oneturnlimitsec").toInt()<20 || ajaxserver.arg("oneturnlimitsec").toInt()>600){
+      oneturnlimitsecERR= " Out of range number 20-600";
+    }else{
+      if(OneTurnLimitSec == ajaxserver.arg("oneturnlimitsec").toInt()){
+        oneturnlimitsecERR="";
+      }else{
+        oneturnlimitsecERR="";
+        OneTurnLimitSec = ajaxserver.arg("oneturnlimitsec").toInt();
+        EEPROM.writeUShort(220, OneTurnLimitSec);
+        // EEPROM.commit();
+        MqttPubString("OneTurnLimitSec", String(OneTurnLimitSec), true);
+      }
+    }
+
     // motor
     // MqttPubString("Debug Motor", String(ajaxserver.arg("motor")), false);
     // MqttPubString("Debug Motor2", String(ajaxserver.hasArg("motor")), false);
@@ -3789,7 +3822,6 @@ void handleSet() {
     EEPROM.commit();
   } // else form valid
 
-  // MqttPubString("Debug Endstop", String(Endstop), false);
 if(Endstop==true){
   edstopsCHECKED= "checked";
   edstopsSTYLE="";
@@ -3811,7 +3843,7 @@ if(ACmotor==true){
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'><meta http-equiv = 'refresh' content = '600; url = /'>\n";
-  HtmlSrc +="<style type='text/css'> button {padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} .button transition-duration: 0.4s;} .button:hover {background-color: #fff;} table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
+  HtmlSrc +="<style type='text/css'> button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button#go:hover {background-color: orange;} table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
   HtmlSrc +=".tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
   HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
   HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
@@ -3821,6 +3853,8 @@ if(ACmotor==true){
   HtmlSrc +=REV;
   HtmlSrc +="|";
   HtmlSrc +=String(HardwareRev);
+  HtmlSrc +="|";
+  HtmlSrc +=String(HWidValue);
   HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
   HtmlSrc += YOUR_CALL;
@@ -3865,6 +3899,12 @@ if(ACmotor==true){
     HtmlSrc += edstopszoneERR;
     HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-15 tenths of a Volt</span></span></td></tr>\n";
 
+  HtmlSrc +="<tr><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
+  HtmlSrc += OneTurnLimitSec;
+  HtmlSrc +="'>seconds per one turn <span style='color:red;'>";
+  HtmlSrc += oneturnlimitsecERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 300px;'>Allowed range 20-600sec<br>Lower speed limit activating the watchdog<br>Use a number 50% higher than the actual speed of your rotator</span></span></td></tr>\n";
+
   HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>Motor supply:</label></td><td><select name='motor' id='motor'><option value='0'";
   HtmlSrc += motorSELECT0;
   HtmlSrc +=">DC</option><option value='1'";
@@ -3883,11 +3923,11 @@ if(ACmotor==true){
   HtmlSrc += mqttportERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
 
-  HtmlSrc +="<tr><td class='tdr'></td><td><button style='background-color: #ccc;'>&#10004; Change</button></form></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
 
   HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
-  HtmlSrc +="<tr><td class='tdr'><a href='/'><button style='background-color: #060;'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal'><button style='background-color: #666;'>Calibrate</button></a></td></tr>";
+  HtmlSrc +="<tr><td class='tdr'><a href='/'><button id='go'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></td></tr>";
   HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
   HtmlSrc +="</body></html>\n";
 
@@ -3902,7 +3942,6 @@ void handleCal() {
     }else if(Status>0){
       Status=3;
     }
-    // MqttPubString("Debug stop", String(stop), false);
   }
 
   if ( ajaxserver.hasArg("cw")==1 ){
@@ -3956,7 +3995,8 @@ void handleCal() {
   String ReverseCOLOR= "";
   String ReverseSTATUS= "";
   if(Reverse==true){
-    ReverseCOLOR= " style='background-color: #c00; color: #FFF;'";
+    // ReverseCOLOR= " style='background-color: #c00; color: #FFF;'";
+    ReverseCOLOR= " class='red'";
     ReverseSTATUS= "ON";
   }else{
     ReverseCOLOR= "";
@@ -3965,8 +4005,8 @@ void handleCal() {
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>CALIBRATE</title>";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>";
-  HtmlSrc +="<style type='text/css'>button {padding: 5px 20px 5px 20px; border: none;	-webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px; background-color: #ccc; color: #333;}";
-  HtmlSrc +="table, th, td { color: #fff; border: 0px; border-color: #666; border-style: solid; margin: 0px;}";
+  HtmlSrc +="<style type='text/css'>button {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button:hover {background-color: orange;} ";
+  HtmlSrc +=".red {background-color: #c00; color: #FFF;} table, th, td { color: #fff; border: 0px; border-color: #666; border-style: solid; margin: 0px;}";
   HtmlSrc +=".tdl { text-align: left; padding: 10px;}";
   HtmlSrc +=".tdc { text-align: center; padding: 10px;}";
   HtmlSrc +=".tdr { text-align: right; padding: 10px;}";
@@ -3980,12 +4020,14 @@ void handleCal() {
   HtmlSrc +=REV;
   HtmlSrc +="|";
   HtmlSrc +=String(HardwareRev);
+  HtmlSrc +="|";
+  HtmlSrc +=String(HWidValue);
   HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'>";
   HtmlSrc +="<table cellspacing='0' cellpadding='0'><form action='/cal' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>";
   HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>1. Rotate direction calibrate</span></td></tr>";
   HtmlSrc +="<tr style='background-color: #666;'>";
   HtmlSrc +="<td class='tdr'><button id='ccw' name='ccw'>&#8630; CCW</button></td>";
-  HtmlSrc +="<td class='tdc'><button id='stop' name='stop'>STOP</button></td>";
+  HtmlSrc +="<td class='tdc'><button id='stop' name='stop'>&#10008; STOP</button></td>";
   HtmlSrc +="<td class='tdl'><button id='cw' name='cw'>CW &#8631;</button></td>";
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><button id='reverse' name='reverse'";
@@ -3998,7 +4040,6 @@ void handleCal() {
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td>";
   HtmlSrc +="</tr><tr>";
-  // HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'>SET AZIMUTH (<span id='AZadcValue'>0</span>V)</td>";
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>2. Azimuth calibrate</span></td>";
   HtmlSrc +="</tr><tr>";
 
@@ -4009,8 +4050,12 @@ void handleCal() {
   HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'>SAVE CW &#8677;</button></td>";
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'><span style='color: #ccc;'>Instruction:</span> rotate to both CW/CCW ends and save</td>";
-  HtmlSrc +="</tr><tr><td></td><td style='height: 42px;'></td></tr>";
-  HtmlSrc +="<tr><td class='tdc' colspan='3'><a href='/'><button style='background-color: #060;'>&#8617; Back to Control</button></a>&nbsp;&nbsp;<a href='/set'><button style='background-color: #666;'>Setup</button></a></td></tr>";
+  // HtmlSrc +="</tr><tr><td></td><td style='height: 42px;'></td></tr>";
+  // HtmlSrc +="<tr><td class='tdc' colspan='3'><a href='http://";
+  // HtmlSrc +=String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]);
+  // HtmlSrc +=":88/'><button>&#8617; Back to Control</button></a>&nbsp;&nbsp;<a href='http://";
+  // HtmlSrc +=String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]);
+  // HtmlSrc +=":88/set'><button>&#8617; Setup</button></a></td></tr>";
   HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></p></span></div>";
 
   String s = CAL_page; //Read HTML contents
