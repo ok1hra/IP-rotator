@@ -89,11 +89,11 @@ const char MAIN_page[] PROGMEM = R"=====(
 					<span style="color: #fff;" id="AntName"> </span> | PWR
 					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V | raw
 					<span style="font-weight: bold;" id="AZValue">0</span>&deg; |
-					<span id="OnlineStatus"></span> |
-					<a href="/set">SETUP</a>
+					<a href="/set" onclick="window.open( this.href, this.href, 'width=700,height=840,left=0,top=0,menubar=no,location=no,status=no' ); return false;"); return false;\">SETUP</a>
+
 				</span>
-				<br><br>
-				<span style="color: #333;" id="mac"> </span>
+				<br>
+				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
 			</p>
 		</div>
 	</div>
@@ -139,9 +139,9 @@ const char MAIN_page[] PROGMEM = R"=====(
 
 	function CheckOnline() {
 		if( new Date().getTime() - Number(OnlineTimeStamp) > 1500){
-			document.getElementById("OnlineStatus").innerHTML = "<span style='color: red;'>&#8226;</span>";
+			document.getElementById("OnlineStatus").innerHTML = " | <span style='color: red;'>&#8226;</span> Offline";
 		}else{
-			document.getElementById("OnlineStatus").innerHTML = "<span style='color: white;'>&#8226;</span>";
+			document.getElementById("OnlineStatus").innerHTML = " | <span style='color: white;'>&#8226;</span> Connected";
 		}
 	}
 

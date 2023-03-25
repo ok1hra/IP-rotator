@@ -42,23 +42,23 @@ Changelog:
 + calibrate gui set
 + software endstop zone
 + darkzone map, if range < 360
-
 + watchdog speed limit in gui
 + HW detection show in GUI
 + web online status (timeout 2s)
 + on hover button
 + fix url button
-
++ diffrent low/high endstop zone
++ control key
++ AC functionality
++ AZ potentiometer - NOT TESTED
++ LED - NOT TESTED
 
 ToDo
 - need implement
-  - AC functionality
-  - AZ potentiometer
-  - AZ key
-  - LED
   - serial protocol
 - if mqtt_server_ip[0]=0 then disable MQTT
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
+- telnet
 - vycistit kod
 
 Použití knihovny WiFi ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/WiFi
@@ -77,19 +77,15 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230324";
+const char* REV = "20230325";
 
-float NoEndstopZone = 0;
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
-
-// not impemented
 bool Reverse =  false;
 short CcwRaw = 0;
 short CwRaw = 0;
 short HardwareRev = 99;
 unsigned int OneTurnLimitSec = 0;
-
 
 // set from GUI
 String YOUR_CALL = "";
@@ -148,13 +144,11 @@ const int PwmPin        = 4;   //
 
 const int HWidPin       = 34;  // analog
 int HWidValue           = 0;
-// need implemented
-
 // HardwareRev 1
 const int ACcwPin       = 2;
 const int BrakePin      = 33;
 const int CwCcwButtPin  = 36;  // analog
-int CwCcwButtValue      = 0;
+int CwCcwButtValue      = 4095;
 const int AZmasterPin   = 32;  // analog
 float AZmasterValue     = 0.0;
 const int LedRPin       = 14;
@@ -261,7 +255,7 @@ int i = 0;
 31-32 - CcwRaw
 33-34 - CwRaw
 35 - Reverse
-36 - NoEndstopZone
+36 - NoEndstopLowZone
 37-40 - Authorised telnet client IP
 41-140 - Authorised telnet client key
 141-160 - YOUR_CALL
@@ -270,6 +264,7 @@ int i = 0;
 167-168 - none
 169-219 - MapUrl
 220-221 - OneTurnLimitSec
+222 - NoEndstopHighZone
 
 231-234 - Altitude 4
 // 232 - SpeedAlert 4
@@ -545,13 +540,15 @@ void setup() {
   pinMode(CwCcwButtPin, INPUT);
   pinMode(HWidPin, INPUT);
     HWidValue = readADC_Cal(analogRead(HWidPin));
-    if(HWidValue<500){
+    if(HWidValue<=150){
       HardwareRev=0;
-    }else if(HWidValue>500){
-      HardwareRev=1;
+    }else if(HWidValue>150){
+      HardwareRev=1;  // 319
     }
   pinMode(VoltagePin, INPUT);
   pinMode(ReversePin, OUTPUT);
+    digitalWrite(ReversePin, LOW);
+
 
   ledcSetup(ledChannel, PwmFreq, PwmResolution);
   ledcAttachPin(PwmPin, ledChannel);
@@ -560,10 +557,15 @@ void setup() {
   // HardwareRev 1
   pinMode(AZmasterPin, INPUT);
   pinMode(ACcwPin, OUTPUT);
+    digitalWrite(ACcwPin, LOW);
   pinMode(BrakePin, OUTPUT);
+    digitalWrite(BrakePin, LOW);
   pinMode(LedRPin, OUTPUT);
+    digitalWrite(LedRPin, LOW);
   pinMode(LedGPin, OUTPUT);
+    digitalWrite(LedGPin, LOW);
   pinMode(LedBPin, OUTPUT);
+    digitalWrite(LedBPin, LOW);
 
   // for (int i = 0; i < 8; i++) {
   //   pinMode(TestPin[i], INPUT);
@@ -654,7 +656,7 @@ void setup() {
 
   #if defined(BMP280)
     // I2Cone.begin(0x76, I2C_SDA, I2C_SCL, 100000); // SDA pin, SCL pin, 100kHz frequency
-    I2Cone.begin(I2C_SDA, I2C_SCL, (uint32_t)100000); // SDA pin, SCL pin, 100kHz frequency
+    // I2Cone.begin(I2C_SDA, I2C_SCL, (uint32_t)100000); // SDA pin, SCL pin, 100kHz frequency
     Serial.print("BMP280 sensor init ");
     if(!bmp.begin(0x76)){
       Serial.println("failed!");
@@ -674,7 +676,7 @@ void setup() {
   #endif
 
   #if defined(HTU21D) || defined(SHT)
-    Wire.begin(I2C_SDA, I2C_SCL);
+    // Wire.begin(I2C_SDA, I2C_SCL);
   #endif
   #if defined(HTU21D)
     Serial.print("HTU21D sensor init ");
@@ -706,7 +708,7 @@ void setup() {
   #endif
 
   #if !defined(BMP280) && !defined(HTU21D)
-    Wire.begin(I2C_SDA, I2C_SCL);
+    // Wire.begin(I2C_SDA, I2C_SCL);
   #endif
 
   // // SD
@@ -829,18 +831,31 @@ void setup() {
     }
   }
 
-  // 36 - NoEndstopZone
+  // 36 - NoEndstopLowZone
   if(EEPROM.read(36)==0xff){
-    NoEndstopZone = 0.4;
+    NoEndstopLowZone = 0.4;
   }else{
     if(EEPROM.readByte(36)<16){
-      NoEndstopZone = float(EEPROM.readByte(36))/10;
+      NoEndstopLowZone = float(EEPROM.readByte(36))/10;
     }else{
-      NoEndstopZone = 0.4;
+      NoEndstopLowZone = 0.4;
     }
   }
-  NoEndstopHighZone = 3.3 - NoEndstopZone;
-  NoEndstopLowZone = NoEndstopZone;
+  // NoEndstopHighZone = 3.3 - NoEndstopLowZone;
+  // NoEndstopLowZone = NoEndstopLowZone;
+
+  // 222 - NoEndstopHighZone
+  if(EEPROM.read(222)==0xff){
+    NoEndstopHighZone = 2.9;
+  }else{
+    if(EEPROM.readByte(222)>15 && EEPROM.readByte(222)<34){
+      NoEndstopHighZone = float(EEPROM.readByte(222))/10;
+    }else{
+      NoEndstopHighZone = 2.9;
+    }
+  }
+  // NoEndstopHighZone = 3.3 - NoEndstopLowZone;
+  // NoEndstopLowZone = NoEndstopLowZone;
 
   // 2-encoder range
   NumberOfEncoderOutputs = EEPROM.read(2);
@@ -1227,7 +1242,8 @@ void setup() {
    ajaxserver.on("/set", handleSet);
    ajaxserver.on("/cal", handleCal);
    ajaxserver.on("/readEndstop", handleEndstop);
-   ajaxserver.on("/readEndstopZone", handleEndstopZone);
+   ajaxserver.on("/readEndstopLowZone", handleEndstopLowZone);
+   ajaxserver.on("/readEndstopHighZone", handleEndstopHighZone);
    ajaxserver.on("/readCwraw", handleCwraw);
    ajaxserver.on("/readCcwraw", handleCcwraw);
    ajaxserver.on("/readMAC", handleMAC);
@@ -1272,57 +1288,79 @@ uint32_t readADC_Cal(int ADC_Raw)
 }
 //-------------------------------------------------------------------------------------------------------
 void Watchdog(){
-  /* 3D print rotator azimuth potentiometer to antenna transfer ratio: 2x
-  RAW         0-4095
-  calibrate 142-3139 (dif 2997)
-
-                       1T                   2T                  3T       Potentiometer turn
-  -45°   0°       90°       180°      270°      360°     *[1]  *[2]      Azimuth
-    '....|____'____|____'____|____'____|____'____|____'____|....'
-    1    3                                       2         2    3        Calibrate RAW (2,775 per 1°)
-    4    9                                       6         8    1
-    2    2                                       0         8    3
-                                                 0         9?   9
-  */
-
-  // read ADC
-  // const unsigned int CCWlimitRaw = 142+2997/12;
-  // static unsigned int OneTurnCalibrateRaw = 2600;     // ----------------- need procedure fo callibrate
-  // const unsigned int CWlimit = 3139-2997/12;
-  // MaxRotateDegree = map(CWlimit, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[1]
-  // // static unsigned int MaxRotateDegree = CalibrateRawToDeg(CWlimit);     // *[1]
-  // // static unsigned int MaxLimitDegree = map(3139, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);     // *[2]
-  // static unsigned int MaxLimitDegree = map(3139, 392, 2600, 0, 360);     // *[2]
-  // // static unsigned int MaxLimitDegree = CalibrateRawToDeg(3139);
-
   static long ADCTimer = 0;
   static long ADCCounter = 0;
   static int AZBuffer = 0;
+  static int AZmasterBuffer = 0;
   static float VoltageBuffer = 0;
   if(millis()-ADCTimer > 5){
     AZBuffer = AZBuffer + readADC_Cal(analogRead(AzimuthPin));
+    AZmasterBuffer = AZmasterBuffer + readADC_Cal(analogRead(AZmasterPin));
     // R divider | 12,95/2,95=4,38983050847458
     VoltageBuffer = VoltageBuffer + readADC_Cal(analogRead(VoltagePin))/1000.0*4.39;
     ADCCounter ++;
     if(ADCCounter > 34){
       AzimuthValue = AZBuffer/35;
+      AZmasterValue = AZmasterBuffer/35;
       VoltageValue = VoltageBuffer/35;
       ADCCounter = 0;
       AZBuffer = 0;
+      AZmasterBuffer = 0;
       VoltageBuffer = 0;
       CwCcwButtValue = analogRead(CwCcwButtPin);
     }
-
-    // Azimuth=map(AzimuthValue, 142, 3139, -45, 495);
-    // Azimuth=map(AzimuthValue, CCWlimitRaw, OneTurnCalibrateRaw, 0, 360);
     Azimuth=map(AzimuthValue, CcwRaw, CwRaw, 0, MaxRotateDegree);
-
-    // Azimuth=CalibrateRawToDeg(AzimuthValue);
     ADCTimer=millis();
+  }
+
+  // AZ master potentiometer - NOT TESTED
+
+  // static bool FirstReset = false;
+  // static long AZmasterChangeTimer = 0;
+  // static int AZtarget = 0;
+  // static int AZtargetTmp = 0;
+  // if(FirstReset==false && AzimuthValue!=0){
+  //   AZmasterValue=AzimuthValue;
+  //   FirstReset = true;
+  // }
+  // if( Status==0 && millis()-AZmasterChangeTimer >1000 && FirstReset==true){
+  //   AZtarget=map(AZmasterValue, 142, 3139, 0, 360);
+  //   if(AZtarget!=AZtargetTmp && AZtarget!=Azimuth){
+  //     AzimuthTarget=AZtarget;
+  //     MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
+  //     AZtargetTmp=AZtarget;
+  //     RotCalculate();
+  //   }
+  //   AZmasterChangeTimer=millis();
+  // }
+
+  // KEY
+  static bool RunByKey = false;
+  if(CwCcwButtValue<=100 && Status>=0){
+    if(Status==0){
+      Status=1;
+      RunByKey=true;
+    }
+    RunTimer();
+  }else if(CwCcwButtValue>100 && CwCcwButtValue<3000 && Status<=0){
+    if(Status==0){
+      Status=-1;
+      RunByKey=true;
+    }
+    RunTimer();
+  }else if(RunByKey==true){
+    if(Status==-2){
+      Status=-3;
+      RunByKey=false;
+    }else if(Status==2){
+      Status=3;
+      RunByKey=false;
+    }
   }
 
   static long AZchangeTimer = 0;
   static int AzimuthTmp = 0;
+  static int CwCcwButtValueTmp = 0;
   static float VoltageValueTmp = 0;
   static int StatusTmp = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
   static String StatusStr = "";
@@ -1341,6 +1379,7 @@ void Watchdog(){
     MqttPubString("StatusHuman", StatusStr, false);
     // MqttPubString("Status", String(Status+4), false);
     StatusTmp=Status;
+    LedStatus();
   }
 
   // info if change AZ and voltage
@@ -1348,6 +1387,10 @@ void Watchdog(){
     if(AzimuthTmp!=Azimuth){
       MqttPubString("Azimuth", String(Azimuth), false);
       AzimuthTmp=Azimuth;
+    }
+    if(CwCcwButtValueTmp!=CwCcwButtValue){
+      MqttPubString("CwCcwButtValue", String(CwCcwButtValue), false);
+      CwCcwButtValueTmp=CwCcwButtValue;
     }
     if(abs(VoltageValueTmp-VoltageValue)>0.5){
       MqttPubString("VoltageValue", String(VoltageValue), false);
@@ -1465,6 +1508,42 @@ void Watchdog(){
 
 //-------------------------------------------------------------------------------------------------------
 
+// LED - NOT TESTED
+void LedStatus(){
+  switch (Status) {
+    case -3: {
+      digitalWrite(LedRPin, HIGH);
+      digitalWrite(LedGPin, HIGH);
+      break; }
+    case -2: {
+      digitalWrite(LedRPin, HIGH);
+      digitalWrite(LedGPin, LOW);
+      break; }
+    case -1: {
+      digitalWrite(LedRPin, HIGH);
+      digitalWrite(LedGPin, HIGH);
+      break; }
+    case  0: {
+      digitalWrite(LedRPin, LOW);
+      digitalWrite(LedGPin, HIGH);
+      digitalWrite(LedBPin, LOW);
+      break; }
+    case  1: {
+      digitalWrite(LedRPin, HIGH);
+      digitalWrite(LedGPin, HIGH);
+      break; }
+    case  2: {
+      digitalWrite(LedRPin, HIGH);
+      digitalWrite(LedGPin, LOW);
+      break; }
+    case  3: {
+      digitalWrite(LedRPin, HIGH);
+      digitalWrite(LedGPin, HIGH);
+      break; }
+  }
+}
+//-------------------------------------------------------------------------------------------------------
+
 void RotCalculate(){
   // overlap detect
   if(Azimuth < MaxRotateDegree/2 && AzimuthTarget < MaxRotateDegree/2){ // MaxRotateDegree/2 = HalfPoint
@@ -1552,20 +1631,30 @@ void RunByStatus(){
   // }else if( (Azimuth>=0 && Azimuth<=450) ){
     switch (Status) {
       case -3: {
-        if(millis()-PwmTimer > PwmDwnDelay){
-          if(dutyCycle!=0){
-            dutyCycle--;
+        if(ACmotor==false){
+          //DC
+          if(millis()-PwmTimer > PwmDwnDelay){
+            if(dutyCycle!=0){
+              dutyCycle--;
+            }
+            ledcWrite(ledChannel, dutyCycle);
+            PwmTimer=millis();
+            if(dutyCycle<1){
+              dutyCycle=0;
+              ledcWrite(ledChannel, 0);
+              // ReverseProcedure(false);
+              digitalWrite(ReversePin, LOW);
+              Status=0;
+              AzimuthTarget=-1;
+            }
           }
-          ledcWrite(ledChannel, dutyCycle);
-          PwmTimer=millis();
-          if(dutyCycle<1){
-            dutyCycle=0;
-            ledcWrite(ledChannel, 0);
-            // ReverseProcedure(false);
-            digitalWrite(ReversePin, LOW);
-            Status=0;
-            AzimuthTarget=-1;
-          }
+        }else{
+          //AC
+          digitalWrite(ACcwPin, LOW);
+          digitalWrite(ReversePin, LOW);
+          delay(24);
+          digitalWrite(BrakePin, LOW);
+          Status=0;
         }
         ; break; }
       case -2: {
@@ -1575,14 +1664,27 @@ void RunByStatus(){
         ; break; }
       case -1: {
         ReverseProcedure(true);
-        if(millis()-PwmTimer > PwmUpDelay){
-          dutyCycle+=2;
-          ledcWrite(ledChannel, dutyCycle);
-          PwmTimer=millis();
-          if(dutyCycle>253){
-            ledcWrite(ledChannel, 255);
-            Status=-2;
+        if(ACmotor==false){
+          //DC
+          if(millis()-PwmTimer > PwmUpDelay){
+            dutyCycle+=2;
+            ledcWrite(ledChannel, dutyCycle);
+            PwmTimer=millis();
+            if(dutyCycle>253){
+              ledcWrite(ledChannel, 255);
+              Status=-2;
+            }
           }
+        }else{
+          //AC
+          if(Reverse==false){ // CCW
+            digitalWrite(ACcwPin, LOW);
+            digitalWrite(ReversePin, HIGH);
+          }else{ // CW
+            digitalWrite(ACcwPin, HIGH);
+            digitalWrite(ReversePin, LOW);
+          }
+          Status=-2;
         }
         ; break; }
       case  0: {
@@ -1590,14 +1692,27 @@ void RunByStatus(){
         ; break; }
       case  1: {
         ReverseProcedure(false);
-        if(millis()-PwmTimer > PwmUpDelay){
-          dutyCycle+=2;
-          ledcWrite(ledChannel, dutyCycle);
-          PwmTimer=millis();
-          if(dutyCycle>253){
-            ledcWrite(ledChannel, 255);
-            Status=2;
+        if(ACmotor==false){
+          //DC
+          if(millis()-PwmTimer > PwmUpDelay){
+            dutyCycle+=2;
+            ledcWrite(ledChannel, dutyCycle);
+            PwmTimer=millis();
+            if(dutyCycle>253){
+              ledcWrite(ledChannel, 255);
+              Status=2;
+            }
           }
+        }else{
+          //AC
+          if(Reverse==false){ // CW
+            digitalWrite(ACcwPin, HIGH);
+            digitalWrite(ReversePin, LOW);
+          }else{ // CCW
+            digitalWrite(ACcwPin, LOW);
+            digitalWrite(ReversePin, HIGH);
+          }
+          Status=2;
         }
         ; break; }
       case  2: {
@@ -1606,20 +1721,30 @@ void RunByStatus(){
         }
         ; break; }
       case  3: {
-        if(millis()-PwmTimer > PwmDwnDelay){
-          if(dutyCycle!=0){
-            dutyCycle--;
+        if(ACmotor==false){
+          //DC
+          if(millis()-PwmTimer > PwmDwnDelay){
+            if(dutyCycle!=0){
+              dutyCycle--;
+            }
+            ledcWrite(ledChannel, dutyCycle);
+            PwmTimer=millis();
+            if(dutyCycle<1){
+              dutyCycle=0;
+              ledcWrite(ledChannel, 0);
+              // ReverseProcedure(false);
+              digitalWrite(ReversePin, LOW);
+              Status=0;
+              AzimuthTarget=-1;
+            }
           }
-          ledcWrite(ledChannel, dutyCycle);
-          PwmTimer=millis();
-          if(dutyCycle<1){
-            dutyCycle=0;
-            ledcWrite(ledChannel, 0);
-            // ReverseProcedure(false);
-            digitalWrite(ReversePin, LOW);
-            Status=0;
-            AzimuthTarget=-1;
-          }
+        }else{
+          //AC
+          digitalWrite(ACcwPin, LOW);
+          digitalWrite(ReversePin, LOW);
+          delay(24);
+          digitalWrite(BrakePin, LOW);
+          Status=0;
         }
         ; break; }
     }
@@ -1629,7 +1754,7 @@ void RunByStatus(){
 //-------------------------------------------------------------------------------------------------------
 void ReverseProcedure(bool CCW){
 
-  if(CCW==false){
+  if(CCW==false){ // CW
     if(ACmotor==false){
       //DC
       if(Reverse==false){
@@ -1639,9 +1764,9 @@ void ReverseProcedure(bool CCW){
       }
     }else{
       //AC
-
+      digitalWrite(BrakePin, HIGH);
     }
-  }else{
+  }else{  // CCW
     if(ACmotor==false){
       //DC
       if(Reverse==false){
@@ -1651,9 +1776,8 @@ void ReverseProcedure(bool CCW){
       }
     }else{
       //AC
-
+      digitalWrite(BrakePin, HIGH);
     }
-
   }
    delay(12);
 }
@@ -2919,7 +3043,7 @@ void http(){
             webClient.println(ETH.localIP());
             webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a><br><a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=740,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Azimuth Map Control</button></a>"));
+            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Azimuth Map Control</button></a>"));
           #endif
           // END STATUS
           webClient.println(F("              </p>"));
@@ -3530,9 +3654,12 @@ void handleSet() {
   String mapurlERR= "";
   String mqttERR= "";
   String mqttportERR= "";
-  String edstopszoneERR= "";
-  String edstopszoneSTYLE= "";
-  String edstopszoneDisable= "";
+  String edstoplowzoneERR= "";
+  String edstoplowzoneSTYLE= "";
+  String edstoplowzoneDisable= "";
+  String edstophighzoneERR= "";
+  String edstophighzoneSTYLE= "";
+  String edstophighzoneDisable= "";
   String edstopsCHECKED= "";
   String edstopsSTYLE= "";
   String acmotorCHECKED= "";
@@ -3546,7 +3673,8 @@ void handleSet() {
     && ajaxserver.hasArg("maxrotatedegree") == false \
     && ajaxserver.hasArg("mapurl") == false \
     && ajaxserver.hasArg("antradiationangle") == false \
-    && ajaxserver.hasArg("edstopszone") == false \
+    && ajaxserver.hasArg("edstoplowzone") == false \
+    && ajaxserver.hasArg("edstophighzone") == false \
   ) {
     // MqttPubString("Debug", "Form not valid", false);
   }else{
@@ -3711,20 +3839,37 @@ void handleSet() {
       MqttPubString("EndstopUse", String(Endstop), true);
     }
 
-    // 36 - NoEndstopZone
-    if ( ajaxserver.arg("edstopszone").length()<1 || ajaxserver.arg("edstopszone").toInt()<1 || ajaxserver.arg("edstopszone").toInt()>15){
-      edstopszoneERR= " Out of range number 1-15";
+    // 36 - NoEndstopLowZone
+    if ( ajaxserver.arg("edstoplowzone").length()<1 || ajaxserver.arg("edstoplowzone").toInt()<1 || ajaxserver.arg("edstoplowzone").toInt()>15){
+      edstoplowzoneERR= " Out of range number 1-15";
     }else{
-      if(NoEndstopZone == float(ajaxserver.arg("edstopszone").toInt())/10 ) {
-        edstopszoneERR="";
+      if(NoEndstopLowZone == float(ajaxserver.arg("edstoplowzone").toInt())/10 ) {
+        edstoplowzoneERR="";
       }else{
-        edstopszoneERR="";
-        NoEndstopZone = float(ajaxserver.arg("edstopszone").toInt())/10;
-        NoEndstopHighZone = 3.3 - NoEndstopZone;
-        NoEndstopLowZone = NoEndstopZone;
-        EEPROM.writeByte(36, int(NoEndstopZone*10));
+        edstoplowzoneERR="";
+        NoEndstopLowZone = float(ajaxserver.arg("edstoplowzone").toInt())/10;
+        // NoEndstopHighZone = 3.3 - NoEndstopLowZone;
+        // NoEndstopLowZone = NoEndstopLowZone;
+        EEPROM.writeByte(36, int(NoEndstopLowZone*10));
         // EEPROM.commit();
-        MqttPubString("NoEndstopZone", String(NoEndstopZone), true);
+        MqttPubString("NoEndstopLowZone", String(NoEndstopLowZone), true);
+      }
+    }
+
+    // 222 - NoEndstopHighZone
+    if ( ajaxserver.arg("edstophighzone").length()<1 || ajaxserver.arg("edstophighzone").toInt()<16 || ajaxserver.arg("edstophighzone").toInt()>33){
+      edstophighzoneERR= " Out of range number 16-33";
+    }else{
+      if(NoEndstopHighZone == float(ajaxserver.arg("edstophighzone").toInt())/10 ) {
+        edstophighzoneERR="";
+      }else{
+        edstophighzoneERR="";
+        NoEndstopHighZone = float(ajaxserver.arg("edstophighzone").toInt())/10;
+        // NoEndstopHighZone = 3.3 - NoEndstopLowZone;
+        // NoEndstopLowZone = NoEndstopLowZone;
+        EEPROM.writeByte(222, int(NoEndstopHighZone*10));
+        // EEPROM.commit();
+        MqttPubString("NoEndstopHighZone", String(NoEndstopHighZone), true);
       }
     }
 
@@ -3825,9 +3970,13 @@ void handleSet() {
 if(Endstop==true){
   edstopsCHECKED= "checked";
   edstopsSTYLE="";
-  edstopszoneDisable=" disabled";
-  edstopszoneSTYLE=" style='text-decoration: line-through;'";
+  edstoplowzoneDisable=" disabled";
+  edstophighzoneDisable=" disabled";
+  edstoplowzoneSTYLE=" style='text-decoration: line-through; color: orange;'";
+  edstophighzoneSTYLE=" style='text-decoration: line-through; color: orange;'";
 }else{
+  edstoplowzoneSTYLE=" style='color: orange;'";
+  edstophighzoneSTYLE=" style='color: orange;'";
   edstopsCHECKED= "";
   edstopsSTYLE=" style='text-decoration: line-through;'";
 }
@@ -3840,9 +3989,9 @@ if(ACmotor==true){
   motorSELECT1= "";
 }
 
-
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
-  HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'><meta http-equiv = 'refresh' content = '600; url = /'>\n";
+  HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>\n";
+  // <meta http-equiv = 'refresh' content = '600; url = /'>\n";
   HtmlSrc +="<style type='text/css'> button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button#go:hover {background-color: orange;} table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
   HtmlSrc +=".tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
   HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
@@ -3889,15 +4038,25 @@ if(ACmotor==true){
   HtmlSrc +=">AVAILABLE</span>:</label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
   HtmlSrc += edstopsCHECKED;
   HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
-    HtmlSrc +="<tr><td class='tdr'><label for='edstopszone'><span";
-    HtmlSrc += edstopszoneSTYLE;
-    HtmlSrc +=">Forbidden zones (software endstops):</span></label></td><td><input type='text' id='edstopszone' name='edstopszone' size='3' value='";
-    HtmlSrc += int(NoEndstopZone*10);
+    HtmlSrc +="<tr><td class='tdr'><label for='edstoplowzone'><span";
+    HtmlSrc += edstoplowzoneSTYLE;
+    HtmlSrc +=">CCW forbidden zone (software endstops):</span></label></td><td><input type='text' id='edstoplowzone' name='edstoplowzone' size='3' value='";
+    HtmlSrc += int(NoEndstopLowZone*10);
     HtmlSrc +="'";
-    HtmlSrc += edstopszoneDisable;
+    HtmlSrc += edstoplowzoneDisable;
     HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
-    HtmlSrc += edstopszoneERR;
+    HtmlSrc += edstoplowzoneERR;
     HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-15 tenths of a Volt</span></span></td></tr>\n";
+
+    HtmlSrc +="<tr><td class='tdr'><label for='edstophighzone'><span";
+    HtmlSrc += edstophighzoneSTYLE;
+    HtmlSrc +=">CW forbidden zone (software endstops):</span></label></td><td><input type='text' id='edstophighzone' name='edstophighzone' size='3' value='";
+    HtmlSrc += int(NoEndstopHighZone*10);
+    HtmlSrc +="'";
+    HtmlSrc += edstophighzoneDisable;
+    HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
+    HtmlSrc += edstophighzoneERR;
+    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>16-33 tenths of a Volt</span></span></td></tr>\n";
 
   HtmlSrc +="<tr><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
   HtmlSrc += OneTurnLimitSec;
@@ -3923,11 +4082,13 @@ if(ACmotor==true){
   HtmlSrc += mqttportERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
 
-  HtmlSrc +="<tr><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form>&nbsp; ";
+  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
+  HtmlSrc +="</td></tr>\n";
 
-  HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
-  HtmlSrc +="<tr><td class='tdr'><a href='/'><button id='go'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></td></tr>";
+  // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
+  // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
+  // HtmlSrc +="<tr><td class='tdr'><a href='/'><button id='go'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></td></tr>";
   HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
   HtmlSrc +="</body></html>\n";
 
@@ -4104,8 +4265,11 @@ void handleMapUrl() {
 void handleEndstop() {
   ajaxserver.send(200, "text/plane", String(Endstop) );
 }
-void handleEndstopZone() {
-  ajaxserver.send(200, "text/plane", String(NoEndstopZone) );
+void handleEndstopLowZone() {
+  ajaxserver.send(200, "text/plane", String(NoEndstopLowZone) );
+}
+void handleEndstopHighZone() {
+  ajaxserver.send(200, "text/plane", String(NoEndstopHighZone) );
 }
 void handleCwraw() {
   ajaxserver.send(200, "text/plane", String(CwRaw) );

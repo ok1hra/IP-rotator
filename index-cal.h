@@ -55,13 +55,25 @@ const char CAL_page[] PROGMEM = R"=====(
 	  lhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
-				NoEndstopZone = this.responseText;
+				NoEndstopLowZone = this.responseText;
 				// console.log ('Endstop ' + Endstop);
 				// Static();
 	    }
 	  };
-	  lhttp.open("GET", "readEndstopZone", true);
+	  lhttp.open("GET", "readEndstopLowZone", true);
 	  lhttp.send();
+
+	  var mhttp = new XMLHttpRequest();
+	  mhttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+	      // document.getElementById("StartValue").innerHTML = this.responseText;
+				NoEndstopHighZone = this.responseText;
+				// console.log ('Endstop ' + Endstop);
+				// Static();
+	    }
+	  };
+	  mhttp.open("GET", "readEndstopHighZone", true);
+	  mhttp.send();
 
 	  var jhttp = new XMLHttpRequest();
 	  jhttp.onreadystatechange = function() {
@@ -159,11 +171,11 @@ const char CAL_page[] PROGMEM = R"=====(
 		  pointer.lineTo( Number(Position)+5, 75);
 		  pointer.lineTo( Number(Position)-5, 75);
 			// console.log ('PointerValue ' + PointerValue);
-			// console.log ('NoEndstopZone ' + NoEndstopZone);
+			// console.log ('NoEndstopLowZone ' + NoEndstopLowZone);
 			if (Status != 4) {
 				pointer.fillStyle = "#c00000";
 			}else{
-				if(Number(PointerValue)/1000 > Number(NoEndstopZone) && Number(PointerValue)/1000 < 3.3-Number(NoEndstopZone)){
+				if(Number(PointerValue)/1000 > Number(NoEndstopLowZone) && Number(PointerValue)/1000 < Number(NoEndstopHighZone)){
 					pointer.fillStyle = "#00c000";
 				}else{
 					pointer.fillStyle = "orange";
@@ -185,14 +197,16 @@ const char CAL_page[] PROGMEM = R"=====(
 			endstop.lineWidth = 8;
 			endstop.strokeStyle = 'orange';
 			endstop.moveTo(30, 45);
-			endstop.lineTo((Number(BoxSize)-60)/3.3*Number(NoEndstopZone)+30, 45);
+			endstop.lineTo((Number(BoxSize)-60)/3.3*Number(NoEndstopLowZone)+30, 45);
 			endstop.moveTo(BoxSize-30, 45);
-			endstop.lineTo( (Number(BoxSize)-30)-(Number(BoxSize)-60)/3.3*Number(NoEndstopZone), 45);
+			endstop.lineTo((Number(BoxSize)-60)/3.3*Number(NoEndstopHighZone)+30, 45);
+			// endstop.lineTo( (Number(BoxSize)-30)-(Number(BoxSize)-60)/3.3*Number(NoEndstopHighZone), 45);
 			endstop.fillStyle = "orange";
 			endstop.font = "bold 10px Arial";
 			endstop.textAlign = 'center';
 			endstop.textBaseline = 'middle';
-			endstop.fillText( "HW Endstops NOT available", 275-163, 20);
+			endstop.fillText( "SW endstop", 50, 20);
+			endstop.fillText( "endstop", 550, 20);
 			endstop.stroke();
 		}
 
