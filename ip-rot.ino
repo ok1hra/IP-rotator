@@ -52,15 +52,23 @@ Changelog:
 + AC functionality
 + AZ potentiometer - NOT TESTED
 + LED - NOT TESTED
++ Supported GS-232 commands: R L A S C Mxxx O F (115200 baud)
++ CW/CCW pulse inputs gui
 
 ToDo
 - need implement
-  - serial protocol
+  - CW/CCW pulse functionality
+  - CW/CCW pulse pulse per grad
+  - serial protocol easycomm2
+- watchdog if eth_connected = false; > 5s, then reconect
 - if mqtt_server_ip[0]=0 then disable MQTT
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
 - telnet
 - vycistit kod
+  https://stackoverflow.com/questions/3420975/html5-canvas-zooming
+  https://codepen.io/chengarda/pen/wRxoyB
 
+IDE 1.8.19
 Použití knihovny WiFi ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/WiFi
 Použití knihovny EEPROM ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/EEPROM
 Použití knihovny WebServer ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/espressif/esp32/libraries/WebServer
@@ -77,7 +85,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230325";
+const char* REV = "20230327";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -98,6 +106,8 @@ String MapUrl = "" ;
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
 bool Endstop =  false;
 bool ACmotor =  false;
+bool AZsource =  false;
+short PulsePerDegree = 0;
 
 unsigned int PwmUpDelay  = 4;  // [ms]*255
 unsigned int PwmDwnDelay = 3;  // [ms]*255
@@ -265,6 +275,8 @@ int i = 0;
 169-219 - MapUrl
 220-221 - OneTurnLimitSec
 222 - NoEndstopHighZone
+223 - AZsource
+224-225 PulsePerDegree
 
 231-234 - Altitude 4
 // 232 - SpeedAlert 4
@@ -543,7 +555,7 @@ void setup() {
     if(HWidValue<=150){
       HardwareRev=0;
     }else if(HWidValue>150){
-      HardwareRev=1;  // 319
+      HardwareRev=3;  // 319
     }
   pinMode(VoltagePin, INPUT);
   pinMode(ReversePin, OUTPUT);
@@ -857,6 +869,26 @@ void setup() {
   // NoEndstopHighZone = 3.3 - NoEndstopLowZone;
   // NoEndstopLowZone = NoEndstopLowZone;
 
+  // 223 - AZsource
+  if(EEPROM.read(223)==0xff){
+    AZsource=false;
+  }else{
+    if(EEPROM.readBool(223)==1){
+      AZsource=true;
+    }else{
+      AZsource=false;
+    }
+  }
+
+  // 224-225  PulsePerDegree
+  if(EEPROM.read(224)==0xff){
+    PulsePerDegree=1;
+  }else{
+    PulsePerDegree = EEPROM.readUShort(224);
+  }
+
+
+
   // 2-encoder range
   NumberOfEncoderOutputs = EEPROM.read(2);
   if(NumberOfEncoderOutputs < 2 || NumberOfEncoderOutputs > 0x0f){
@@ -1024,58 +1056,6 @@ void setup() {
   if(EEPROM.readByte(240)!=255){
     WindDirShift = EEPROM.readInt(240);
   }
-
-  if(EnableSerialDebug>0){
-    Serial.println();
-    Serial.print("Version: ");
-    Serial.println(REV);
-    Serial.println("===============================");
-    Serial.print("SLAVE DEVICE NET-ID: 0x");
-    Serial.println(NET_ID);
-    Serial.print("Listen MASTER: ");
-    if(TxUdpBuffer[2] == 'o'){
-      Serial.println("Open Interface III");
-    }
-    if(TxUdpBuffer[2] == 'r' ){
-      Serial.println("Band decoder MK2");
-    }
-    if(TxUdpBuffer[2] == 'm' ){
-      Serial.println("IP switch master");
-    }
-    if(TxUdpBuffer[2] == 'n' ){
-      Serial.println("none");
-    }
-    Serial.println("===============================");
-    Serial.println("  press '?' for list commands");
-    Serial.println();
-    Serial.println();
-  }
-
-  #if defined(WIFI)
-    if(EnableSerialDebug>0){
-      Serial.print("WIFI Connecting to ");
-      Serial.print(ssid);
-    }
-    WiFi.begin(ssid, password);
-    // attempt to connect to Wifi network:
-    while(WiFi.status() != WL_CONNECTED) {
-      // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-      delay(500);
-      if(EnableSerialDebug>0){
-        Serial.print(".");
-      }
-    }
-    // LED1status = !LED1status;
-    // digitalWrite(LED1, LED1status);           // signalize wifi connected
-    if(EnableSerialDebug>0){
-      Serial.println("");
-      Serial.println("WIFI connected");
-      Serial.print("WIFI IP address: ");
-      Serial.println(WiFi.localIP());
-      Serial.print("WIFI dBm: ");
-      Serial.println(WiFi.RSSI());
-    }
-  #endif
 
   #if defined(ETHERNET)
     // mqtt_server_ip=BrokerIpArray[0];
@@ -1258,7 +1238,8 @@ void setup() {
 void loop() {
   http();
   Mqtt();
-  CLI();
+  // CLI();
+  CLI2();
   Telnet();
   Watchdog();
   RunByStatus();
@@ -1335,27 +1316,32 @@ void Watchdog(){
   // }
 
   // KEY
-  static bool RunByKey = false;
-  if(CwCcwButtValue<=100 && Status>=0){
-    if(Status==0){
-      Status=1;
-      RunByKey=true;
+  if(AZsource==false){ // potentiometer
+    static bool RunByKey = false;
+    if(CwCcwButtValue<=100 && Status>=0){
+      if(Status==0){
+        Status=1;
+        RunByKey=true;
+      }
+      RunTimer();
+    }else if(CwCcwButtValue>100 && CwCcwButtValue<3000 && Status<=0){
+      if(Status==0){
+        Status=-1;
+        RunByKey=true;
+      }
+      RunTimer();
+    }else if(RunByKey==true){
+      if(Status==-2){
+        Status=-3;
+        RunByKey=false;
+      }else if(Status==2){
+        Status=3;
+        RunByKey=false;
+      }
     }
-    RunTimer();
-  }else if(CwCcwButtValue>100 && CwCcwButtValue<3000 && Status<=0){
-    if(Status==0){
-      Status=-1;
-      RunByKey=true;
-    }
-    RunTimer();
-  }else if(RunByKey==true){
-    if(Status==-2){
-      Status=-3;
-      RunByKey=false;
-    }else if(Status==2){
-      Status=3;
-      RunByKey=false;
-    }
+  }else{
+    // pulse
+    // PulsePerDegree
   }
 
   static long AZchangeTimer = 0;
@@ -1824,6 +1810,233 @@ byte LowByte(int ID){
   return(ID);
 }
 
+//-------------------------------------------------------------------------------------------------------
+void CLI2(){
+  int OUT=2;
+  if (Serial.available() > 0) {
+    incomingByte = Serial.read();
+    OUT = 0;
+  }
+  // if(TelnetServerClients[0].available()){
+  //   incomingByte=TelnetServerClients[0].read();
+  //   OUT = 1;
+  // }
+  esp_task_wdt_reset();
+  WdtTimer=millis();
+
+
+/*
+https://www.yaesu.com/downloadFile.cfm?FileID=820&FileCatID=155&FileName=GS232A.pdf&FileContentType=application%2Fpdf
+https://www.passion-radio.com/index.php?controller=attachment&id_attachment=782
+https://www.qsl.net/dh1ngp/onlinehelpft100/Rotator_control_with_Easycomm.htm
+https://www.mustbeart.com/software/easycomm.txt
+
+Command		Meaning			Perameters
+-------		-------			----------
+AZ		Azimuth			number - 1 decimal place
+ML		Move Left
+MR		Move Right
+SA		Stop azimuth moving
+
+EL		Elevation		number - 1 decimal place
+UP		Uplink freq		in Hertz
+DN		Downlink freq		in Hertz
+DM		Downlink Mode		ascii, eg SSB, FM
+UM		Uplink Mode		ascii, eg SSB, FM
+DR		Downlink Radio		number
+UR		Uplink Radio		number
+MU		Move Up
+MD		Move Down
+SE		Stop elevation moving
+AO		AOS
+LO		LOS
+OP		Set output		number
+IP		Read an input		number
+AN		Read analogue input	number
+ST		Set time		YY:MM:DD:HH:MM:SS
+VE		Request Version
+
+GS-232B
+-------
+R 82 Clockwise Rotation
+L 76 Counter Clockwise Rotation
+A 65 CW/CCW Rotation Stop
+  S 83 All Stop
+C 67 Antenna Direction Value
+M 77 Antenna Direction Setting. MXXX
+O 79 Offset Calibration
+F 70 Full Scale Calibration
+
+M Time Interval Direction Setting.
+  MTTT XXX XXX XXX ---
+  (TTT = Step value)
+  (XXX = Horizontal Angle)
+T Start Command in the time interval direction setting mode.
+N Total number of setting angles in “M” mode and traced number of all datas (setting angles)
+X1 Rotation Speed 1 (Horizontal) Low
+X2 Rotation Speed 2 (Horizontal) Middle 1
+X3 Rotation Speed 3 (Horizontal) Middle 2
+X4 Rotation Speed 4 (Horizontal) High
+*/
+long RawTmp = 0;
+
+  // ? H h
+  if(incomingByte==63 || incomingByte==72 || incomingByte==104){
+    Prn(OUT, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
+    // Serial.print("MAC ");
+    // Serial.println(MACString);
+    // Prn(OUT, 1,"");
+    Prn(OUT, 1,"Supported GS-232 commands: R L A S C Mxxx O F");
+
+  // R 82 Clockwise Rotation
+  }else if(incomingByte==82){
+    Status=1;
+    RunTimer();
+    Prn(OUT, 1, "CW" );
+
+  // L 76 Counter Clockwise Rotation
+  }else if(incomingByte==76){
+    Status=-1;
+    RunTimer();
+    Prn(OUT, 1, "CCW" );
+
+  // A 65 CW/CCW Rotation Stop
+  //   S 83 All Stop
+  }else if(incomingByte==65||incomingByte==83){
+    if(Status<0){
+      Status=-3;
+    }else if(Status>0){
+      Status=3;
+    }
+    Prn(OUT, 1, "Rotation Stop" );
+
+  // C 67 Antenna Direction Value
+  }else if(incomingByte==67){
+    if(Azimuth+StartAzimuth < 100){
+      Prn(OUT, 0, "0" );
+      if(Azimuth+StartAzimuth < 10){
+        Prn(OUT, 0, "0" );
+      }
+    }
+    Prn(OUT, 1, String(Azimuth+StartAzimuth) );
+
+  // M 77 Antenna Direction Setting. MXXX
+  }else if(incomingByte==77){
+    InputByte[0]=0;
+    incomingByte = 0;
+    bool br=false;
+    // Prn(OUT, 0,"> ");
+
+    while(br==false) {
+      if(Serial.available()){
+        incomingByte=Serial.read();
+        if(incomingByte==13 || incomingByte==10){ // CR or LF
+          br=true;
+          // Prn(OUT, 1,"");
+        }else{
+          // Serial.write(incomingByte);
+          if(incomingByte!=10 && incomingByte!=13){
+            if(incomingByte==127){
+              InputByte[0]--;
+            }else{
+              InputByte[InputByte[0]+1]=incomingByte;
+              InputByte[0]++;
+            }
+          }
+        }
+        if(InputByte[0]==3){
+          br=true;
+          // Prn(OUT, 1," too long");
+        }
+      }
+    }
+    int intBuf=0;
+    int mult=1;
+    for (int j=InputByte[0]; j>0; j--){
+      if(InputByte[j]>=48 && InputByte[j]<=57 || InputByte[j]==46 || InputByte[j]==44 ){ // numbers only + . ,
+        intBuf = intBuf + ((InputByte[j]-48)*mult);
+        mult = mult*10;
+        if(InputByte[j]==46 || InputByte[j]==44){ //reset at . ,
+          intBuf=0;
+          mult=1;
+        }
+      }
+    }
+    if(intBuf>=0 && intBuf<=MaxRotateDegree){
+      Prn(OUT, 0,"Rotate to ");
+      Prn(OUT, 0, String(intBuf) );
+      Prn(OUT, 1,"°");
+
+      AzimuthTarget = intBuf;
+      if(AzimuthTarget>359){
+        AzimuthTarget = AzimuthTarget - 360;
+      }
+      MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
+      RotCalculate();
+    }
+
+  // O 79 Offset Calibration
+  }else if(incomingByte==79){
+    Prn(OUT, 1,"Rotate to full CCW and press [y/n]");
+    bool br = false;
+    while(br==false) {
+      if(Serial.available()){
+        incomingByte=Serial.read();
+        if(incomingByte==89 || incomingByte==121){
+          RawTmp = 0;
+          for (int i=0; i<10; i++){
+            RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
+            delay(10);
+          }
+          CcwRaw = RawTmp / 10;
+          EEPROM.writeUShort(31, CcwRaw);
+          EEPROM.commit();
+          Prn(OUT, 1,"Offset Calibration to "+String(float(CcwRaw)/1000)+"V" );
+          MqttPubString("CcwRaw", String(CcwRaw), true);
+          br=true;
+        }else if(incomingByte!=13 && incomingByte!=10){
+          br=true;
+        }
+      }
+    }
+
+  // F 70 Full Scale Calibration
+  }else if(incomingByte==70){
+    Prn(OUT, 1,"Rotate to full CW and press [y/n]");
+    bool br = false;
+    while(br==false) {
+      if(Serial.available()){
+        incomingByte=Serial.read();
+        if(incomingByte==89 || incomingByte==121){
+          RawTmp = 0;
+          for (int i=0; i<10; i++){
+            RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
+            delay(10);
+          }
+          CwRaw = RawTmp / 10;
+          EEPROM.writeUShort(33, CwRaw);
+          EEPROM.commit();
+          Prn(OUT, 1,"Full Scale Calibration to "+String(float(CwRaw)/1000)+"V" );
+          MqttPubString("CwRaw", String(CwRaw), true);
+          br=true;
+        }else if(incomingByte!=13 && incomingByte!=10){
+          br=true;
+        }
+      }
+    }
+
+  // CR/LF
+  }else if(incomingByte==13||incomingByte==10){
+    // Prn(OUT, 1,"");
+
+  // anykey
+  }else{
+    // Prn(OUT, 0," [");
+    // Prn(OUT, 0, String(incomingByte) ); //, DEC);
+    // Prn(OUT, 1,"] unknown command");
+  }
+  incomingByte=0;
+}
 //-------------------------------------------------------------------------------------------------------
 void CLI(){
   int OUT=2;
@@ -3168,13 +3381,14 @@ void EthEvent(WiFiEvent_t event)
            // // charbuf[6] = 0;
           if (mqttClient.connect(MACchar)){
             // Serial.println(charbuf);
-            Prn(3, 1, String(MACchar));
+            Prn(0, 1, String(MACchar));
             mqttReconnect();
             AfterMQTTconnect();
+            Prn(0, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
           }
         }
       #endif
-      ListCommands(0);
+      // ListCommands(0);
       break;
 
     // case SYSTEM_EVENT_ETH_DISCONNECTED:
@@ -3651,6 +3865,9 @@ void handleSet() {
   String maxrotatedegreeERR= "";
   String antradiationangleERR= "";
   String oneturnlimitsecERR= "";
+  String pulseperdegreeERR= "";
+  String pulseperdegreeSTYLE= "";
+  String pulseperdegreeDisable= "";
   String mapurlERR= "";
   String mqttERR= "";
   String mqttportERR= "";
@@ -3665,6 +3882,8 @@ void handleSet() {
   String acmotorCHECKED= "";
   String motorSELECT0= "";
   String motorSELECT1= "";
+  String sourceSELECT0= "";
+  String sourceSELECT1= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -3826,6 +4045,36 @@ void handleSet() {
       }
     }
 
+    // 223 AZsource
+    if(ajaxserver.arg("source").toInt()==0 && AZsource==true){
+      AZsource = false;
+      EEPROM.writeBool(223, 0);
+      MqttPubString("AZsource", "Potentiometer", true);
+    }else if(ajaxserver.arg("source").toInt()==1 && AZsource==false){
+      AZsource = true;
+      EEPROM.writeBool(223, 1);
+      MqttPubString("AZsource", "CW/CCW pulse", true);
+    }
+
+    // 224-225 PulsePerDegree
+    if ( ajaxserver.arg("pulseperdegree").length()<1 || ajaxserver.arg("pulseperdegree").toInt()<1 || ajaxserver.arg("pulseperdegree").toInt()>100){
+      if(AZsource==false){
+        pulseperdegreeERR="";
+      }else{
+        pulseperdegreeERR= " Out of range number 1-100";
+      }
+    }else{
+      if(PulsePerDegree == ajaxserver.arg("pulseperdegree").toInt()){
+        pulseperdegreeERR="";
+      }else{
+        pulseperdegreeERR="";
+        PulsePerDegree = ajaxserver.arg("pulseperdegree").toInt();
+        EEPROM.writeUShort(224, PulsePerDegree);
+        // EEPROM.commit();
+        MqttPubString("PulsePerDegree", String(PulsePerDegree), true);
+      }
+    }
+
     // 29  - Endstop
     if(ajaxserver.arg("edstops").toInt()==1 && Endstop==false){
       Endstop = true;
@@ -3833,7 +4082,11 @@ void handleSet() {
       // EEPROM.commit();
       MqttPubString("EndstopUse", String(Endstop), true);
     }else if(ajaxserver.arg("edstops").toInt()!=1 && Endstop==true){
-      Endstop = false;
+      if(AZsource == true){ //pulse
+        Endstop=true;
+      }else{  // potentiometer
+        Endstop = false;
+      }
       EEPROM.writeBool(29, 0);
       // EEPROM.commit();
       MqttPubString("EndstopUse", String(Endstop), true);
@@ -3841,7 +4094,11 @@ void handleSet() {
 
     // 36 - NoEndstopLowZone
     if ( ajaxserver.arg("edstoplowzone").length()<1 || ajaxserver.arg("edstoplowzone").toInt()<1 || ajaxserver.arg("edstoplowzone").toInt()>15){
-      edstoplowzoneERR= " Out of range number 1-15";
+      if(Endstop==false){
+        edstoplowzoneERR= " Out of range number 1-15";
+      }else{
+        edstoplowzoneERR= "";
+      }
     }else{
       if(NoEndstopLowZone == float(ajaxserver.arg("edstoplowzone").toInt())/10 ) {
         edstoplowzoneERR="";
@@ -3858,7 +4115,11 @@ void handleSet() {
 
     // 222 - NoEndstopHighZone
     if ( ajaxserver.arg("edstophighzone").length()<1 || ajaxserver.arg("edstophighzone").toInt()<16 || ajaxserver.arg("edstophighzone").toInt()>33){
-      edstophighzoneERR= " Out of range number 16-33";
+      if(Endstop==false){
+        edstophighzoneERR= " Out of range number 16-33";
+      }else{
+        edstophighzoneERR= "";
+      }
     }else{
       if(NoEndstopHighZone == float(ajaxserver.arg("edstophighzone").toInt())/10 ) {
         edstophighzoneERR="";
@@ -3967,18 +4228,30 @@ void handleSet() {
     EEPROM.commit();
   } // else form valid
 
+if(AZsource==true){
+  sourceSELECT0= "";
+  sourceSELECT1= " selected";
+  pulseperdegreeDisable="";
+  pulseperdegreeSTYLE="";
+}else{
+  sourceSELECT0= " selected";
+  sourceSELECT1= "";
+  pulseperdegreeDisable=" disabled";
+  pulseperdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
+}
+
 if(Endstop==true){
   edstopsCHECKED= "checked";
   edstopsSTYLE="";
   edstoplowzoneDisable=" disabled";
   edstophighzoneDisable=" disabled";
-  edstoplowzoneSTYLE=" style='text-decoration: line-through; color: orange;'";
-  edstophighzoneSTYLE=" style='text-decoration: line-through; color: orange;'";
+  edstoplowzoneSTYLE=" style='text-decoration: line-through; color: #555;'";
+  edstophighzoneSTYLE=" style='text-decoration: line-through; color: #555;'";
 }else{
   edstoplowzoneSTYLE=" style='color: orange;'";
   edstophighzoneSTYLE=" style='color: orange;'";
   edstopsCHECKED= "";
-  edstopsSTYLE=" style='text-decoration: line-through;'";
+  edstopsSTYLE=" style='text-decoration: line-through; color: #555;'";
 }
 
 if(ACmotor==true){
@@ -4029,34 +4302,54 @@ if(ACmotor==true){
   HtmlSrc += MapUrl;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += mapurlERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left'>DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA.</span></span> <a href='https://remoteqth.com/xplanet/' target='_blank'>Available list</a></td></tr>\n<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left'>DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA.</span></span> <a href='https://remoteqth.com/xplanet/' target='_blank'>Available list</a></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
   HtmlSrc += AntRadiationAngle;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += antradiationangleERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-180&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='edstops'>Endstops <span";
-  HtmlSrc += edstopsSTYLE;
-  HtmlSrc +=">AVAILABLE</span>:</label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
-  HtmlSrc += edstopsCHECKED;
-  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
-    HtmlSrc +="<tr><td class='tdr'><label for='edstoplowzone'><span";
-    HtmlSrc += edstoplowzoneSTYLE;
-    HtmlSrc +=">CCW forbidden zone (software endstops):</span></label></td><td><input type='text' id='edstoplowzone' name='edstoplowzone' size='3' value='";
-    HtmlSrc += int(NoEndstopLowZone*10);
-    HtmlSrc +="'";
-    HtmlSrc += edstoplowzoneDisable;
-    HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
-    HtmlSrc += edstoplowzoneERR;
-    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-15 tenths of a Volt</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-180&deg;</span></span></td></tr>\n";
 
-    HtmlSrc +="<tr><td class='tdr'><label for='edstophighzone'><span";
-    HtmlSrc += edstophighzoneSTYLE;
-    HtmlSrc +=">CW forbidden zone (software endstops):</span></label></td><td><input type='text' id='edstophighzone' name='edstophighzone' size='3' value='";
-    HtmlSrc += int(NoEndstopHighZone*10);
-    HtmlSrc +="'";
-    HtmlSrc += edstophighzoneDisable;
-    HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
-    HtmlSrc += edstophighzoneERR;
-    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>16-33 tenths of a Volt</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='source'>Azimuth source:</label></td><td><select name='source' id='source'><option value='0'";
+  HtmlSrc += sourceSELECT0;
+  HtmlSrc +=">Potentiometer</option><option value='1'";
+  HtmlSrc += sourceSELECT1;
+  HtmlSrc +=">CW/CCW pulse</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Pulse deactivate control with KEY, and SW endstop</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='pulseperdegree'><span";
+  HtmlSrc += pulseperdegreeSTYLE;
+  HtmlSrc +=">Pulse count per degree:</span></label></td><td><input type='text' id='pulseperdegree' name='pulseperdegree' size='3' value='";
+  HtmlSrc += PulsePerDegree;
+  HtmlSrc +="'";
+  HtmlSrc += pulseperdegreeDisable;
+  HtmlSrc +="><span style='color:red;'>";
+  HtmlSrc += pulseperdegreeERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-100</span></span></td></tr>\n";
+
+  // if(AZsource==false){ // potentiometer
+    HtmlSrc +="<tr><td class='tdr'><label for='edstops'><span";
+    HtmlSrc += edstopsSTYLE;
+    HtmlSrc +=">Endstops AVAILABLE</span>:</label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
+    HtmlSrc += edstopsCHECKED;
+    HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
+      HtmlSrc +="<tr><td class='tdr'><label for='edstoplowzone'><span";
+      HtmlSrc += edstoplowzoneSTYLE;
+      HtmlSrc +=">CCW forbidden zone (software endstops):</span></label></td><td><input type='text' id='edstoplowzone' name='edstoplowzone' size='3' value='";
+      HtmlSrc += int(NoEndstopLowZone*10);
+      HtmlSrc +="'";
+      HtmlSrc += edstoplowzoneDisable;
+      HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
+      HtmlSrc += edstoplowzoneERR;
+      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-15 tenths of a Volt</span></span></td></tr>\n";
+
+      HtmlSrc +="<tr><td class='tdr'><label for='edstophighzone'><span";
+      HtmlSrc += edstophighzoneSTYLE;
+      HtmlSrc +=">CW forbidden zone (software endstops):</span></label></td><td><input type='text' id='edstophighzone' name='edstophighzone' size='3' value='";
+      HtmlSrc += int(NoEndstopHighZone*10);
+      HtmlSrc +="'";
+      HtmlSrc += edstophighzoneDisable;
+      HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
+      HtmlSrc += edstophighzoneERR;
+      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>16-33 tenths of a Volt</span></span></td></tr>\n";
+  // }
 
   HtmlSrc +="<tr><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
   HtmlSrc += OneTurnLimitSec;

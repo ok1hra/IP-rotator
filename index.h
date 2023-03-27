@@ -3,7 +3,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	<html>
 
 	<head>
-	<title>IP rotator</title>
+	<title id="AntName">IP rotator</title>
 	<meta http-equiv="refresh" content="1800">
 	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 	<style type="text/css">
@@ -86,10 +86,10 @@ const char MAIN_page[] PROGMEM = R"=====(
 		<div class="second">
 			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
 				<span style="color: #000; background: #666; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
-					<span style="color: #fff;" id="AntName"> </span> | PWR
+					<span style="color: #fff;" id="AntName2"> </span> | PWR
 					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V | raw
 					<span style="font-weight: bold;" id="AZValue">0</span>&deg; |
-					<a href="/set" onclick="window.open( this.href, this.href, 'width=700,height=840,left=0,top=0,menubar=no,location=no,status=no' ); return false;"); return false;\">SETUP</a>
+					<a href="/set" onclick="window.open( this.href, this.href, 'width=700,height=940,left=0,top=0,menubar=no,location=no,status=no' ); return false;"); return false;\">SETUP</a>
 
 				</span>
 				<br>
@@ -99,18 +99,6 @@ const char MAIN_page[] PROGMEM = R"=====(
 	</div>
 
 	<script>
-	// <form action="#" method="post" style="color: #ccc; margin: 0 0 0 0; text-align: center;">
-
-	// <span style="color: #999; font-size: 800%;">318&deg;</span><br>
-	// <h1 style="color: white;">adc:<span id="ADCValue">0</span></h1><br>
-	// <h1 style="color: white;">az:<span id="AZValue">0</span></h1><br>
-	// ToDo
-	// if range < 360, then show start and stop azimuth
-	// timeout - if server do not answer, then hide azimuth
-	// red undervoltage
-	// https://stackoverflow.com/questions/3420975/html5-canvas-zooming
-	// https://stackoverflow.com/questions/29028125/reloading-an-image-with-delay-using-javascript
-
 	var BoxSize = 600;
 	var Target  = 0;
 	var AzShift = 0;
@@ -186,6 +174,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  lhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 	      document.getElementById("AntName").innerHTML = this.responseText;
+	      document.getElementById("AntName2").innerHTML = this.responseText;
 				// AntName = this.responseText;
 				// console.log ('AzRange ' + AzRange);
 	    }
@@ -379,7 +368,9 @@ const char MAIN_page[] PROGMEM = R"=====(
 			}
 		az.fill();
 
-		az.font = "bold 100px Arial";
+			// az.registerFont(path.join(__dirname, "fonts", "RobotoCondensed-Regular.ttf"), { family: "Roboto Condensed" });
+			// az.font = "100px 'Roboto Condensed'";
+			az.font = "bold 100px Arial";
 			az.textAlign = 'center';
 			az.textBaseline = 'middle';
 			var ShowAzimuth = Number(Azimuth) + Number(AzShift);
@@ -390,9 +381,9 @@ const char MAIN_page[] PROGMEM = R"=====(
 				az.font = "bold 30px Arial";
 				az.fillStyle = '#c0c0c0';
 				if (Azimuth < 0) {
-					az.fillText("CCW stop zone", Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
+					az.fillText("CCW endstop zone", Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
 				}else{
-					az.fillText("CW stop zone", Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
+					az.fillText("CW endstop zone", Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
 				}
 			}else{
 				az.fillStyle = "black";

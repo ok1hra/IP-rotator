@@ -205,7 +205,7 @@ const char CAL_page[] PROGMEM = R"=====(
 			endstop.font = "bold 10px Arial";
 			endstop.textAlign = 'center';
 			endstop.textBaseline = 'middle';
-			endstop.fillText( "SW endstop", 50, 20);
+			endstop.fillText( "SW endstop", 70, 20);
 			endstop.fillText( "endstop", 550, 20);
 			endstop.stroke();
 		}
