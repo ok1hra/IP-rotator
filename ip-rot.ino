@@ -85,7 +85,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230327";
+const char* REV = "20230329";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -4054,15 +4054,16 @@ void handleSet() {
       AZsource = true;
       EEPROM.writeBool(223, 1);
       MqttPubString("AZsource", "CW/CCW pulse", true);
+      if(Endstop == false){
+        Endstop = true;
+        EEPROM.writeBool(29, Endstop);
+        MqttPubString("EndstopUse", String(Endstop), true);
+      }
     }
 
     // 224-225 PulsePerDegree
     if ( ajaxserver.arg("pulseperdegree").length()<1 || ajaxserver.arg("pulseperdegree").toInt()<1 || ajaxserver.arg("pulseperdegree").toInt()>100){
-      if(AZsource==false){
-        pulseperdegreeERR="";
-      }else{
-        pulseperdegreeERR= " Out of range number 1-100";
-      }
+      // pulseperdegreeERR= " Out of range number 1-100";
     }else{
       if(PulsePerDegree == ajaxserver.arg("pulseperdegree").toInt()){
         pulseperdegreeERR="";
@@ -4078,7 +4079,7 @@ void handleSet() {
     // 29  - Endstop
     if(ajaxserver.arg("edstops").toInt()==1 && Endstop==false){
       Endstop = true;
-      EEPROM.writeBool(29, 1);
+      EEPROM.writeBool(29, Endstop);
       // EEPROM.commit();
       MqttPubString("EndstopUse", String(Endstop), true);
     }else if(ajaxserver.arg("edstops").toInt()!=1 && Endstop==true){
@@ -4087,18 +4088,14 @@ void handleSet() {
       }else{  // potentiometer
         Endstop = false;
       }
-      EEPROM.writeBool(29, 0);
+      EEPROM.writeBool(29, Endstop);
       // EEPROM.commit();
       MqttPubString("EndstopUse", String(Endstop), true);
     }
 
     // 36 - NoEndstopLowZone
     if ( ajaxserver.arg("edstoplowzone").length()<1 || ajaxserver.arg("edstoplowzone").toInt()<1 || ajaxserver.arg("edstoplowzone").toInt()>15){
-      if(Endstop==false){
-        edstoplowzoneERR= " Out of range number 1-15";
-      }else{
-        edstoplowzoneERR= "";
-      }
+      // edstoplowzoneERR= " Out of range number 1-15";
     }else{
       if(NoEndstopLowZone == float(ajaxserver.arg("edstoplowzone").toInt())/10 ) {
         edstoplowzoneERR="";
@@ -4115,11 +4112,7 @@ void handleSet() {
 
     // 222 - NoEndstopHighZone
     if ( ajaxserver.arg("edstophighzone").length()<1 || ajaxserver.arg("edstophighzone").toInt()<16 || ajaxserver.arg("edstophighzone").toInt()>33){
-      if(Endstop==false){
-        edstophighzoneERR= " Out of range number 16-33";
-      }else{
-        edstophighzoneERR= "";
-      }
+      // edstophighzoneERR= " Out of range number 16-33";
     }else{
       if(NoEndstopHighZone == float(ajaxserver.arg("edstophighzone").toInt())/10 ) {
         edstophighzoneERR="";
@@ -4251,7 +4244,7 @@ if(Endstop==true){
   edstoplowzoneSTYLE=" style='color: orange;'";
   edstophighzoneSTYLE=" style='color: orange;'";
   edstopsCHECKED= "";
-  edstopsSTYLE=" style='text-decoration: line-through; color: #555;'";
+  // edstopsSTYLE=" style='text-decoration: line-through; color: #555;'";
 }
 
 if(ACmotor==true){
@@ -4265,8 +4258,8 @@ if(ACmotor==true){
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>\n";
   // <meta http-equiv = 'refresh' content = '600; url = /'>\n";
-  HtmlSrc +="<style type='text/css'> button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button#go:hover {background-color: orange;} table, th, td {color: #fff; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle;} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
-  HtmlSrc +=".tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
+  HtmlSrc +="<style type='text/css'> button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button#go:hover {background-color: orange;} table, th, td {color: #fff; border-collapse: collapse; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle; padding-right: 15px} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
+  HtmlSrc +=".b {border-top: 1px dotted #666;} .tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
   HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
   HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
   HtmlSrc +="<H1 style='color: #666; text-align: center;'>Setup<br><span style='font-size: 50%;'>(";
@@ -4278,7 +4271,7 @@ if(ACmotor==true){
   HtmlSrc +="|";
   HtmlSrc +=String(HWidValue);
   HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
+  HtmlSrc +="<tr class='b'><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
   HtmlSrc += YOUR_CALL;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += yourcallERR;
@@ -4309,7 +4302,7 @@ if(ACmotor==true){
   HtmlSrc += antradiationangleERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-180&deg;</span></span></td></tr>\n";
 
-  HtmlSrc +="<tr><td class='tdr'><label for='source'>Azimuth source:</label></td><td><select name='source' id='source'><option value='0'";
+  HtmlSrc +="<tr class='b'><td class='tdr'><label for='source'>Azimuth source:</label></td><td><select name='source' id='source'><option value='0'";
   HtmlSrc += sourceSELECT0;
   HtmlSrc +=">Potentiometer</option><option value='1'";
   HtmlSrc += sourceSELECT1;
@@ -4325,14 +4318,14 @@ if(ACmotor==true){
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-100</span></span></td></tr>\n";
 
   // if(AZsource==false){ // potentiometer
-    HtmlSrc +="<tr><td class='tdr'><label for='edstops'><span";
+    HtmlSrc +="<tr class='b'><td class='tdr'><label for='edstops'><span";
     HtmlSrc += edstopsSTYLE;
-    HtmlSrc +=">Endstops AVAILABLE</span>:</label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
+    HtmlSrc +=">Endstops INSTALLED:</span></label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
     HtmlSrc += edstopsCHECKED;
     HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
       HtmlSrc +="<tr><td class='tdr'><label for='edstoplowzone'><span";
       HtmlSrc += edstoplowzoneSTYLE;
-      HtmlSrc +=">CCW forbidden zone (software endstops):</span></label></td><td><input type='text' id='edstoplowzone' name='edstoplowzone' size='3' value='";
+      HtmlSrc +=">CCW forbidden zone<br>(software endstops):</span></label></td><td><input type='text' id='edstoplowzone' name='edstoplowzone' size='3' value='";
       HtmlSrc += int(NoEndstopLowZone*10);
       HtmlSrc +="'";
       HtmlSrc += edstoplowzoneDisable;
@@ -4342,7 +4335,7 @@ if(ACmotor==true){
 
       HtmlSrc +="<tr><td class='tdr'><label for='edstophighzone'><span";
       HtmlSrc += edstophighzoneSTYLE;
-      HtmlSrc +=">CW forbidden zone (software endstops):</span></label></td><td><input type='text' id='edstophighzone' name='edstophighzone' size='3' value='";
+      HtmlSrc +=">CW forbidden zone<br>(software endstops):</span></label></td><td><input type='text' id='edstophighzone' name='edstophighzone' size='3' value='";
       HtmlSrc += int(NoEndstopHighZone*10);
       HtmlSrc +="'";
       HtmlSrc += edstophighzoneDisable;
@@ -4351,7 +4344,7 @@ if(ACmotor==true){
       HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>16-33 tenths of a Volt</span></span></td></tr>\n";
   // }
 
-  HtmlSrc +="<tr><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
+  HtmlSrc +="<tr class='b'><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
   HtmlSrc += OneTurnLimitSec;
   HtmlSrc +="'>seconds per one turn <span style='color:red;'>";
   HtmlSrc += oneturnlimitsecERR;
@@ -4363,7 +4356,7 @@ if(ACmotor==true){
   HtmlSrc += motorSELECT1;
   HtmlSrc +=">AC</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>DC use PWM<br>AC activate the other two relays</span></span></td></tr>\n";
 
-  HtmlSrc +="<tr><td class='tdr'><label for='mqttip0'>MQTT broker IP:</label></td><td>";
+  HtmlSrc +="<tr class='b'><td class='tdr'><label for='mqttip0'>MQTT broker IP:</label></td><td>";
   HtmlSrc +="<input type='text' id='mqttip0' name='mqttip0' size='1' value='" + String(mqtt_server_ip[0]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip1' name='mqttip1' size='1' value='" + String(mqtt_server_ip[1]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip2' name='mqttip2' size='1' value='" + String(mqtt_server_ip[2]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip3' name='mqttip3' size='1' value='" + String(mqtt_server_ip[3]) + "'>";
   HtmlSrc +="<span style='color:red;'>";
   HtmlSrc += mqttERR;
@@ -4375,7 +4368,7 @@ if(ACmotor==true){
   HtmlSrc += mqttportERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
 
-  HtmlSrc +="<tr><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form>&nbsp; ";
+  HtmlSrc +="<tr class='b'><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form>&nbsp; ";
   HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
   HtmlSrc +="</td></tr>\n";
 
