@@ -209,7 +209,12 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  var xhttp = new XMLHttpRequest();
 	  xhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      document.getElementById("ADCValue").innerHTML = Math.round(this.responseText * 10) / 10;
+				if( Number(this.responseText)<11){
+
+					document.getElementById("ADCValue").innerHTML = "<span style='color:red;'>"+ Math.round(this.responseText * 10) / 10 +"</span>";
+				}else{
+					document.getElementById("ADCValue").innerHTML = Math.round(this.responseText * 10) / 10;
+				}
 	    }
 	  };
 	  xhttp.open("GET", "readADC", true);

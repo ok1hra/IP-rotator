@@ -56,6 +56,7 @@ Changelog:
 + CW/CCW pulse inputs gui
 
 ToDo
+- proverit otoceni potenciometru
 - need implement
   - CW/CCW pulse functionality
   - CW/CCW pulse pulse per grad
@@ -85,7 +86,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230329";
+const char* REV = "20230331";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -4346,7 +4347,7 @@ if(ACmotor==true){
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
   HtmlSrc += OneTurnLimitSec;
-  HtmlSrc +="'>seconds per one turn <span style='color:red;'>";
+  HtmlSrc +="'> seconds per one turn <span style='color:red;'>";
   HtmlSrc += oneturnlimitsecERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 300px;'>Allowed range 20-600sec<br>Lower speed limit activating the watchdog<br>Use a number 50% higher than the actual speed of your rotator</span></span></td></tr>\n";
 
@@ -4375,7 +4376,7 @@ if(ACmotor==true){
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
   // HtmlSrc +="<tr><td class='tdr'><a href='/'><button id='go'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></td></tr>";
-  HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><span style='color: #666;'>After change, refresh all other page for apply changes.</span><br><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
   HtmlSrc +="</body></html>\n";
 
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
@@ -4496,7 +4497,11 @@ void handleCal() {
   HtmlSrc +="<td></td>";
   HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'>SAVE CW &#8677;</button></td>";
   HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'><span style='color: #ccc;'>Instruction:</span> rotate to both CW/CCW ends and save</td>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'><span style='color: #ccc;'>Instruction:</span> rotate to both CCW ";
+  HtmlSrc +=StartAzimuth;
+  HtmlSrc +="&deg; and CW ";
+  HtmlSrc +=StartAzimuth+MaxRotateDegree;
+  HtmlSrc +="&deg; ends and save new limits</td>";
   // HtmlSrc +="</tr><tr><td></td><td style='height: 42px;'></td></tr>";
   // HtmlSrc +="<tr><td class='tdc' colspan='3'><a href='http://";
   // HtmlSrc +=String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]);
