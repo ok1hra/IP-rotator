@@ -2,6 +2,7 @@ const char CAL_page[] PROGMEM = R"=====(
 
 	<script>
 
+	var TimeOutSec = 1200;
 	var BoxSize = 600;
 	var AzimuthADC = 0;
 	var Endstop = 0;
@@ -11,6 +12,8 @@ const char CAL_page[] PROGMEM = R"=====(
 	var CwRaw = 0;
 	var AzShift = 0;
 	var AzRange = 0;
+	var Uptime = 0;
+	var UptimeTmp = 0;
 
 	setInterval(function() { getData();}, 200); //mSeconds update rate
 	getSet();
@@ -115,6 +118,16 @@ const char CAL_page[] PROGMEM = R"=====(
 	  whttp.open("GET", "readAZadc", true);
 	  whttp.send();
 
+	  var xhttp = new XMLHttpRequest();
+	  xhttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+	      // document.getElementById("AZadcValue").innerHTML = this.responseText;
+				Uptime = this.responseText;
+	    }
+	  };
+	  xhttp.open("GET", "readUptime", true);
+	  xhttp.send();
+
 	  var zhttp = new XMLHttpRequest();
 	  zhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
@@ -138,7 +151,7 @@ const char CAL_page[] PROGMEM = R"=====(
 	function POINTER(PointerValue){
 	  var c = document.getElementById("Azimuth");
 	  var pointer = c.getContext("2d");
-		pointer.clearRect(0, 52, BoxSize, 78);
+		pointer.clearRect(0, 52, BoxSize, 98);
 		pointer.lineWidth = 5;
 		pointer.fillStyle = "#c00000";
 		pointer.font = "bold 20px Arial";
@@ -183,7 +196,22 @@ const char CAL_page[] PROGMEM = R"=====(
 			}
 			pointer.fillText( Number(PointerValue)/1000 + "V", Number(Position), 90);
 		pointer.fill();
+
+		if(Uptime<TimeOutSec){
+			UptimeTmp=TimeOutSec-Uptime;
+			pointer.font = "12px Arial";
+			pointer.fillStyle = "#303030";
+			pointer.fillText( "Please calibrate after the parameter has stabilized ("+convertStoMs(UptimeTmp)+" recommended coutdown)", Number(BoxSize/2), 130);
+		}
 	}
+
+	function convertStoMs(seconds) {
+         let minutes = Math.floor(seconds / 60);
+         let extraSeconds = seconds % 60;
+         minutes = minutes < 10 ? "0" + minutes : minutes;
+         extraSeconds = extraSeconds< 10 ? "0" + extraSeconds : extraSeconds;
+         return minutes + ":" + extraSeconds ;
+      }
 
 	function Static(){
 	  var con = document.getElementById("Azimuth");

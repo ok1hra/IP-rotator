@@ -52,10 +52,14 @@ Changelog:
 + AC functionality
 + AZ potentiometer - NOT TESTED
 + LED - NOT TESTED
-+ Supported GS-232 commands: R L A S C Mxxx O F (115200 baud)
++ Supported GS-232 commands: R L A S C Mxxx O F
 + CW/CCW pulse inputs gui
 
++ serial baudrate set
+
 ToDo
+- warm up timer for stable value
+- BRAKE in DC mode support
 - proverit otoceni potenciometru
 - need implement
   - CW/CCW pulse functionality
@@ -86,7 +90,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230331";
+const char* REV = "20230404";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -231,7 +235,7 @@ unsigned int GroupButton[8]={1,2,3,4,5,6,7,8};
 byte DetectedRemoteSw[16][4];
 unsigned int DetectedRemoteSwPort[16];
 
-const int SERIAL_BAUDRATE = 115200; // serial debug baudrate
+int BaudRate = 115200; // serial debug baudrate
 int SERIAL1_BAUDRATE; // serial1 to IP baudrate
 int incomingByte = 0;   // for incoming serial data
 
@@ -278,6 +282,7 @@ int i = 0;
 222 - NoEndstopHighZone
 223 - AZsource
 224-225 PulsePerDegree
+226-227 BaudRate
 
 231-234 - Altitude 4
 // 232 - SpeedAlert 4
@@ -601,7 +606,7 @@ void setup() {
   pinMode(ShiftInClockPin, OUTPUT);
   pinMode(ShiftInDataPin, INPUT);
 
-  Serial.begin(SERIAL_BAUDRATE);
+  Serial.begin(115200); //BaudRate
   while(!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
@@ -819,7 +824,7 @@ void setup() {
     }
   }
 
-  // 31-32 CcwRaw
+  // 31-32 CcwRawBaudRate
   if(EEPROM.read(31)==0xff){
     CcwRaw=392;
   }else{
@@ -888,7 +893,12 @@ void setup() {
     PulsePerDegree = EEPROM.readUShort(224);
   }
 
-
+  // 226-227 BaudRate
+  if(EEPROM.read(226)==0xff || EEPROM.readUShort(226) > 9600){
+    BaudRate=115200;
+  }else{
+    BaudRate = EEPROM.readUShort(226);
+  }
 
   // 2-encoder range
   NumberOfEncoderOutputs = EEPROM.read(2);
@@ -1228,6 +1238,7 @@ void setup() {
    ajaxserver.on("/readCwraw", handleCwraw);
    ajaxserver.on("/readCcwraw", handleCcwraw);
    ajaxserver.on("/readMAC", handleMAC);
+   ajaxserver.on("/readUptime", handleUptime);
    // ajaxserver.on("/cal/readAZ", handleAZ);
    ajaxserver.begin();                  //Start server
    Serial.println("HTTP ajax server started");
@@ -3386,6 +3397,20 @@ void EthEvent(WiFiEvent_t event)
             mqttReconnect();
             AfterMQTTconnect();
             Prn(0, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
+            if(BaudRate!=115200){
+              MqttPubString("USB-BaudRate", String(BaudRate), true);
+              Serial.println("Baudrate change to "+String(BaudRate)+"...");
+              Serial.flush();
+              // Serial.end();
+              delay(1000);
+              Serial.begin(BaudRate);
+              delay(500);
+              Serial.println();
+              Serial.println();
+              Serial.println("New Baudrate "+String(BaudRate));
+              Prn(0, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
+            }
+
           }
         }
       #endif
@@ -3885,6 +3910,11 @@ void handleSet() {
   String motorSELECT1= "";
   String sourceSELECT0= "";
   String sourceSELECT1= "";
+  String baudSELECT0= "";
+  String baudSELECT1= "";
+  String baudSELECT2= "";
+  String baudSELECT3= "";
+  String baudSELECT4= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -4156,6 +4186,30 @@ void handleSet() {
       MqttPubString("Motor", "AC", true);
     }
 
+    // 226-227 BaudRate
+    static int BaudRateTmp=115200;
+    switch (ajaxserver.arg("baud").toInt()) {
+      case 0: {BaudRateTmp= 1200; break; }
+      case 1: {BaudRateTmp= 2400; break; }
+      case 2: {BaudRateTmp= 4800; break; }
+      case 3: {BaudRateTmp= 9600; break; }
+      case 4: {BaudRateTmp= 115200; break; }
+    }
+    if(BaudRateTmp!=BaudRate){
+      BaudRate=BaudRateTmp;
+      EEPROM.writeUShort(226, BaudRate);
+      MqttPubString("USB-BaudRate", String(BaudRate), true);
+      Serial.println("Baudrate change to "+String(BaudRate)+"...");
+      Serial.flush();
+      // Serial.end();
+      delay(1000);
+      Serial.begin(BaudRate);
+      delay(500);
+      Serial.println();
+      Serial.println();
+      Serial.println("New Baudrate "+String(BaudRate));
+    }
+
     // 161-164 - MQTT broker IP
     if ( ajaxserver.arg("mqttip0").length()<1 || ajaxserver.arg("mqttip0").toInt()>255){
       mqttERR= " Out of range number 0-255";
@@ -4246,6 +4300,19 @@ if(Endstop==true){
   edstophighzoneSTYLE=" style='color: orange;'";
   edstopsCHECKED= "";
   // edstopsSTYLE=" style='text-decoration: line-through; color: #555;'";
+}
+
+baudSELECT0= "";
+baudSELECT1= "";
+baudSELECT2= "";
+baudSELECT3= "";
+baudSELECT4= "";
+switch (BaudRate) {
+  case 1200: {baudSELECT0= " selected"; break; }
+  case 2400: {baudSELECT1= " selected"; break; }
+  case 4800: {baudSELECT2= " selected"; break; }
+  case 9600: {baudSELECT3= " selected"; break; }
+  case 115200: {baudSELECT4= " selected"; break; }
 }
 
 if(ACmotor==true){
@@ -4357,6 +4424,18 @@ if(ACmotor==true){
   HtmlSrc += motorSELECT1;
   HtmlSrc +=">AC</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>DC use PWM<br>AC activate the other two relays</span></span></td></tr>\n";
 
+  HtmlSrc +="<tr class='b'><td class='tdr'><label for='baud'>USB serial BAUDRATE:</label></td><td><select name='baud' id='baud'><option value='0'";
+  HtmlSrc += baudSELECT0;
+  HtmlSrc +=">1200</option><option value='1'";
+  HtmlSrc += baudSELECT1;
+  HtmlSrc +=">2400</option><option value='2'";
+  HtmlSrc += baudSELECT2;
+  HtmlSrc +=">4800</option><option value='3'";
+  HtmlSrc += baudSELECT3;
+  HtmlSrc +=">9600</option><option value='4'";
+  HtmlSrc += baudSELECT4;
+  HtmlSrc +=">115200</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Use for GS-232 protocol<br>Restart after change recommended</span></span></td></tr>\n";
+
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='mqttip0'>MQTT broker IP:</label></td><td>";
   HtmlSrc +="<input type='text' id='mqttip0' name='mqttip0' size='1' value='" + String(mqtt_server_ip[0]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip1' name='mqttip1' size='1' value='" + String(mqtt_server_ip[1]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip2' name='mqttip2' size='1' value='" + String(mqtt_server_ip[2]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip3' name='mqttip3' size='1' value='" + String(mqtt_server_ip[3]) + "'>";
   HtmlSrc +="<span style='color:red;'>";
@@ -4370,7 +4449,7 @@ if(ACmotor==true){
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form>&nbsp; ";
-  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
+  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=725,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
   HtmlSrc +="</td></tr>\n";
 
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
@@ -4491,7 +4570,7 @@ void handleCal() {
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>2. Azimuth calibrate</span></td>";
   HtmlSrc +="</tr><tr>";
 
-  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='120'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='140'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
   HtmlSrc +="</tr><tr style='background-color: #666;'>";
   HtmlSrc +="<td class='tdl'><button id='setccw' name='setccw'>&#8676; SAVE CCW</button></td>";
   HtmlSrc +="<td></td>";
@@ -4570,4 +4649,7 @@ void handleCcwraw() {
 }
 void handleMAC() {
   ajaxserver.send(200, "text/plane", String(MACString) );
+}
+void handleUptime() {
+  ajaxserver.send(200, "text/plane", String(millis()/1000) );
 }
