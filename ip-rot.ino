@@ -54,11 +54,12 @@ Changelog:
 + LED - NOT TESTED
 + Supported GS-232 commands: R L A S C Mxxx O F
 + CW/CCW pulse inputs gui
-
 + serial baudrate set
++ warm up timer for stable value
++ AZtwoWire L=three H=two wire AZ pot NOT TESTED
++ AZpreamp L=preamp on H=pre amp off NOT TESTED
 
 ToDo
-- warm up timer for stable value
 - BRAKE in DC mode support
 - proverit otoceni potenciometru
 - need implement
@@ -90,7 +91,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230404";
+const char* REV = "20230410";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -113,6 +114,8 @@ bool Endstop =  false;
 bool ACmotor =  false;
 bool AZsource =  false;
 short PulsePerDegree = 0;
+bool AZtwoWire =  false;
+bool AZpreamp =  false;
 
 unsigned int PwmUpDelay  = 4;  // [ms]*255
 unsigned int PwmDwnDelay = 3;  // [ms]*255
@@ -166,9 +169,11 @@ const int CwCcwButtPin  = 36;  // analog
 int CwCcwButtValue      = 4095;
 const int AZmasterPin   = 32;  // analog
 float AZmasterValue     = 0.0;
-const int LedRPin       = 14;
-const int LedGPin       = 13;
-const int LedBPin       = 12;
+const int LedRPin       = 15;
+const int LedGPin       = 14;
+const int LedBPin       = 14;
+const int AZtwoWirePin  = 13;
+const int AZpreampPin   = 12;
 
 // setting PWM properties
 const int PwmFreq = 1000;
@@ -283,6 +288,8 @@ int i = 0;
 223 - AZsource
 224-225 PulsePerDegree
 226-227 BaudRate
+228 AZtwoWire
+229 AZpreamp
 
 231-234 - Altitude 4
 // 232 - SpeedAlert 4
@@ -584,6 +591,11 @@ void setup() {
     digitalWrite(LedGPin, LOW);
   pinMode(LedBPin, OUTPUT);
     digitalWrite(LedBPin, LOW);
+
+  pinMode(AZtwoWirePin, OUTPUT);
+    digitalWrite(AZtwoWirePin, LOW);
+  pinMode(AZpreampPin, OUTPUT);
+    digitalWrite(AZpreampPin, LOW);
 
   // for (int i = 0; i < 8; i++) {
   //   pinMode(TestPin[i], INPUT);
@@ -899,6 +911,37 @@ void setup() {
   }else{
     BaudRate = EEPROM.readUShort(226);
   }
+
+  // 228 AZtwoWire
+  if(EEPROM.read(228)==0xff){
+    AZtwoWire=false;
+  }else{
+    if(EEPROM.readBool(228)==1){
+      AZtwoWire=true;
+    }else{
+      AZtwoWire=false;
+    }
+  }
+  digitalWrite(AZtwoWirePin, AZtwoWire);
+
+  // 229 AZpreamp
+  if(EEPROM.read(229)==0xff){
+    AZpreamp=false;
+  }else{
+    if(EEPROM.readBool(229)==1){
+      AZpreamp=true;
+    }else{
+      AZpreamp=false;
+    }
+  }
+  digitalWrite(AZpreampPin, AZpreamp);
+
+
+
+
+
+
+
 
   // 2-encoder range
   NumberOfEncoderOutputs = EEPROM.read(2);
@@ -3893,7 +3936,9 @@ void handleSet() {
   String oneturnlimitsecERR= "";
   String pulseperdegreeERR= "";
   String pulseperdegreeSTYLE= "";
+  String twowireSTYLE= "";
   String pulseperdegreeDisable= "";
+  String twowireDisable= "";
   String mapurlERR= "";
   String mqttERR= "";
   String mqttportERR= "";
@@ -3915,6 +3960,10 @@ void handleSet() {
   String baudSELECT2= "";
   String baudSELECT3= "";
   String baudSELECT4= "";
+  String twowireSELECT0= "";
+  String twowireSELECT1= "";
+  String preampSELECT0= "";
+  String preampSELECT1= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -4124,6 +4173,32 @@ void handleSet() {
       MqttPubString("EndstopUse", String(Endstop), true);
     }
 
+    // 228 AZtwoWire
+    if(ajaxserver.arg("twowire").toInt()==1 && AZtwoWire==false){
+      AZtwoWire = true;
+      digitalWrite(AZtwoWirePin, AZtwoWire);
+      EEPROM.writeBool(228, AZtwoWire);
+      MqttPubString("AZpotentiometer", "2-wire", true);
+    }else if(ajaxserver.arg("twowire").toInt()!=1 && AZtwoWire==true){
+      AZtwoWire = false;
+      digitalWrite(AZtwoWirePin, AZtwoWire);
+      EEPROM.writeBool(228, AZtwoWire);
+      MqttPubString("AZpotentiometer", "3-wire", true);
+    }
+
+    // 229 AZpreamp
+    if(ajaxserver.arg("preamp").toInt()==1 && AZpreamp==false){
+      AZpreamp = true;
+      digitalWrite(AZpreampPin, AZpreamp);
+      EEPROM.writeBool(229, AZpreamp);
+      MqttPubString("AZpreamp", "ON", true);
+    }else if(ajaxserver.arg("preamp").toInt()!=1 && AZpreamp==true){
+      AZpreamp = false;
+      digitalWrite(AZpreampPin, AZpreamp);
+      EEPROM.writeBool(229, AZpreamp);
+      MqttPubString("AZpreamp", "OFF", true);
+    }
+
     // 36 - NoEndstopLowZone
     if ( ajaxserver.arg("edstoplowzone").length()<1 || ajaxserver.arg("edstoplowzone").toInt()<1 || ajaxserver.arg("edstoplowzone").toInt()>15){
       // edstoplowzoneERR= " Out of range number 1-15";
@@ -4281,11 +4356,31 @@ if(AZsource==true){
   sourceSELECT1= " selected";
   pulseperdegreeDisable="";
   pulseperdegreeSTYLE="";
+  twowireSTYLE=" style='text-decoration: line-through; color: #555;'";
+  twowireDisable=" disabled";
 }else{
   sourceSELECT0= " selected";
   sourceSELECT1= "";
   pulseperdegreeDisable=" disabled";
   pulseperdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
+  twowireDisable="";
+  twowireSTYLE="";
+}
+
+if(AZtwoWire==true){
+  twowireSELECT0= "";
+  twowireSELECT1= " selected";
+}else{
+  twowireSELECT0= " selected";
+  twowireSELECT1= "";
+}
+
+if(AZpreamp==true){
+  preampSELECT0= "";
+  preampSELECT1= " selected";
+}else{
+  preampSELECT0= " selected";
+  preampSELECT1= "";
 }
 
 if(Endstop==true){
@@ -4384,6 +4479,30 @@ if(ACmotor==true){
   HtmlSrc +="><span style='color:red;'>";
   HtmlSrc += pulseperdegreeERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-100</span></span></td></tr>\n";
+
+  HtmlSrc +="<tr><td class='tdr'><label for='twowire'><span";
+  HtmlSrc += twowireSTYLE;
+  HtmlSrc +=">Azimuth potentiometer:</span></label></td><td><select name='twowire' id='twowire'";
+  HtmlSrc += twowireDisable;
+  HtmlSrc +="><option value='0'";
+  HtmlSrc += twowireSELECT0;
+  HtmlSrc +=">3 Wire</option><option value='1'";
+  HtmlSrc += twowireSELECT1;
+  HtmlSrc +=">2 Wire</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>2 wire use 9mA CC source<br>3 wire use 9V CV source</span></span>";
+  if(AZtwoWire==true && AZpreamp==true){
+    HtmlSrc +="<br><span style='color: red;'>Recommend using a 3-wire potentiometer with the preamplifier ON</span>";
+  }
+  HtmlSrc +="</td></tr>\n";
+
+  HtmlSrc +="<tr><td class='tdr'><label for='preamp'><span";
+  HtmlSrc += twowireSTYLE;
+  HtmlSrc +=">Azimuth gain/shift op-amp:</span></label></td><td><select name='preamp' id='preamp'";
+  HtmlSrc += twowireDisable;
+  HtmlSrc +="><option value='0'";
+  HtmlSrc += preampSELECT0;
+  HtmlSrc +=">OFF</option><option value='1'";
+  HtmlSrc += preampSELECT1;
+  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 200px;'>For potentiometer use one turn from any<br>Need manualy preset with two trimmer</span></span></td></tr>\n";
 
   // if(AZsource==false){ // potentiometer
     HtmlSrc +="<tr class='b'><td class='tdr'><label for='edstops'><span";
