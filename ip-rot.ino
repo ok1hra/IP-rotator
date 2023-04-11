@@ -58,6 +58,7 @@ Changelog:
 + warm up timer for stable value
 + AZtwoWire L=three H=two wire AZ pot NOT TESTED
 + AZpreamp L=preamp on H=pre amp off NOT TESTED
++ if source AZsource == false && TwoWire == true && CwRaw < 1577 | then show recomended
 
 ToDo
 - BRAKE in DC mode support
@@ -91,7 +92,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230410";
+const char* REV = "20230411";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -4438,11 +4439,11 @@ if(ACmotor==true){
   HtmlSrc += YOUR_CALL;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += yourcallERR;
-  HtmlSrc +="</span></td></tr>\n<tr><td class='tdr'><label for='rotid'>Rotator ID:</label></td><td><input type='text' id='rotid' name='rotid' size='2' value='";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 200px;'>Used as part of an MQTT topic</span></td></tr>\n<tr><td class='tdr'><label for='rotid'>Rotator ID:</label></td><td><input type='text' id='rotid' name='rotid' size='2' value='";
   HtmlSrc += NET_ID;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += rotidERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 50px;'>1-2 chars</span></span></td></tr>\n<tr><td class='tdr'><label for='rotname'>Rotator name:</label></td><td><input type='text' id='rotname' name='rotname' size='20' value='";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 300px;'>1-2 chars<br>Multiple rotators with the same TOPIC must have different IDs<br>Second part of MQTT topic</span></span></td></tr>\n<tr><td class='tdr'><label for='rotname'>Rotator name:</label></td><td><input type='text' id='rotname' name='rotname' size='20' value='";
   HtmlSrc += RotName;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += rotnameERR;
@@ -4469,7 +4470,7 @@ if(ACmotor==true){
   HtmlSrc += sourceSELECT0;
   HtmlSrc +=">Potentiometer</option><option value='1'";
   HtmlSrc += sourceSELECT1;
-  HtmlSrc +=">CW/CCW pulse</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Pulse deactivate control with KEY, and SW endstop</span></span></td></tr>\n";
+  HtmlSrc +=">CW/CCW pulse</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>Pulse deactivate control with KEY, and SW endstop</span></span></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='pulseperdegree'><span";
   HtmlSrc += pulseperdegreeSTYLE;
   HtmlSrc +=">Pulse count per degree:</span></label></td><td><input type='text' id='pulseperdegree' name='pulseperdegree' size='3' value='";
@@ -4695,7 +4696,11 @@ void handleCal() {
   HtmlSrc +="<td></td>";
   HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'>SAVE CW &#8677;</button></td>";
   HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'><span style='color: #ccc;'>Instruction:</span> rotate to both CCW ";
+  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'>";
+  if( AZsource == false && AZtwoWire == true && CwRaw < 1577 ){
+    HtmlSrc +="<span style='color: #ccc;'>Recommendation: </span><span style='color: #0c0;'>If you are using a 2 wire potentiometer less than 500Ω,<br>you can increase the sensitivity if you short the J16 jumper on the back side PCB.<br><br></span>";
+  }
+  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span> rotate to both CCW ";
   HtmlSrc +=StartAzimuth;
   HtmlSrc +="&deg; and CW ";
   HtmlSrc +=StartAzimuth+MaxRotateDegree;
