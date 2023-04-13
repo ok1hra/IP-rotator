@@ -59,6 +59,7 @@ Changelog:
 + AZtwoWire L=three H=two wire AZ pot NOT TESTED
 + AZpreamp L=preamp on H=pre amp off NOT TESTED
 + if source AZsource == false && TwoWire == true && CwRaw < 1577 | then show recomended
++ add reverse azimuth button
 
 ToDo
 - BRAKE in DC mode support
@@ -92,11 +93,12 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230411";
+const char* REV = "20230413";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
-bool Reverse =  false;
+bool Reverse = false;
+bool ReverseAZ = false;
 short CcwRaw = 0;
 short CwRaw = 0;
 short HardwareRev = 99;
@@ -291,6 +293,7 @@ int i = 0;
 226-227 BaudRate
 228 AZtwoWire
 229 AZpreamp
+230 - ReverseAZ
 
 231-234 - Altitude 4
 // 232 - SpeedAlert 4
@@ -864,12 +867,12 @@ void setup() {
 
   // 36 - NoEndstopLowZone
   if(EEPROM.read(36)==0xff){
-    NoEndstopLowZone = 0.4;
+    NoEndstopLowZone = 0.5;
   }else{
     if(EEPROM.readByte(36)<16){
       NoEndstopLowZone = float(EEPROM.readByte(36))/10;
     }else{
-      NoEndstopLowZone = 0.4;
+      NoEndstopLowZone = 0.5;
     }
   }
   // NoEndstopHighZone = 3.3 - NoEndstopLowZone;
@@ -877,12 +880,12 @@ void setup() {
 
   // 222 - NoEndstopHighZone
   if(EEPROM.read(222)==0xff){
-    NoEndstopHighZone = 2.9;
+    NoEndstopHighZone = 2.8;
   }else{
     if(EEPROM.readByte(222)>15 && EEPROM.readByte(222)<34){
       NoEndstopHighZone = float(EEPROM.readByte(222))/10;
     }else{
-      NoEndstopHighZone = 2.9;
+      NoEndstopHighZone = 2.8;
     }
   }
   // NoEndstopHighZone = 3.3 - NoEndstopLowZone;
@@ -937,6 +940,16 @@ void setup() {
   }
   digitalWrite(AZpreampPin, AZpreamp);
 
+  // 230 - ReverseAZ
+  if(EEPROM.read(230)==0xff){
+    ReverseAZ=false;
+  }else{
+    if(EEPROM.readBool(230)==1){
+      ReverseAZ=true;
+    }else{
+      ReverseAZ=false;
+    }
+  }
 
 
 
@@ -1345,6 +1358,9 @@ void Watchdog(){
       AZmasterBuffer = 0;
       VoltageBuffer = 0;
       CwCcwButtValue = analogRead(CwCcwButtPin);
+      if(ReverseAZ==true){
+        AzimuthValue=map(AzimuthValue, 142, 3155, 3155, 142);
+      }
     }
     Azimuth=map(AzimuthValue, CcwRaw, CwRaw, 0, MaxRotateDegree);
     ADCTimer=millis();
@@ -2039,12 +2055,13 @@ long RawTmp = 0;
       if(Serial.available()){
         incomingByte=Serial.read();
         if(incomingByte==89 || incomingByte==121){
-          RawTmp = 0;
-          for (int i=0; i<10; i++){
-            RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
-            delay(10);
-          }
-          CcwRaw = RawTmp / 10;
+          // RawTmp = 0;
+          // for (int i=0; i<10; i++){
+          //   RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
+          //   delay(10);
+          // }
+          // CcwRaw = RawTmp / 10;
+          CcwRaw = AzimuthValue;
           EEPROM.writeUShort(31, CcwRaw);
           EEPROM.commit();
           Prn(OUT, 1,"Offset Calibration to "+String(float(CcwRaw)/1000)+"V" );
@@ -2064,12 +2081,13 @@ long RawTmp = 0;
       if(Serial.available()){
         incomingByte=Serial.read();
         if(incomingByte==89 || incomingByte==121){
-          RawTmp = 0;
-          for (int i=0; i<10; i++){
-            RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
-            delay(10);
-          }
-          CwRaw = RawTmp / 10;
+          // RawTmp = 0;
+          // for (int i=0; i<10; i++){
+          //   RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
+          //   delay(10);
+          // }
+          // CwRaw = RawTmp / 10;
+          CwRaw = AzimuthValue;
           EEPROM.writeUShort(33, CwRaw);
           EEPROM.commit();
           Prn(OUT, 1,"Full Scale Calibration to "+String(float(CwRaw)/1000)+"V" );
@@ -4201,8 +4219,8 @@ void handleSet() {
     }
 
     // 36 - NoEndstopLowZone
-    if ( ajaxserver.arg("edstoplowzone").length()<1 || ajaxserver.arg("edstoplowzone").toInt()<1 || ajaxserver.arg("edstoplowzone").toInt()>15){
-      // edstoplowzoneERR= " Out of range number 1-15";
+    if ( ajaxserver.arg("edstoplowzone").length()<1 || ajaxserver.arg("edstoplowzone").toInt()<2 || ajaxserver.arg("edstoplowzone").toInt()>15){
+      // edstoplowzoneERR= " Out of range number 2-15";
     }else{
       if(NoEndstopLowZone == float(ajaxserver.arg("edstoplowzone").toInt())/10 ) {
         edstoplowzoneERR="";
@@ -4218,8 +4236,8 @@ void handleSet() {
     }
 
     // 222 - NoEndstopHighZone
-    if ( ajaxserver.arg("edstophighzone").length()<1 || ajaxserver.arg("edstophighzone").toInt()<16 || ajaxserver.arg("edstophighzone").toInt()>33){
-      // edstophighzoneERR= " Out of range number 16-33";
+    if ( ajaxserver.arg("edstophighzone").length()<1 || ajaxserver.arg("edstophighzone").toInt()<16 || ajaxserver.arg("edstophighzone").toInt()>31){
+      // edstophighzoneERR= " Out of range number 16-31";
     }else{
       if(NoEndstopHighZone == float(ajaxserver.arg("edstophighzone").toInt())/10 ) {
         edstophighzoneERR="";
@@ -4519,7 +4537,7 @@ if(ACmotor==true){
       HtmlSrc += edstoplowzoneDisable;
       HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
       HtmlSrc += edstoplowzoneERR;
-      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-15 tenths of a Volt</span></span></td></tr>\n";
+      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>2-15 tenths of a Volt</span></span></td></tr>\n";
 
       HtmlSrc +="<tr><td class='tdr'><label for='edstophighzone'><span";
       HtmlSrc += edstophighzoneSTYLE;
@@ -4529,7 +4547,7 @@ if(ACmotor==true){
       HtmlSrc += edstophighzoneDisable;
       HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
       HtmlSrc += edstophighzoneERR;
-      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>16-33 tenths of a Volt</span></span></td></tr>\n";
+      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>16-31 tenths of a Volt</span></span></td></tr>\n";
   // }
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
@@ -4608,16 +4626,24 @@ void handleCal() {
     MqttPubString("ReverseControl", String(Reverse), true);
   }
 
+  if ( ajaxserver.hasArg("reverseaz")==1 ){
+    ReverseAZ = !ReverseAZ;
+    EEPROM.writeBool(230, ReverseAZ);
+    EEPROM.commit();
+    MqttPubString("ReverseAzimuth", String(ReverseAZ), true);
+  }
+
   long RawTmp = 0;
 
   // 31-32 CcwRaw
   if ( ajaxserver.hasArg("setccw")==1 ){
-    RawTmp = 0;
-    for (int i=0; i<10; i++){
-      RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
-      delay(10);
-    }
-    CcwRaw = RawTmp / 10;
+    // RawTmp = 0;
+    // for (int i=0; i<10; i++){
+    //   RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
+    //   delay(10);
+    // }
+    // CcwRaw = RawTmp / 10;
+    CcwRaw = AzimuthValue;
     EEPROM.writeUShort(31, CcwRaw);
     EEPROM.commit();
     MqttPubString("CcwRaw", String(CcwRaw), true);
@@ -4625,12 +4651,13 @@ void handleCal() {
 
   // 33-34  CwRaw
   if ( ajaxserver.hasArg("setcw")==1 ){
-    RawTmp = 0;
-    for (int i=0; i<10; i++){
-      RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
-      delay(10);
-    }
-    CwRaw = RawTmp / 10;
+    // RawTmp = 0;
+    // for (int i=0; i<10; i++){
+    //   RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
+    //   delay(10);
+    // }
+    // CwRaw = RawTmp / 10;
+    CwRaw = AzimuthValue;
     EEPROM.writeUShort(33, CwRaw);
     EEPROM.commit();
     MqttPubString("CwRaw", String(CwRaw), true);
@@ -4648,6 +4675,17 @@ void handleCal() {
   }else{
     ReverseCOLOR= "";
     ReverseSTATUS= "OFF";
+  }
+
+  String ReverseAzCOLOR= "";
+  String ReverseAzSTATUS= "";
+  if(ReverseAZ==true){
+    // ReverseCOLOR= " style='background-color: #c00; color: #FFF;'";
+    ReverseAzCOLOR= " class='red'";
+    ReverseAzSTATUS= "ON";
+  }else{
+    ReverseAzCOLOR= "";
+    ReverseAzSTATUS= "OFF";
   }
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>CALIBRATE</title>";
@@ -4693,14 +4731,18 @@ void handleCal() {
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='140'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
   HtmlSrc +="</tr><tr style='background-color: #666;'>";
   HtmlSrc +="<td class='tdl'><button id='setccw' name='setccw'>&#8676; SAVE CCW</button></td>";
-  HtmlSrc +="<td></td>";
+  HtmlSrc +="<td class='tdc' style='background-color: #666;'><button id='reverseaz' name='reverseaz'";
+  HtmlSrc +=ReverseAzCOLOR;
+  HtmlSrc +=">REVERSE-AZIMUTH-<strong>";
+  HtmlSrc +=ReverseAzSTATUS;
+  HtmlSrc +="</strong></button></td>";
   HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'>SAVE CW &#8677;</button></td>";
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'>";
   if( AZsource == false && AZtwoWire == true && CwRaw < 1577 ){
     HtmlSrc +="<span style='color: #ccc;'>Recommendation: </span><span style='color: #0c0;'>If you are using a 2 wire potentiometer less than 500Ω,<br>you can increase the sensitivity if you short the J16 jumper on the back side PCB.<br><br></span>";
   }
-  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span> rotate to both CCW ";
+  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span> &#8226; If azimuth potentiometer shows opposite values, activate reverse button <br>&#8226; Rotate to both CCW ";
   HtmlSrc +=StartAzimuth;
   HtmlSrc +="&deg; and CW ";
   HtmlSrc +=StartAzimuth+MaxRotateDegree;
