@@ -56,10 +56,11 @@ Changelog:
 + CW/CCW pulse inputs gui
 + serial baudrate set
 + warm up timer for stable value
-+ AZtwoWire L=three H=two wire AZ pot NOT TESTED
-+ AZpreamp L=preamp on H=pre amp off NOT TESTED
++ AZtwoWire L=three H=two wire AZ pot
++ AZpreamp L=preamp on H=pre amp off
 + if source AZsource == false && TwoWire == true && CwRaw < 1577 | then show recomended
 + add reverse azimuth button
++ click to map during rotate stoped
 
 ToDo
 - BRAKE in DC mode support
@@ -93,7 +94,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230413";
+const char* REV = "20230421";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -139,7 +140,7 @@ int AzimuthWatchdog = 0;
 #define ETHERNET                    // Enable ESP32 ethernet (DHCP IPv4)
 #define ETH_ADDR 0
 #define ETH_TYPE ETH_PHY_LAN8720
-#define ETH_POWER 12 //0                // #define ETH_PHY_POWER 0 ./Arduino/hardware/espressif/esp32/variants/esp32-poe/pins_arduino.h
+#define ETH_POWER 0 //12                // #define ETH_PHY_POWER 0 ./Arduino/hardware/espressif/esp32/variants/esp32-poe/pins_arduino.h
 #define ETH_MDC 23                  // MDC pin17
 #define ETH_MDIO 18                 // MDIO pin16
 #define ETH_CLK ETH_CLOCK_GPIO17_OUT    // CLKIN pin5 | settings for ESP32 GATEWAY rev f-g
@@ -3936,12 +3937,20 @@ String Timestamp(){
 void handlePostRot() {
  // String s = MAIN_page; //Read HTML contents
  String str = ajaxserver.arg("ROT");
- AzimuthTarget = str.toInt() + StartAzimuth;
- if(AzimuthTarget>359){
-   AzimuthTarget = AzimuthTarget - 360;
+ if(Status==0){
+   AzimuthTarget = str.toInt() + StartAzimuth;
+   if(AzimuthTarget>359){
+     AzimuthTarget = AzimuthTarget - 360;
+   }
+   MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
+   RotCalculate();
+ }else{
+   if(Status<0){
+     Status=-3;
+   }else{
+     Status=3;
+   }
  }
- MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
- RotCalculate();
 }
 
 void handleSet() {
@@ -4587,7 +4596,7 @@ if(ACmotor==true){
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form>&nbsp; ";
-  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=725,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
+  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=745,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
   HtmlSrc +="</td></tr>\n";
 
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";

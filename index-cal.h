@@ -224,9 +224,11 @@ const char CAL_page[] PROGMEM = R"=====(
 			// endstop.rotate(90 * Math.PI / 180);
 			endstop.lineWidth = 8;
 			endstop.strokeStyle = 'orange';
-			endstop.moveTo(30, 45);
+			// endstop.moveTo(30, 45);
+			endstop.moveTo((Number(BoxSize)-60)/3.3*0.142+30, 45);
 			endstop.lineTo((Number(BoxSize)-60)/3.3*Number(NoEndstopLowZone)+30, 45);
-			endstop.moveTo(BoxSize-30, 45);
+			// endstop.moveTo(BoxSize-30, 45);
+			endstop.moveTo((Number(BoxSize)-60)/3.3*3.155+30, 45);
 			endstop.lineTo((Number(BoxSize)-60)/3.3*Number(NoEndstopHighZone)+30, 45);
 			// endstop.lineTo( (Number(BoxSize)-30)-(Number(BoxSize)-60)/3.3*Number(NoEndstopHighZone), 45);
 			endstop.fillStyle = "orange";
