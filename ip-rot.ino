@@ -51,7 +51,7 @@ Changelog:
 + control key
 + AC functionality
 + AZ potentiometer - NOT TESTED
-+ LED - NOT TESTED
++ LED
 + Supported GS-232 commands: R L A S C Mxxx O F
 + CW/CCW pulse inputs gui
 + serial baudrate set
@@ -64,7 +64,6 @@ Changelog:
 
 ToDo
 - BRAKE in DC mode support
-- proverit otoceni potenciometru
 - need implement
   - CW/CCW pulse functionality
   - CW/CCW pulse pulse per grad
@@ -127,6 +126,7 @@ byte dutyCycle = 0;
 long StatusWatchdogTimer = 0;
 long RotateWatchdogTimer = 0;
 int AzimuthWatchdog = 0;
+bool ErrorDetect = 0;
 
 //---------------------------------------------------------
 // #define HWREV 8                     // PCB version [7-8]
@@ -169,20 +169,23 @@ int HWidValue           = 0;
 // HardwareRev 1
 const int ACcwPin       = 2;
 const int BrakePin      = 33;
-const int CwCcwButtPin  = 36;  // analog
-int CwCcwButtValue      = 4095;
+// const int CwCcwButtPin  = 36;  // analog
+const int CwInputPin    = 36;
+const int CcwInputPin   = 5;
+int CwCcwInputValue      = 0;
 const int AZmasterPin   = 32;  // analog
 float AZmasterValue     = 0.0;
 const int LedRPin       = 15;
 const int LedGPin       = 14;
-const int LedBPin       = 14;
+const int LedBPin       = 0;
 const int AZtwoWirePin  = 13;
 const int AZpreampPin   = 12;
 
 // setting PWM properties
 const int PwmFreq = 1000;
-const int ledChannel = 0;
 const int PwmResolution = 8;
+const int mosfetPWMChannel = 0;
+const int greenPWMChannel = 2;
 
 // unsigned long TimerTemp;
 
@@ -383,9 +386,9 @@ long MqttStatusTimer[2]{1500,1000};
 long HeartBeatTimer[2]={0,1000};
 
 // WX pinout
-const int ShiftInDataPin = 34;  // to rev0.3 13
-const int ShiftInLatchPin = 4;
-const int ShiftInClockPin = 5;
+const int ShiftInDataPin = 0;  // to rev0.3 13
+const int ShiftInLatchPin = 0;
+const int ShiftInClockPin = 0;
 bool rxShiftInRead;
 
 byte ShiftOutByte[3];
@@ -567,22 +570,30 @@ String AprsCoordinates;
 void setup() {
 
   pinMode(AzimuthPin, INPUT);
-  pinMode(CwCcwButtPin, INPUT);
+  // pinMode(CwCcwButtPin, INPUT);
+  pinMode(CwInputPin, INPUT);
+  pinMode(CcwInputPin, INPUT);
+
   pinMode(HWidPin, INPUT);
     HWidValue = readADC_Cal(analogRead(HWidPin));
     if(HWidValue<=150){
       HardwareRev=0;
-    }else if(HWidValue>150){
+    }else if(HWidValue>150 && HWidValue<=450){
       HardwareRev=3;  // 319
+    }else if(HWidValue>450){
+      HardwareRev=4;  // 604
     }
   pinMode(VoltagePin, INPUT);
   pinMode(ReversePin, OUTPUT);
     digitalWrite(ReversePin, LOW);
 
 
-  ledcSetup(ledChannel, PwmFreq, PwmResolution);
-  ledcAttachPin(PwmPin, ledChannel);
-  ledcWrite(ledChannel, 0);
+  ledcSetup(mosfetPWMChannel, PwmFreq, PwmResolution);
+  ledcSetup(greenPWMChannel, PwmFreq, PwmResolution);
+  ledcAttachPin(PwmPin, mosfetPWMChannel);
+  ledcAttachPin(LedGPin, greenPWMChannel);
+  ledcWrite(mosfetPWMChannel, 0);
+  ledcWrite(greenPWMChannel, 0);
 
   // HardwareRev 1
   pinMode(AZmasterPin, INPUT);
@@ -592,8 +603,8 @@ void setup() {
     digitalWrite(BrakePin, LOW);
   pinMode(LedRPin, OUTPUT);
     digitalWrite(LedRPin, LOW);
-  pinMode(LedGPin, OUTPUT);
-    digitalWrite(LedGPin, LOW);
+  // pinMode(LedGPin, OUTPUT);
+  //   digitalWrite(LedGPin, HIGH);
   pinMode(LedBPin, OUTPUT);
     digitalWrite(LedBPin, LOW);
 
@@ -1358,7 +1369,14 @@ void Watchdog(){
       AZBuffer = 0;
       AZmasterBuffer = 0;
       VoltageBuffer = 0;
-      CwCcwButtValue = analogRead(CwCcwButtPin);
+      CwCcwInputValue = 0;
+      if(digitalRead(CwInputPin)==LOW){
+        CwCcwInputValue = 1;
+      }
+      if(digitalRead(CcwInputPin)==LOW){
+        CwCcwInputValue = 2;
+      }
+
       if(ReverseAZ==true){
         AzimuthValue=map(AzimuthValue, 142, 3155, 3155, 142);
       }
@@ -1368,36 +1386,37 @@ void Watchdog(){
   }
 
   // AZ master potentiometer - NOT TESTED
-
-  // static bool FirstReset = false;
+  // static bool WakeUp = false;
   // static long AZmasterChangeTimer = 0;
-  // static int AZtarget = 0;
+  // static int AZmasterValueTmp = 0;
   // static int AZtargetTmp = 0;
-  // if(FirstReset==false && AzimuthValue!=0){
-  //   AZmasterValue=AzimuthValue;
-  //   FirstReset = true;
+  // if( Status==0 && millis()-AZmasterChangeTimer >1000 && WakeUp==false && AZmasterValueTmp!=AZmasterValue){
+  //   AZmasterValueTmp=AZmasterValue;
+  //   WakeUp = true;
+  //   AZmasterChangeTimer=millis();
+  //   MqttPubString("AZmasterValue+Tmp", String(AZmasterValue)+"|"+String(AZmasterValueTmp), false);
   // }
-  // if( Status==0 && millis()-AZmasterChangeTimer >1000 && FirstReset==true){
-  //   AZtarget=map(AZmasterValue, 142, 3139, 0, 360);
-  //   if(AZtarget!=AZtargetTmp && AZtarget!=Azimuth){
-  //     AzimuthTarget=AZtarget;
-  //     MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
-  //     AZtargetTmp=AZtarget;
-  //     RotCalculate();
-  //   }
+  // if( Status==0 && millis()-AZmasterChangeTimer >2000 && WakeUp==true && AZmasterValueTmp!=AZmasterValue){
+  //   AZmasterValueTmp=AZmasterValue;
+  //   AZtargetTmp=map(AZmasterValue, 142, 3139, 0, 360);
+  //   AzimuthTarget=AZtargetTmp;
+  //   RotCalculate();
+  //   WakeUp = false;
+  //   MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
+  //   MqttPubString("AZmasterValue+Tmp2", String(AZmasterValue)+"|"+String(AZmasterValueTmp), false);
   //   AZmasterChangeTimer=millis();
   // }
 
   // KEY
   if(AZsource==false){ // potentiometer
     static bool RunByKey = false;
-    if(CwCcwButtValue<=100 && Status>=0){
+    if(CwCcwInputValue==1 && Status>=0){
       if(Status==0){
         Status=1;
         RunByKey=true;
       }
       RunTimer();
-    }else if(CwCcwButtValue>100 && CwCcwButtValue<3000 && Status<=0){
+    }else if(CwCcwInputValue==2 && Status<=0){
       if(Status==0){
         Status=-1;
         RunByKey=true;
@@ -1419,7 +1438,7 @@ void Watchdog(){
 
   static long AZchangeTimer = 0;
   static int AzimuthTmp = 0;
-  static int CwCcwButtValueTmp = 0;
+  static int CwCcwInputValueTmp = 0;
   static float VoltageValueTmp = 0;
   static int StatusTmp = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
   static String StatusStr = "";
@@ -1447,9 +1466,9 @@ void Watchdog(){
       MqttPubString("Azimuth", String(Azimuth), false);
       AzimuthTmp=Azimuth;
     }
-    if(CwCcwButtValueTmp!=CwCcwButtValue){
-      MqttPubString("CwCcwButtValue", String(CwCcwButtValue), false);
-      CwCcwButtValueTmp=CwCcwButtValue;
+    if(CwCcwInputValueTmp!=CwCcwInputValue){
+      MqttPubString("CwCcwInputValue", String(CwCcwInputValue), false);
+      CwCcwInputValueTmp=CwCcwInputValue;
     }
     if(abs(VoltageValueTmp-VoltageValue)>0.5){
       MqttPubString("VoltageValue", String(VoltageValue), false);
@@ -1466,6 +1485,7 @@ void Watchdog(){
       }else{
         Status=3;
       }
+      ErrorDetect=1;
       MqttPubString("Debug", "Stopped by 120s timeout", false);
       StatusWatchdogTimer = StatusWatchdogTimer+5000; // next 5sec check
     }
@@ -1480,8 +1500,9 @@ void Watchdog(){
         }else{
           Status=3;
         }
-        RotateWatchdogTimer=millis();
+        ErrorDetect=1;
         MqttPubString("Debug", "Stopped after not reaching "+String(360/(OneTurnLimitSec/10) )+"° change in 10s", false);
+        RotateWatchdogTimer=millis();
       }
     }
   }
@@ -1497,6 +1518,7 @@ void Watchdog(){
             Status=3;
           }
           MqttPubString("Debug", "Stopped by under voltage 11V POE", false);
+          ErrorDetect=1;
         }
     }
     DCunderVoltageWatchdog=millis();
@@ -1510,7 +1532,7 @@ void Watchdog(){
       // MqttPubString("AzimuthRAWcal", String(AzimuthValue), false);
       // MqttPubString("MaxLimitDegree", String(MaxLimitDegree), false);
       // MqttPubString("AzimuthValue", String(AzimuthValue/1000.0), false);
-      // MqttPubString("CwCcwButtValue", String(CwCcwButtValue/1000.0), false);
+      // MqttPubString("CwCcwInputValue", String(CwCcwInputValue/1000.0), false);
       // MqttPubString("HWidValue", String(HWidValue/1000.0), false);
 
       DebugTimer=millis();
@@ -1567,40 +1589,62 @@ void Watchdog(){
 
 //-------------------------------------------------------------------------------------------------------
 
-// LED - NOT TESTED
+// LED
 void LedStatus(){
   switch (Status) {
     case -3: {
       digitalWrite(LedRPin, HIGH);
-      digitalWrite(LedGPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
       break; }
     case -2: {
       digitalWrite(LedRPin, HIGH);
-      digitalWrite(LedGPin, LOW);
+      ledcWrite(greenPWMChannel, 0);
       break; }
     case -1: {
       digitalWrite(LedRPin, HIGH);
-      digitalWrite(LedGPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
       break; }
     case  0: {
       digitalWrite(LedRPin, LOW);
-      digitalWrite(LedGPin, HIGH);
       digitalWrite(LedBPin, LOW);
       break; }
     case  1: {
       digitalWrite(LedRPin, HIGH);
-      digitalWrite(LedGPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
       break; }
     case  2: {
       digitalWrite(LedRPin, HIGH);
-      digitalWrite(LedGPin, LOW);
+      ledcWrite(greenPWMChannel, 0);
       break; }
     case  3: {
       digitalWrite(LedRPin, HIGH);
-      digitalWrite(LedGPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
       break; }
   }
 }
+//-------------------------------------------------------------------------------------------------------
+void LedStatusErr(){
+  static byte dutyCycleLed = 0;
+  static bool dutyCycleLedDown = 0;
+  if(ErrorDetect==1){
+    if(dutyCycleLedDown==0){
+      dutyCycleLed++;
+      if(dutyCycleLed==255){
+        dutyCycleLedDown=1;
+      }
+    }else{
+      dutyCycleLed--;
+      if(dutyCycleLed==0){
+        dutyCycleLedDown=0;
+      }
+    }
+    ledcWrite(greenPWMChannel, dutyCycleLed);
+  }else{
+
+    ledcWrite(greenPWMChannel, 255);
+  }
+}
+
 //-------------------------------------------------------------------------------------------------------
 
 void RotCalculate(){
@@ -1696,11 +1740,11 @@ void RunByStatus(){
             if(dutyCycle!=0){
               dutyCycle--;
             }
-            ledcWrite(ledChannel, dutyCycle);
+            ledcWrite(mosfetPWMChannel, dutyCycle);
             PwmTimer=millis();
             if(dutyCycle<1){
               dutyCycle=0;
-              ledcWrite(ledChannel, 0);
+              ledcWrite(mosfetPWMChannel, 0);
               // ReverseProcedure(false);
               digitalWrite(ReversePin, LOW);
               Status=0;
@@ -1722,15 +1766,16 @@ void RunByStatus(){
         }
         ; break; }
       case -1: {
+        ErrorDetect=0;
         ReverseProcedure(true);
         if(ACmotor==false){
           //DC
           if(millis()-PwmTimer > PwmUpDelay){
             dutyCycle+=2;
-            ledcWrite(ledChannel, dutyCycle);
+            ledcWrite(mosfetPWMChannel, dutyCycle);
             PwmTimer=millis();
             if(dutyCycle>253){
-              ledcWrite(ledChannel, 255);
+              ledcWrite(mosfetPWMChannel, 255);
               Status=-2;
             }
           }
@@ -1747,18 +1792,19 @@ void RunByStatus(){
         }
         ; break; }
       case  0: {
-        // nill
+        LedStatusErr();
         ; break; }
       case  1: {
+        ErrorDetect=0;
         ReverseProcedure(false);
         if(ACmotor==false){
           //DC
           if(millis()-PwmTimer > PwmUpDelay){
             dutyCycle+=2;
-            ledcWrite(ledChannel, dutyCycle);
+            ledcWrite(mosfetPWMChannel, dutyCycle);
             PwmTimer=millis();
             if(dutyCycle>253){
-              ledcWrite(ledChannel, 255);
+              ledcWrite(mosfetPWMChannel, 255);
               Status=2;
             }
           }
@@ -1786,11 +1832,11 @@ void RunByStatus(){
             if(dutyCycle!=0){
               dutyCycle--;
             }
-            ledcWrite(ledChannel, dutyCycle);
+            ledcWrite(mosfetPWMChannel, dutyCycle);
             PwmTimer=millis();
             if(dutyCycle<1){
               dutyCycle=0;
-              ledcWrite(ledChannel, 0);
+              ledcWrite(mosfetPWMChannel, 0);
               // ReverseProcedure(false);
               digitalWrite(ReversePin, LOW);
               Status=0;
@@ -4453,15 +4499,15 @@ if(ACmotor==true){
   HtmlSrc +=".b {border-top: 1px dotted #666;} .tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
   HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
   HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
-  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Setup<br><span style='font-size: 50%;'>(";
+  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Setup<br><span style='font-size: 50%;'>(MAC ";
   HtmlSrc +=MACString;
-  HtmlSrc +="|";
+  HtmlSrc +="|FW ";
   HtmlSrc +=REV;
-  HtmlSrc +="|";
+  HtmlSrc +="|HW ";
   HtmlSrc +=String(HardwareRev);
-  HtmlSrc +="|";
+  HtmlSrc +=")</span><span style='color: #333;'>";
   HtmlSrc +=String(HWidValue);
-  HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
+  HtmlSrc +="</span></H1><div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
   HtmlSrc += YOUR_CALL;
   HtmlSrc +="'><span style='color:red;'>";
@@ -4708,14 +4754,14 @@ void handleCal() {
   HtmlSrc +="a:hover {color: #fff;}";
   HtmlSrc +="a {color: #ccc; text-decoration: underline;}";
   HtmlSrc +="</style><link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>";
-  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Two calibration steps:<br><span style='font-size: 50%;'>(";
+  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Two calibration steps:<br><span style='font-size: 50%;'>(MAC ";
   HtmlSrc +=MACString;
-  HtmlSrc +="|";
+  HtmlSrc +="|HW ";
   HtmlSrc +=REV;
-  HtmlSrc +="|";
+  HtmlSrc +="|FW ";
   HtmlSrc +=String(HardwareRev);
-  HtmlSrc +="|";
-  HtmlSrc +=String(HWidValue);
+  // HtmlSrc +="|";
+  // HtmlSrc +=String(HWidValue);
   HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'>";
   HtmlSrc +="<table cellspacing='0' cellpadding='0'><form action='/cal' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>";
   HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>1. Rotate direction calibrate</span></td></tr>";
