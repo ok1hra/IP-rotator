@@ -50,7 +50,7 @@ Changelog:
 + diffrent low/high endstop zone
 + control key
 + AC functionality
-+ AZ potentiometer - NOT TESTED
++ AZ potentiometer
 + LED
 + Supported GS-232 commands: R L A S C Mxxx O F
 + CW/CCW pulse inputs gui
@@ -93,7 +93,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230421";
+const char* REV = "20230424";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -174,7 +174,7 @@ const int CwInputPin    = 36;
 const int CcwInputPin   = 5;
 int CwCcwInputValue      = 0;
 const int AZmasterPin   = 32;  // analog
-float AZmasterValue     = 0.0;
+int AZmaster            = 142;
 const int LedRPin       = 15;
 const int LedGPin       = 14;
 const int LedBPin       = 0;
@@ -1353,6 +1353,7 @@ void Watchdog(){
   static long ADCTimer = 0;
   static long ADCCounter = 0;
   static int AZBuffer = 0;
+  static int AZmasterValue = 0;
   static int AZmasterBuffer = 0;
   static float VoltageBuffer = 0;
   if(millis()-ADCTimer > 5){
@@ -1383,29 +1384,44 @@ void Watchdog(){
     }
     Azimuth=map(AzimuthValue, CcwRaw, CwRaw, 0, MaxRotateDegree);
     ADCTimer=millis();
+    AZmaster=map(AZmasterValue, 142, 3150, 0, 360);
+    if(AZmaster<=180){
+      AZmaster=AZmaster+180;
+    }else{
+      AZmaster=AZmaster-180;
+    }
   }
 
   // AZ master potentiometer - NOT TESTED
-  // static bool WakeUp = false;
-  // static long AZmasterChangeTimer = 0;
-  // static int AZmasterValueTmp = 0;
   // static int AZtargetTmp = 0;
-  // if( Status==0 && millis()-AZmasterChangeTimer >1000 && WakeUp==false && AZmasterValueTmp!=AZmasterValue){
-  //   AZmasterValueTmp=AZmasterValue;
-  //   WakeUp = true;
-  //   AZmasterChangeTimer=millis();
-  //   MqttPubString("AZmasterValue+Tmp", String(AZmasterValue)+"|"+String(AZmasterValueTmp), false);
-  // }
-  // if( Status==0 && millis()-AZmasterChangeTimer >2000 && WakeUp==true && AZmasterValueTmp!=AZmasterValue){
-  //   AZmasterValueTmp=AZmasterValue;
-  //   AZtargetTmp=map(AZmasterValue, 142, 3139, 0, 360);
-  //   AzimuthTarget=AZtargetTmp;
-  //   RotCalculate();
-  //   WakeUp = false;
-  //   MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
-  //   MqttPubString("AZmasterValue+Tmp2", String(AZmasterValue)+"|"+String(AZmasterValueTmp), false);
-  //   AZmasterChangeTimer=millis();
-  // }
+  static bool Run = false;
+  static long AZmasterChangeTimer = 0;
+  static int AZmasterTmp = AZmaster;
+  if(millis()<10000 || Status!=0){
+    AZmasterTmp=AZmaster;
+  }
+  if( Status==0 && abs(AZmaster-AZmasterTmp)>3 && Run==false){
+    AZmasterTmp=AZmaster;
+    Run = true;
+    AZmasterChangeTimer=millis();
+    // MqttPubString("AZmasterStart", String(AZmaster), false);
+  }
+  if( Status==0 && abs(AZmaster-AZmasterTmp)>3 && Run==true){
+    AZmasterChangeTimer=millis();
+    AZmasterTmp=AZmaster;
+    // MqttPubString("AZmasterRun", String(AZmaster), false);
+  }
+  if( Status==0 && millis()-AZmasterChangeTimer >2000 && abs(AZmaster-AZmasterTmp)<=3 && Run==true){
+    AZmasterTmp=AZmaster;
+    AzimuthTarget=AZmaster+StartAzimuth;
+    if(AzimuthTarget>359){
+      AzimuthTarget=AzimuthTarget-360;
+    }
+    RotCalculate();
+    Run = false;
+    MqttPubString("AzimuthTargetPot", String(AzimuthTarget), false);
+    // MqttPubString("AZmasterStop", String(AZmaster), false);
+  }
 
   // KEY
   if(AZsource==false){ // potentiometer
