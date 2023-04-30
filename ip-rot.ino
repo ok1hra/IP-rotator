@@ -14,14 +14,15 @@ This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
-
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Used MQTT-WALL, credit Adam Hořčica, is under MIT license,
+see https://github.com/bastlirna/mqtt-wall/blob/master/license.txt
 
 MQTT monitor
 mosquitto_sub -v -h 192.168.1.200 -t 'OK1HRA/ROT/#'
@@ -61,15 +62,15 @@ Changelog:
 + if source AZsource == false && TwoWire == true && CwRaw < 1577 | then show recomended
 + add reverse azimuth button
 + click to map during rotate stoped
++ BRAKE in DC mode support
++ if mqtt_server_ip[0]=0 then disable MQTT
 
 ToDo
-- BRAKE in DC mode support
 - need implement
   - CW/CCW pulse functionality
   - CW/CCW pulse pulse per grad
   - serial protocol easycomm2
 - watchdog if eth_connected = false; > 5s, then reconect
-- if mqtt_server_ip[0]=0 then disable MQTT
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
 - telnet
 - vycistit kod
@@ -93,7 +94,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230424";
+const char* REV = "20230430";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -1043,6 +1044,9 @@ void setup() {
     mqtt_server_ip[0]=54;
   }else{
     mqtt_server_ip[0]=EEPROM.readByte(161);
+    if(mqtt_server_ip[0]==0){
+      MQTT_ENABLE = false;
+    }
   }
 
   if(EEPROM.read(162)==0xff){
@@ -1428,13 +1432,13 @@ void Watchdog(){
     static bool RunByKey = false;
     if(CwCcwInputValue==1 && Status>=0){
       if(Status==0){
-        Status=1;
+        Status=1; digitalWrite(BrakePin, HIGH); delay(24);
         RunByKey=true;
       }
       RunTimer();
     }else if(CwCcwInputValue==2 && Status<=0){
       if(Status==0){
-        Status=-1;
+        Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
         RunByKey=true;
       }
       RunTimer();
@@ -1677,19 +1681,19 @@ void RotCalculate(){
   // direction
   if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
     if(AzimuthTarget>Azimuth){
-      Status=1;
+      Status=1; digitalWrite(BrakePin, HIGH); delay(24);
       RunTimer();
     }else{
-      Status=-1;
+      Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
       RunTimer();
     }
 
   // escape from the forbidden zone
   }else if(Azimuth<0 && AzimuthTarget>0){
-    Status=1;
+    Status=1; digitalWrite(BrakePin, HIGH); delay(24);
     RunTimer();
   }else if(Azimuth>MaxRotateDegree && AzimuthTarget<MaxRotateDegree){
-    Status=-1;
+    Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
     RunTimer();
   }else{
     AzimuthTarget=-1;
@@ -1763,6 +1767,8 @@ void RunByStatus(){
               ledcWrite(mosfetPWMChannel, 0);
               // ReverseProcedure(false);
               digitalWrite(ReversePin, LOW);
+              delay(24);
+              digitalWrite(BrakePin, LOW);
               Status=0;
               AzimuthTarget=-1;
             }
@@ -1855,6 +1861,8 @@ void RunByStatus(){
               ledcWrite(mosfetPWMChannel, 0);
               // ReverseProcedure(false);
               digitalWrite(ReversePin, LOW);
+              delay(24);
+              digitalWrite(BrakePin, LOW);
               Status=0;
               AzimuthTarget=-1;
             }
@@ -2025,13 +2033,13 @@ long RawTmp = 0;
 
   // R 82 Clockwise Rotation
   }else if(incomingByte==82){
-    Status=1;
+    Status=1; digitalWrite(BrakePin, HIGH); delay(24);
     RunTimer();
     Prn(OUT, 1, "CW" );
 
   // L 76 Counter Clockwise Rotation
   }else if(incomingByte==76){
-    Status=-1;
+    Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
     RunTimer();
     Prn(OUT, 1, "CCW" );
 
@@ -3359,39 +3367,44 @@ void http(){
             webClient.print(millis()/86400000);
             webClient.print(F(" days"));
           }
-          webClient.print(F(" | FW: "));
+          webClient.print(F(" | FW:&nbsp;"));
           webClient.println(REV);
-          webClient.print(F(" | HW: "));
+          webClient.print(F("&nbsp;| HW:&nbsp;"));
           webClient.println(HardwareRev);
-          webClient.print(F(" | eth mac: "));
+          webClient.print(F("&nbsp;| eth&nbsp;mac:&nbsp;"));
           webClient.print(MACString);
           webClient.println();
 
-          webClient.print(F(" | dhcp: "));
+          webClient.print(F("&nbsp;| dhcp:&nbsp;"));
           if(DHCP_ENABLE==1){
             webClient.print(F("ON"));
           }else{
             webClient.print(F("OFF"));
           }
-          webClient.print(F(" | ip: "));
+          webClient.print(F("&nbsp;| ip:&nbsp;"));
           webClient.println(ETH.localIP());
           // webClient.print(F(" | utc from ntp: "));
           // webClient.println(F("timeClient.getFormattedTime()"));
           // webClient.println(F("<br>MQTT subscribe command: $ mosquitto_sub -v -h mqttstage.prusa -t prusa-debug/prusafil/extrusionline/+/#"));
-          webClient.print(F(" | Broker ip: "));
-          webClient.print(mqtt_server_ip[0]);
-          webClient.print(F("."));
-          webClient.print(mqtt_server_ip[1]);
-          webClient.print(F("."));
-          webClient.print(mqtt_server_ip[2]);
-          webClient.print(F("."));
-          webClient.print(mqtt_server_ip[3]);
-          webClient.print(F(":"));
-          webClient.print(MQTT_PORT);
+          webClient.print(F(" | MQTT&nbsp;"));
+          if(MQTT_ENABLE==true){
+            webClient.print(F("broker&nbsp;ip:&nbsp;"));
+            webClient.print(mqtt_server_ip[0]);
+            webClient.print(F("."));
+            webClient.print(mqtt_server_ip[1]);
+            webClient.print(F("."));
+            webClient.print(mqtt_server_ip[2]);
+            webClient.print(F("."));
+            webClient.print(mqtt_server_ip[3]);
+            webClient.print(F(":"));
+            webClient.print(MQTT_PORT);
+          }else{
+            webClient.print(F("<span style='color: #F00; font-weight: bold;'>DISABLE</span>"));
+          }
           #if defined(OTAWEB)
-            webClient.print(F(" | <a href=\"http://"));
+            webClient.print(F("&nbsp;| <a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":82/update\" target=_blank>Upload FW</a> | <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a><br><a href=\"http://"));
+            webClient.print(F(":82/update\" target=_blank>Upload&nbsp;FW</a>&nbsp;| <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a><br><a href=\"http://"));
             webClient.println(ETH.localIP());
             webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Azimuth Map Control</button></a>"));
           #endif
@@ -4649,7 +4662,7 @@ if(ACmotor==true){
   HtmlSrc +="<input type='text' id='mqttip0' name='mqttip0' size='1' value='" + String(mqtt_server_ip[0]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip1' name='mqttip1' size='1' value='" + String(mqtt_server_ip[1]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip2' name='mqttip2' size='1' value='" + String(mqtt_server_ip[2]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip3' name='mqttip3' size='1' value='" + String(mqtt_server_ip[3]) + "'>";
   HtmlSrc +="<span style='color:red;'>";
   HtmlSrc += mqttERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>Default public broker 54.38.157.134</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>Default public broker 54.38.157.134<br>If first digit zero, MQTT disable</span></span></td></tr>\n";
 
   HtmlSrc +="<tr><td class='tdr'><label for='mqttport'>MQTT broker PORT:</label></td><td>";
   HtmlSrc +="<input type='text' id='mqttport' name='mqttport' size='2' value='" + String(MQTT_PORT) + "'>\n";
@@ -4681,12 +4694,12 @@ void handleCal() {
   }
 
   if ( ajaxserver.hasArg("cw")==1 ){
-    Status=1;
+    Status=1; digitalWrite(BrakePin, HIGH); delay(24);
     RunTimer();
   }
 
   if ( ajaxserver.hasArg("ccw")==1 ){
-    Status=-1;
+    Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
     RunTimer();
   }
 
@@ -4772,9 +4785,9 @@ void handleCal() {
   HtmlSrc +="</style><link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>";
   HtmlSrc +="<H1 style='color: #666; text-align: center;'>Two calibration steps:<br><span style='font-size: 50%;'>(MAC ";
   HtmlSrc +=MACString;
-  HtmlSrc +="|HW ";
-  HtmlSrc +=REV;
   HtmlSrc +="|FW ";
+  HtmlSrc +=REV;
+  HtmlSrc +="|HW ";
   HtmlSrc +=String(HardwareRev);
   // HtmlSrc +="|";
   // HtmlSrc +=String(HWidValue);
