@@ -64,8 +64,12 @@ Changelog:
 + click to map during rotate stoped
 + BRAKE in DC mode support
 + if mqtt_server_ip[0]=0 then disable MQTT
++ Disable PWM from setup gui
 
 ToDo
+- show target from az pot in map
+- disable target in map if status = 0 (not rotate)
+- PwmDwnDelay/PwmUpDelay set from setup gui
 - need implement
   - CW/CCW pulse functionality
   - CW/CCW pulse pulse per grad
@@ -94,7 +98,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230430";
+const char* REV = "20230505";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -121,8 +125,9 @@ short PulsePerDegree = 0;
 bool AZtwoWire =  false;
 bool AZpreamp =  false;
 
-unsigned int PwmUpDelay  = 4;  // [ms]*255
-unsigned int PwmDwnDelay = 3;  // [ms]*255
+bool PWMenable = true;
+unsigned int PwmUpDelay  = 3;  // [ms]*255
+unsigned int PwmDwnDelay = 2;  // [ms]*255
 byte dutyCycle = 0;
 long StatusWatchdogTimer = 0;
 long RotateWatchdogTimer = 0;
@@ -299,6 +304,7 @@ int i = 0;
 228 AZtwoWire
 229 AZpreamp
 230 - ReverseAZ
+231 - PWMenable
 
 231-234 - Altitude 4
 // 232 - SpeedAlert 4
@@ -964,7 +970,16 @@ void setup() {
     }
   }
 
-
+  // 231 - PWMenable = true;
+  if(EEPROM.read(231)==0xff){
+    PWMenable=false;
+  }else{
+    if(EEPROM.readBool(231)==1){
+      PWMenable=true;
+    }else{
+      PWMenable=false;
+    }
+  }
 
 
 
@@ -1113,16 +1128,16 @@ void setup() {
   }
 
   // 213-230 - APRS coordinate
-  for (int i=213; i<231; i++){
-    if(EEPROM.read(i)!=0xff){
-      AprsCoordinates=AprsCoordinates+char(EEPROM.read(i));
-    }
-  }
-
-  // 231-234 Altitude
-  if(EEPROM.readByte(231)!=255){
-    Altitude = EEPROM.readInt(231);
-  }
+  // for (int i=213; i<231; i++){
+  //   if(EEPROM.read(i)!=0xff){
+  //     AprsCoordinates=AprsCoordinates+char(EEPROM.read(i));
+  //   }
+  // }
+  //
+  // // 231-234 Altitude
+  // if(EEPROM.readByte(231)!=255){
+  //   Altitude = EEPROM.readInt(231);
+  // }
 
   // 235-238 AlertLimit
   if(EEPROM.readByte(235)!=255){
@@ -1756,22 +1771,33 @@ void RunByStatus(){
       case -3: {
         if(ACmotor==false){
           //DC
-          if(millis()-PwmTimer > PwmDwnDelay){
-            if(dutyCycle!=0){
-              dutyCycle--;
+          if(PWMenable==true){
+            if(millis()-PwmTimer > PwmDwnDelay){
+              if(dutyCycle!=0){
+                dutyCycle--;
+              }
+              ledcWrite(mosfetPWMChannel, dutyCycle);
+              PwmTimer=millis();
+              if(dutyCycle<1){
+                dutyCycle=0;
+                ledcWrite(mosfetPWMChannel, 0);
+                // ReverseProcedure(false);
+                digitalWrite(ReversePin, LOW);
+                delay(24);
+                digitalWrite(BrakePin, LOW);
+                Status=0;
+                AzimuthTarget=-1;
+              }
             }
-            ledcWrite(mosfetPWMChannel, dutyCycle);
-            PwmTimer=millis();
-            if(dutyCycle<1){
-              dutyCycle=0;
-              ledcWrite(mosfetPWMChannel, 0);
-              // ReverseProcedure(false);
-              digitalWrite(ReversePin, LOW);
-              delay(24);
-              digitalWrite(BrakePin, LOW);
-              Status=0;
-              AzimuthTarget=-1;
-            }
+          }else{
+            dutyCycle=0;
+            ledcWrite(mosfetPWMChannel, 0);
+            // ReverseProcedure(false);
+            digitalWrite(ReversePin, LOW);
+            delay(24);
+            digitalWrite(BrakePin, LOW);
+            Status=0;
+            AzimuthTarget=-1;
           }
         }else{
           //AC
@@ -1792,14 +1818,19 @@ void RunByStatus(){
         ReverseProcedure(true);
         if(ACmotor==false){
           //DC
-          if(millis()-PwmTimer > PwmUpDelay){
-            dutyCycle+=2;
-            ledcWrite(mosfetPWMChannel, dutyCycle);
-            PwmTimer=millis();
-            if(dutyCycle>253){
-              ledcWrite(mosfetPWMChannel, 255);
-              Status=-2;
+          if(PWMenable==true){
+            if(millis()-PwmTimer > PwmUpDelay){
+              dutyCycle+=2;
+              ledcWrite(mosfetPWMChannel, dutyCycle);
+              PwmTimer=millis();
+              if(dutyCycle>253){
+                ledcWrite(mosfetPWMChannel, 255);
+                Status=-2;
+              }
             }
+          }else{
+            ledcWrite(mosfetPWMChannel, 255);
+            Status=-2;
           }
         }else{
           //AC
@@ -1821,14 +1852,19 @@ void RunByStatus(){
         ReverseProcedure(false);
         if(ACmotor==false){
           //DC
-          if(millis()-PwmTimer > PwmUpDelay){
-            dutyCycle+=2;
-            ledcWrite(mosfetPWMChannel, dutyCycle);
-            PwmTimer=millis();
-            if(dutyCycle>253){
-              ledcWrite(mosfetPWMChannel, 255);
-              Status=2;
+          if(PWMenable==true){
+            if(millis()-PwmTimer > PwmUpDelay){
+              dutyCycle+=2;
+              ledcWrite(mosfetPWMChannel, dutyCycle);
+              PwmTimer=millis();
+              if(dutyCycle>253){
+                ledcWrite(mosfetPWMChannel, 255);
+                Status=2;
+              }
             }
+          }else{
+            ledcWrite(mosfetPWMChannel, 255);
+            Status=2;
           }
         }else{
           //AC
@@ -1850,22 +1886,33 @@ void RunByStatus(){
       case  3: {
         if(ACmotor==false){
           //DC
-          if(millis()-PwmTimer > PwmDwnDelay){
-            if(dutyCycle!=0){
-              dutyCycle--;
+          if(PWMenable==true){
+            if(millis()-PwmTimer > PwmDwnDelay){
+              if(dutyCycle!=0){
+                dutyCycle--;
+              }
+              ledcWrite(mosfetPWMChannel, dutyCycle);
+              PwmTimer=millis();
+              if(dutyCycle<1){
+                dutyCycle=0;
+                ledcWrite(mosfetPWMChannel, 0);
+                // ReverseProcedure(false);
+                digitalWrite(ReversePin, LOW);
+                delay(24);
+                digitalWrite(BrakePin, LOW);
+                Status=0;
+                AzimuthTarget=-1;
+              }
             }
-            ledcWrite(mosfetPWMChannel, dutyCycle);
-            PwmTimer=millis();
-            if(dutyCycle<1){
-              dutyCycle=0;
-              ledcWrite(mosfetPWMChannel, 0);
-              // ReverseProcedure(false);
-              digitalWrite(ReversePin, LOW);
-              delay(24);
-              digitalWrite(BrakePin, LOW);
-              Status=0;
-              AzimuthTarget=-1;
-            }
+          }else{
+            dutyCycle=0;
+            ledcWrite(mosfetPWMChannel, 0);
+            // ReverseProcedure(false);
+            digitalWrite(ReversePin, LOW);
+            delay(24);
+            digitalWrite(BrakePin, LOW);
+            Status=0;
+            AzimuthTarget=-1;
           }
         }else{
           //AC
@@ -4039,8 +4086,10 @@ void handleSet() {
   String oneturnlimitsecERR= "";
   String pulseperdegreeERR= "";
   String pulseperdegreeSTYLE= "";
+  String pwmenableSTYLE= "";
   String twowireSTYLE= "";
   String pulseperdegreeDisable= "";
+  String pwmenableDisable= "";
   String twowireDisable= "";
   String mapurlERR= "";
   String mqttERR= "";
@@ -4056,6 +4105,8 @@ void handleSet() {
   String acmotorCHECKED= "";
   String motorSELECT0= "";
   String motorSELECT1= "";
+  String pwmSELECT0= "";
+  String pwmSELECT1= "";
   String sourceSELECT0= "";
   String sourceSELECT1= "";
   String baudSELECT0= "";
@@ -4364,6 +4415,17 @@ void handleSet() {
       MqttPubString("Motor", "AC", true);
     }
 
+    // 231 - PWMenable = true;
+    if(ajaxserver.arg("pwmenable").toInt()==0 && PWMenable==true){
+      PWMenable = false;
+      EEPROM.writeBool(231, 0);
+      MqttPubString("PWMenable", "OFF", true);
+    }else if(ajaxserver.arg("pwmenable").toInt()==1 && PWMenable==false){
+      PWMenable = true;
+      EEPROM.writeBool(231, 1);
+      MqttPubString("PWMenable", "ON", true);
+    }
+
     // 226-227 BaudRate
     static int BaudRateTmp=115200;
     switch (ajaxserver.arg("baud").toInt()) {
@@ -4516,9 +4578,21 @@ switch (BaudRate) {
 if(ACmotor==true){
   motorSELECT0= "";
   motorSELECT1= " selected";
+  pwmenableSTYLE=" style='text-decoration: line-through; color: #555;'";
+  pwmenableDisable=" disabled";
 }else{
   motorSELECT0= " selected";
   motorSELECT1= "";
+  pwmenableSTYLE="";
+  pwmenableDisable="";
+}
+
+if(PWMenable==true){
+  pwmSELECT0= "";
+  pwmSELECT1= " selected";
+}else{
+  pwmSELECT0= " selected";
+  pwmSELECT1= "";
 }
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
@@ -4645,6 +4719,16 @@ if(ACmotor==true){
   HtmlSrc +=">DC</option><option value='1'";
   HtmlSrc += motorSELECT1;
   HtmlSrc +=">AC</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>DC use PWM<br>AC activate the other two relays</span></span></td></tr>\n";
+
+  HtmlSrc +="<tr><td class='tdr'><label for='pwmenable'><span";
+  HtmlSrc += pwmenableSTYLE;
+  HtmlSrc += ">DC PWM control:</label></td><td><select name='pwmenable' id='pwmenable' ";
+  HtmlSrc += pwmenableDisable;
+  HtmlSrc +="><option value='0'";
+  HtmlSrc += pwmSELECT0;
+  HtmlSrc +=">OFF</option><option value='1'";
+  HtmlSrc += pwmSELECT1;
+  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>If disable, mosfet will be only on/off operation</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='baud'>USB serial BAUDRATE:</label></td><td><select name='baud' id='baud'><option value='0'";
   HtmlSrc += baudSELECT0;
