@@ -65,6 +65,7 @@ Changelog:
 + BRAKE in DC mode support
 + if mqtt_server_ip[0]=0 then disable MQTT
 + Disable PWM from setup gui
++ if PWM in gui OFF, AC-cw out for DC input, if PWM disable and high voltage
 
 ToDo
 - show target from az pot in map
@@ -98,7 +99,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230505";
+const char* REV = "20232605";
 
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
@@ -329,7 +330,7 @@ unsigned long WatchdogTimer=0;
 WebServer ajaxserver(HTTP_SERVER_PORT+8);
 
 WiFiServer server(HTTP_SERVER_PORT);
-bool DHCP_ENABLE = 1;
+bool DHCP_ENABLE = 0;
 // Client variables
 char linebuf[80];
 int charcount=0;
@@ -1164,7 +1165,7 @@ void setup() {
     // ETH.begin();
     ETH.begin(ETH_ADDR, ETH_POWER, ETH_MDC, ETH_MDIO, ETH_TYPE, ETH_CLK);
     if(DHCP_ENABLE==false){
-      ETH.config(IPAddress(192, 168, 1, 188), IPAddress(192, 168, 1, 255),IPAddress(255, 255, 255, 0),IPAddress(8, 8, 8, 8));
+      ETH.config(IPAddress(192, 168, 0, 11), IPAddress(192, 168, 0, 1),IPAddress(255, 255, 255, 0),IPAddress(8, 8, 8, 8));
       //config(IPAddress local_ip, IPAddress gateway, IPAddress subnet, IPAddress dns1 = (uint32_t)0x00000000, IPAddress dns2 = (uint32_t)0x00000000);
     }
   #endif
@@ -1796,6 +1797,7 @@ void RunByStatus(){
             digitalWrite(ReversePin, LOW);
             delay(24);
             digitalWrite(BrakePin, LOW);
+            digitalWrite(ACcwPin, LOW);
             Status=0;
             AzimuthTarget=-1;
           }
@@ -1830,6 +1832,7 @@ void RunByStatus(){
             }
           }else{
             ledcWrite(mosfetPWMChannel, 255);
+            digitalWrite(ACcwPin, HIGH);
             Status=-2;
           }
         }else{
@@ -1864,6 +1867,7 @@ void RunByStatus(){
             }
           }else{
             ledcWrite(mosfetPWMChannel, 255);
+            digitalWrite(ACcwPin, HIGH);
             Status=2;
           }
         }else{
@@ -1911,6 +1915,7 @@ void RunByStatus(){
             digitalWrite(ReversePin, LOW);
             delay(24);
             digitalWrite(BrakePin, LOW);
+            digitalWrite(ACcwPin, LOW);
             Status=0;
             AzimuthTarget=-1;
           }
