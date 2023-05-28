@@ -66,8 +66,19 @@ Changelog:
 + if mqtt_server_ip[0]=0 then disable MQTT
 + Disable PWM from setup gui
 + if PWM in gui OFF, AC-cw out for DC input, if PWM disable and high voltage
++ small stop ramp if(abs(AzimuthTarget-Azimuth)<2)
 
 ToDo
+- rename PWR to PWM on main control page
+- reset button for calibrate settings in setup
+- calibrate control potentiometer on 0° (show ° in setup gui?)
+- DC without PWM for high voltage motor
+- save settings (dump eeprom?)
+- test - if stop, after run over target
+       - 10 turn pot without preamp
+       - test preamp linearity
+       - maximum PWM voltage
+       - web fw upload
 - show target from az pot in map
 - disable target in map if status = 0 (not rotate)
 - PwmDwnDelay/PwmUpDelay set from setup gui
@@ -101,6 +112,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 //-------------------------------------------------------------------------------------------------------
 const char* REV = "20232605";
 
+#define CN3A                      // fix hw bug
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
 bool Reverse = false;
@@ -330,7 +342,11 @@ unsigned long WatchdogTimer=0;
 WebServer ajaxserver(HTTP_SERVER_PORT+8);
 
 WiFiServer server(HTTP_SERVER_PORT);
-bool DHCP_ENABLE = 0;
+#if defined(CN3A)
+  bool DHCP_ENABLE = 0;
+#else
+  bool DHCP_ENABLE = 1;
+#endif
 // Client variables
 char linebuf[80];
 int charcount=0;
@@ -1434,6 +1450,9 @@ void Watchdog(){
   if( Status==0 && millis()-AZmasterChangeTimer >2000 && abs(AZmaster-AZmasterTmp)<=3 && Run==true){
     AZmasterTmp=AZmaster;
     AzimuthTarget=AZmaster+StartAzimuth;
+    #if defined(CN3A)
+      AzimuthTarget=AzimuthTarget+30;
+    #endif
     if(AzimuthTarget>359){
       AzimuthTarget=AzimuthTarget-360;
     }
@@ -1811,8 +1830,14 @@ void RunByStatus(){
         }
         ; break; }
       case -2: {
-        if(abs(Azimuth-AzimuthTarget)<10){
-          Status=-3;
+        if(PWMenable==true){
+          if(abs(AzimuthTarget-Azimuth)<10){
+            Status=3;
+          }
+        }else{
+          if(abs(AzimuthTarget-Azimuth)<2){
+            Status=-3;
+          }
         }
         ; break; }
       case -1: {
@@ -1883,8 +1908,14 @@ void RunByStatus(){
         }
         ; break; }
       case  2: {
-        if(abs(AzimuthTarget-Azimuth)<10){
-          Status=3;
+        if(PWMenable==true){
+          if(abs(AzimuthTarget-Azimuth)<10){
+            Status=3;
+          }
+        }else{
+          if(abs(AzimuthTarget-Azimuth)<2){
+            Status=3;
+          }
         }
         ; break; }
       case  3: {
