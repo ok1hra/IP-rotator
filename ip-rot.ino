@@ -67,11 +67,11 @@ Changelog:
 + Disable PWM from setup gui
 + if PWM in gui OFF, AC-cw out for DC input, if PWM disable and high voltage
 + small stop ramp if(abs(AzimuthTarget-Azimuth)<2)
++ rename PWR to POE on main control page
++ reset button for calibrate settings in setup
++ calibrate control potentiometer on north (show ° in setup gui)
 
 ToDo
-- rename PWR to PWM on main control page
-- reset button for calibrate settings in setup
-- calibrate control potentiometer on 0° (show ° in setup gui?)
 - DC without PWM for high voltage motor
 - save settings (dump eeprom?)
 - test - if stop, after run over target
@@ -110,9 +110,9 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20232605";
+const char* REV = "20230602";
 
-#define CN3A                      // fix hw bug
+// #define CN3A                      // fix hw bug
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
 bool Reverse = false;
@@ -604,8 +604,10 @@ void setup() {
       HardwareRev=0;
     }else if(HWidValue>150 && HWidValue<=450){
       HardwareRev=3;  // 319
-    }else if(HWidValue>450){
+    }else if(HWidValue>450 && HWidValue<=700){
       HardwareRev=4;  // 604
+    }else if(HWidValue>700){
+      HardwareRev=5;  // 807
     }
   pinMode(VoltagePin, INPUT);
   pinMode(ReversePin, OUTPUT);
@@ -1328,6 +1330,7 @@ void setup() {
    ajaxserver.on("/", handleRoot);      //This is display page
    ajaxserver.on("/readADC", handleADC);//To get update of ADC Value only
    ajaxserver.on("/readAZ", handleAZ);
+   ajaxserver.on("/readFrontAZ", handleFrontAZ);
    ajaxserver.on("/readAZadc", handleAZadc);
    ajaxserver.on("/readStat", handleStat);
    ajaxserver.on("/readStart", handleStart);
@@ -4791,7 +4794,7 @@ if(PWMenable==true){
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form>&nbsp; ";
-  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=745,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
+  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=1100,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
   HtmlSrc +="</td></tr>\n";
 
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
@@ -4835,6 +4838,16 @@ void handleCal() {
     EEPROM.writeBool(230, ReverseAZ);
     EEPROM.commit();
     MqttPubString("ReverseAzimuth", String(ReverseAZ), true);
+  }
+
+  if ( ajaxserver.hasArg("clear")==1 ){
+    CcwRaw=142;
+    CwRaw = 3155;
+    EEPROM.writeUShort(31, CcwRaw);
+    EEPROM.writeUShort(33, CwRaw);
+    EEPROM.commit();
+    MqttPubString("CcwRaw", String(CcwRaw), true);
+    MqttPubString("CwRaw", String(CwRaw), true);
   }
 
   long RawTmp = 0;
@@ -4903,7 +4916,7 @@ void handleCal() {
   HtmlSrc +="a:hover {color: #fff;}";
   HtmlSrc +="a {color: #ccc; text-decoration: underline;}";
   HtmlSrc +="</style><link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>";
-  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Two calibration steps:<br><span style='font-size: 50%;'>(MAC ";
+  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Calibration steps:<br><span style='font-size: 50%;'>(MAC ";
   HtmlSrc +=MACString;
   HtmlSrc +="|FW ";
   HtmlSrc +=REV;
@@ -4927,20 +4940,22 @@ void handleCal() {
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'><span style='color: #ccc;'>Instruction:</span> if it does not rotate according to the buttons, reverse the control</td>";
   HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td>";
-  HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>2. Azimuth calibrate</span></td>";
-  HtmlSrc +="</tr><tr>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td></tr>";
 
+  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>2. Azimuth calibrate</span></td>";
+  HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='140'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
   HtmlSrc +="</tr><tr style='background-color: #666;'>";
   HtmlSrc +="<td class='tdl'><button id='setccw' name='setccw'>&#8676; SAVE CCW</button></td>";
-  HtmlSrc +="<td class='tdc' style='background-color: #666;'><button id='reverseaz' name='reverseaz'";
+  HtmlSrc +="<td class='tdc' style='background-color: #666;'><button id='clear' name='clear'>";
+  HtmlSrc +="RESET CW/CCW SAVE</button></td>";
+  HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'>SAVE CW &#8677;</button></td>";
+  HtmlSrc +="</tr><tr>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><button id='reverseaz' name='reverseaz'";
   HtmlSrc +=ReverseAzCOLOR;
   HtmlSrc +=">REVERSE-AZIMUTH-<strong>";
   HtmlSrc +=ReverseAzSTATUS;
   HtmlSrc +="</strong></button></td>";
-  HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'>SAVE CW &#8677;</button></td>";
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'>";
   if( AZsource == false && AZtwoWire == true && CwRaw < 1577 ){
@@ -4951,12 +4966,15 @@ void handleCal() {
   HtmlSrc +="&deg; and CW ";
   HtmlSrc +=StartAzimuth+MaxRotateDegree;
   HtmlSrc +="&deg; ends and save new limits</td>";
-  // HtmlSrc +="</tr><tr><td></td><td style='height: 42px;'></td></tr>";
-  // HtmlSrc +="<tr><td class='tdc' colspan='3'><a href='http://";
-  // HtmlSrc +=String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]);
-  // HtmlSrc +=":88/'><button>&#8617; Back to Control</button></a>&nbsp;&nbsp;<a href='http://";
-  // HtmlSrc +=String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]);
-  // HtmlSrc +=":88/set'><button>&#8617; Setup</button></a></td></tr>";
+  HtmlSrc +="</tr><tr>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td></tr>";
+
+  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>3. Front panel calibrate (optional)</span></td>";
+  HtmlSrc +="</tr><tr>";
+  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'>";
+  HtmlSrc +="<span style='font-size: 170%;'>Panel value <span style='font-weight: bold; color: #0a0;' id='frontAZValue'>0</span>&deg;<br><br></span>";
+  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; Rotate front panel potentiometer axis without knob to value 0&deg <br>&#8226; Put knob with orientation to north on axis<br>&#8226; Fixate knob to axis on position north</td></tr>";
+
   HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></p></span></div>";
 
   String s = CAL_page; //Read HTML contents
@@ -4980,6 +4998,13 @@ void handleADC() {
 }
 void handleAZ() {
   ajaxserver.send(200, "text/plane", String(Azimuth) );
+}
+void handleFrontAZ() {
+  if(AZmaster==180){
+    ajaxserver.send(200, "text/plane", "n/a" );
+  }else{
+    ajaxserver.send(200, "text/plane", String(AZmaster) );
+  }
 }
 void handleAZadc() {
   ajaxserver.send(200, "text/plane", String(AzimuthValue) );

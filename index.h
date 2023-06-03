@@ -86,9 +86,9 @@ const char MAIN_page[] PROGMEM = R"=====(
 		<div class="second">
 			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
 				<span style="color: #000; background: #666; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
-					<span style="color: #fff;" id="AntName2"> </span> | PWR
-					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V | raw
-					<span style="font-weight: bold;" id="AZValue">0</span>&deg; |
+					<span style="color: #fff;" id="AntName2"> </span> | POE
+					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V |
+					 raw <span style="font-weight: bold;" id="AZValue">0</span>&deg; |
 					<a href="/set" onclick="window.open( this.href, this.href, 'width=700,height=1100,left=0,top=0,menubar=no,location=no,status=no' ); return false;"); return false;\">SETUP</a>
 
 				</span>

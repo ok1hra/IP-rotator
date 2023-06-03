@@ -20,6 +20,17 @@ const char CAL_page[] PROGMEM = R"=====(
 	setTimeout(() => { Static(); }, 1000);
 
 	function getSet() {
+
+		var fhttp = new XMLHttpRequest();
+	  fhttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+	      document.getElementById("frontAZValue").innerHTML = this.responseText;
+				// console.log ('OnlineTimer ' + OnlineTimer);
+	    }
+	  };
+	  fhttp.open("GET", "readFrontAZ", true);
+	  fhttp.send();
+
 		var ghttp = new XMLHttpRequest();
 	  ghttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
