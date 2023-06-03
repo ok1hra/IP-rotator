@@ -72,6 +72,7 @@ Changelog:
 + calibrate control potentiometer on north (show ° in setup gui)
 
 ToDo
+- PWM up/dwn ramp long to setup page, and ° before target start PWM (measure and saved)
 - DC without PWM for high voltage motor
 - save settings (dump eeprom?)
 - test - if stop, after run over target
@@ -110,9 +111,9 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230602";
+const char* REV = "20230603";
 
-// #define CN3A                      // fix hw bug
+// #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
 float NoEndstopLowZone = 0;
 bool Reverse = false;
@@ -131,6 +132,7 @@ unsigned int MaxRotateDegree = 0;
 unsigned int AntRadiationAngle = 10;
 String MapUrl = "" ;
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
+                //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -radius 500 -num_times 1 -output ./OK500.png
 bool Endstop =  false;
 bool ACmotor =  false;
 bool AZsource =  false;
@@ -194,6 +196,7 @@ const int CcwInputPin   = 5;
 int CwCcwInputValue      = 0;
 const int AZmasterPin   = 32;  // analog
 int AZmaster            = 142;
+int AZmasterValue       = 0;
 const int LedRPin       = 15;
 const int LedGPin       = 14;
 const int LedBPin       = 0;
@@ -1392,7 +1395,6 @@ void Watchdog(){
   static long ADCTimer = 0;
   static long ADCCounter = 0;
   static int AZBuffer = 0;
-  static int AZmasterValue = 0;
   static int AZmasterBuffer = 0;
   static float VoltageBuffer = 0;
   if(millis()-ADCTimer > 5){
@@ -1452,12 +1454,9 @@ void Watchdog(){
   }
   if( Status==0 && millis()-AZmasterChangeTimer >2000 && abs(AZmaster-AZmasterTmp)<=3 && Run==true){
     AZmasterTmp=AZmaster;
-    AzimuthTarget=AZmaster+StartAzimuth;
-    #if defined(CN3A)
-      AzimuthTarget=AzimuthTarget+30;
-    #endif
-    if(AzimuthTarget>359){
-      AzimuthTarget=AzimuthTarget-360;
+    AzimuthTarget = AZmaster - StartAzimuth;
+    if(AzimuthTarget<0){
+        AzimuthTarget = 360+AzimuthTarget;
     }
     RotCalculate();
     Run = false;
@@ -4099,9 +4098,9 @@ void handlePostRot() {
  // String s = MAIN_page; //Read HTML contents
  String str = ajaxserver.arg("ROT");
  if(Status==0){
-   AzimuthTarget = str.toInt() + StartAzimuth;
-   if(AzimuthTarget>359){
-     AzimuthTarget = AzimuthTarget - 360;
+   AzimuthTarget = str.toInt() - StartAzimuth;
+   if(AzimuthTarget<0){
+       AzimuthTarget = 360+AzimuthTarget;
    }
    MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
    RotCalculate();
@@ -4961,19 +4960,19 @@ void handleCal() {
   if( AZsource == false && AZtwoWire == true && CwRaw < 1577 ){
     HtmlSrc +="<span style='color: #ccc;'>Recommendation: </span><span style='color: #0c0;'>If you are using a 2 wire potentiometer less than 500Ω,<br>you can increase the sensitivity if you short the J16 jumper on the back side PCB.<br><br></span>";
   }
-  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span> &#8226; If azimuth potentiometer shows opposite values, activate reverse button <br>&#8226; Rotate to both CCW ";
+  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If azimuth potentiometer shows opposite values, activate reverse button <br>&#8226; Rotate to both CCW ";
   HtmlSrc +=StartAzimuth;
   HtmlSrc +="&deg; and CW ";
   HtmlSrc +=StartAzimuth+MaxRotateDegree;
-  HtmlSrc +="&deg; ends and save new limits</td>";
+  HtmlSrc +="&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, measure real azimuth<br>and put this value to &ldquo;Start CCW azimuth:&rdquo;	field in Setup page</td>";
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td></tr>";
 
   HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>3. Front panel calibrate (optional)</span></td>";
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'>";
-  HtmlSrc +="<span style='font-size: 170%;'>Panel value <span style='font-weight: bold; color: #0a0;' id='frontAZValue'>0</span>&deg;<br><br></span>";
-  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; Rotate front panel potentiometer axis without knob to value 0&deg <br>&#8226; Put knob with orientation to north on axis<br>&#8226; Fixate knob to axis on position north</td></tr>";
+  HtmlSrc +="<span style='font-size: 150%;'>Panel value <span style='font-weight: bold; color: #0a0;' id='frontAZValue'>0</span><br></span>";
+  HtmlSrc +="<span style='color: #ccc;'><br>Instruction:</span><br>&#8226; Rotate front panel potentiometer axis without knob to value 0&deg <br>&#8226; Put knob with orientation to north on axis<br>&#8226; Fixate knob to axis on position north</td></tr>";
 
   HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></p></span></div>";
 
@@ -5000,10 +4999,10 @@ void handleAZ() {
   ajaxserver.send(200, "text/plane", String(Azimuth) );
 }
 void handleFrontAZ() {
-  if(AZmaster==180){
-    ajaxserver.send(200, "text/plane", "n/a" );
+  if(AZmasterValue==142){
+    ajaxserver.send(200, "text/plane", "off" );
   }else{
-    ajaxserver.send(200, "text/plane", String(AZmaster) );
+    ajaxserver.send(200, "text/plane", String(AZmaster)+"&deg;" );
   }
 }
 void handleAZadc() {

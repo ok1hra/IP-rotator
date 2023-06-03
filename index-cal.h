@@ -21,16 +21,6 @@ const char CAL_page[] PROGMEM = R"=====(
 
 	function getSet() {
 
-		var fhttp = new XMLHttpRequest();
-	  fhttp.onreadystatechange = function() {
-	    if (this.readyState == 4 && this.status == 200) {
-	      document.getElementById("frontAZValue").innerHTML = this.responseText;
-				// console.log ('OnlineTimer ' + OnlineTimer);
-	    }
-	  };
-	  fhttp.open("GET", "readFrontAZ", true);
-	  fhttp.send();
-
 		var ghttp = new XMLHttpRequest();
 	  ghttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
@@ -115,6 +105,16 @@ const char CAL_page[] PROGMEM = R"=====(
 	}
 
 	function getData() {
+		var fhttp = new XMLHttpRequest();
+		fhttp.onreadystatechange = function() {
+			if (this.readyState == 4 && this.status == 200) {
+				document.getElementById("frontAZValue").innerHTML = this.responseText;
+				// console.log ('OnlineTimer ' + OnlineTimer);
+			}
+		};
+		fhttp.open("GET", "readFrontAZ", true);
+		fhttp.send();
+
 	  var whttp = new XMLHttpRequest();
 	  whttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
