@@ -70,19 +70,19 @@ Changelog:
 + rename PWR to POE on main control page
 + reset button for calibrate settings in setup
 + calibrate control potentiometer on north (show ° in setup gui)
++ DC use brake relay
 
 ToDo
-- PWM up/dwn ramp long to setup page, and ° before target start PWM (measure and saved)
-- DC without PWM for high voltage motor
+- test
+  - if stop, after run over target
+  + 10 turn pot without preamp
+  + test preamp linearity
+
+- HW rev 06 - change POE voltage limit with enable AMP to 13,0V (2V dropout 11V LDO)
+- PWM up/dwn ramp long to setup page, and ° before target start PWM (measure and saved) - PwmDwnDelay/PwmUpDelay set from setup gui
 - save settings (dump eeprom?)
-- test - if stop, after run over target
-       - 10 turn pot without preamp
-       - test preamp linearity
-       - maximum PWM voltage
-       - web fw upload
 - show target from az pot in map
 - disable target in map if status = 0 (not rotate)
-- PwmDwnDelay/PwmUpDelay set from setup gui
 - need implement
   - CW/CCW pulse functionality
   - CW/CCW pulse pulse per grad
@@ -111,7 +111,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230603";
+const char* REV = "20230722";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -412,13 +412,17 @@ char mqttPath[MqttBuferSize];
 long MqttStatusTimer[2]{1500,1000};
 long HeartBeatTimer[2]={0,1000};
 
-// WX pinout
-const int ShiftInDataPin = 0;  // to rev0.3 13
-const int ShiftInLatchPin = 0;
-const int ShiftInClockPin = 0;
-bool rxShiftInRead;
+// Shift register
+// CC1 12 CLOCK
+// CC2 13 DATA
+// SBU1 14 LATCH
+// SBU2 15
+// const int ShiftOutClockPin = 12;
+// const int ShiftOutDataPin = 13;
+// const int ShiftOutLatchPin = 14;
+// byte ShiftOutByte=0x00;
 
-byte ShiftOutByte[3];
+bool rxShiftInRead;
 // https://randomnerdtutorials.com/esp32-i2c-communication-arduino-ide/
 #include <Wire.h>
 #define I2C_SDA 33
@@ -642,6 +646,11 @@ void setup() {
   pinMode(AZpreampPin, OUTPUT);
     digitalWrite(AZpreampPin, LOW);
 
+  // pinMode(ShiftOutClockPin, OUTPUT);
+  // pinMode(ShiftOutDataPin, OUTPUT);
+  // pinMode(ShiftOutLatchPin, OUTPUT);
+  // digitalWrite(ShiftOutLatchPin, HIGH);
+
   // for (int i = 0; i < 8; i++) {
   //   pinMode(TestPin[i], INPUT);
   // }
@@ -659,9 +668,9 @@ void setup() {
 
   // pinMode(ButtonPin, INPUT);
   // SHIFT IN
-  pinMode(ShiftInLatchPin, OUTPUT);
-  pinMode(ShiftInClockPin, OUTPUT);
-  pinMode(ShiftInDataPin, INPUT);
+  // pinMode(ShiftInLatchPin, OUTPUT);
+  // pinMode(ShiftInClockPin, OUTPUT);
+  // pinMode(ShiftInDataPin, INPUT);
 
   Serial.begin(115200); //BaudRate
   while(!Serial) {
@@ -1046,11 +1055,11 @@ void setup() {
   if(OutputWatchdog>10080){
     OutputWatchdog=0;
   }
-  if(RebootWatchdog>0){
-    ShiftOutByte[0]=EEPROM.readByte(34);
-    ShiftOutByte[1]=EEPROM.readByte(35);
-    ShiftOutByte[2]=EEPROM.readByte(36);
-  }
+  // if(RebootWatchdog>0){
+  //   ShiftOutByte[0]=EEPROM.readByte(34);
+  //   ShiftOutByte[1]=EEPROM.readByte(35);
+  //   ShiftOutByte[2]=EEPROM.readByte(36);
+  // }
   TelnetServerClientAuth[0]=EEPROM.readByte(37);
   TelnetServerClientAuth[1]=EEPROM.readByte(38);
   TelnetServerClientAuth[2]=EEPROM.readByte(39);
@@ -1364,8 +1373,8 @@ void loop() {
   // CLI();
   CLI2();
   Telnet();
-  Watchdog();
   RunByStatus();
+  Watchdog();
 
   ajaxserver.handleClient();
 
@@ -1380,9 +1389,26 @@ void loop() {
    // });
    AsyncElegantOTA.loop();
   #endif
+
+
+  // shift register test
+  // for (int i=0; i<8; i++){
+  //   bitSet(ShiftOutByte, i);
+  //   ShiftOutSet(ShiftOutByte);
+  //   bitClear(ShiftOutByte, i);
+  //   delay(100);
+  // }
+
 }
 // SUBROUTINES -------------------------------------------------------------------------------------------------------
 
+// void ShiftOutSet(byte SetByte){
+//   digitalWrite(ShiftOutLatchPin, LOW);
+//   shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, SetByte);
+//   digitalWrite(ShiftOutLatchPin, HIGH);
+// }
+
+//-------------------------------------------------------------------------------------------------------
 uint32_t readADC_Cal(int ADC_Raw)
 {
   esp_adc_cal_characteristics_t adc_chars;
@@ -1469,16 +1495,16 @@ void Watchdog(){
     static bool RunByKey = false;
     if(CwCcwInputValue==1 && Status>=0){
       if(Status==0){
-        Status=1; digitalWrite(BrakePin, HIGH); delay(24);
+        Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
         RunByKey=true;
       }
-      RunTimer();
+      // RunTimer();
     }else if(CwCcwInputValue==2 && Status<=0){
       if(Status==0){
-        Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
+        Status=-1; //digitalWrite(BrakePin, HIGH); delay(24);
         RunByKey=true;
       }
-      RunTimer();
+      // RunTimer();
     }else if(RunByKey==true){
       if(Status==-2){
         Status=-3;
@@ -1618,9 +1644,9 @@ void Watchdog(){
 
   if(OutputWatchdog > 0 && millis()-WatchdogTimer > OutputWatchdog*60000 && OutputWatchdog < 123456){
     Prn(3, 1,"** Activate clear output watchdog **");
-    ShiftOutByte[0]=0x00;
-    ShiftOutByte[1]=0x00;
-    ShiftOutByte[2]=0x00;
+    // ShiftOutByte[0]=0x00;
+    // ShiftOutByte[1]=0x00;
+    // ShiftOutByte[2]=0x00;
     // EEPROM.writeByte(34, ShiftOutByte[0]);
     // EEPROM.writeByte(35, ShiftOutByte[1]);
     // EEPROM.writeByte(36, ShiftOutByte[2]);
@@ -1718,20 +1744,20 @@ void RotCalculate(){
   // direction
   if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
     if(AzimuthTarget>Azimuth){
-      Status=1; digitalWrite(BrakePin, HIGH); delay(24);
-      RunTimer();
+      Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
+      // RunTimer();
     }else{
-      Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
-      RunTimer();
+      Status=-1; //digitalWrite(BrakePin, HIGH); delay(24);
+      // RunTimer();
     }
 
   // escape from the forbidden zone
   }else if(Azimuth<0 && AzimuthTarget>0){
-    Status=1; digitalWrite(BrakePin, HIGH); delay(24);
-    RunTimer();
+    Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
+    // RunTimer();
   }else if(Azimuth>MaxRotateDegree && AzimuthTarget<MaxRotateDegree){
-    Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
-    RunTimer();
+    Status=-1; //digitalWrite(BrakePin, HIGH); delay(24);
+    // RunTimer();
   }else{
     AzimuthTarget=-1;
   }
@@ -1747,7 +1773,7 @@ void RunTimer(){
 //-------------------------------------------------------------------------------------------------------
 void DetectEndstopZone(){
   if(Endstop==false){
-    if(Status==-1 || Status==-2){  // run status CCW
+    if(Status==-1 || Status==-11 || Status==-2){  // run status CCW
       if(CcwRaw<CwRaw){ // standard az potentiometer
         if(AzimuthValue/1000>NoEndstopLowZone){
           // run
@@ -1762,7 +1788,7 @@ void DetectEndstopZone(){
         }
       }
     }
-    if(Status==1 || Status==2){  // run status CW
+    if(Status==1 || Status==11 || Status==2){  // run status CW
       if(CcwRaw<CwRaw){ // standard az potentiometer
         if(AzimuthValue/1000<NoEndstopHighZone){
           // MqttPubString("Debug +", String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
@@ -1803,10 +1829,10 @@ void RunByStatus(){
               if(dutyCycle<1){
                 dutyCycle=0;
                 ledcWrite(mosfetPWMChannel, 0);
+                digitalWrite(BrakePin, LOW);
+                delay(24);
                 // ReverseProcedure(false);
                 digitalWrite(ReversePin, LOW);
-                delay(24);
-                digitalWrite(BrakePin, LOW);
                 Status=0;
                 AzimuthTarget=-1;
               }
@@ -1814,11 +1840,11 @@ void RunByStatus(){
           }else{
             dutyCycle=0;
             ledcWrite(mosfetPWMChannel, 0);
+            digitalWrite(BrakePin, LOW);
+            delay(24);
             // ReverseProcedure(false);
             digitalWrite(ReversePin, LOW);
-            delay(24);
-            digitalWrite(BrakePin, LOW);
-            digitalWrite(ACcwPin, LOW);
+            // digitalWrite(ACcwPin, LOW);
             Status=0;
             AzimuthTarget=-1;
           }
@@ -1842,9 +1868,9 @@ void RunByStatus(){
           }
         }
         ; break; }
-      case -1: {
+      case -11: {
         ErrorDetect=0;
-        ReverseProcedure(true);
+        // ReverseProcedure(true);
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
@@ -1859,7 +1885,7 @@ void RunByStatus(){
             }
           }else{
             ledcWrite(mosfetPWMChannel, 255);
-            digitalWrite(ACcwPin, HIGH);
+            // digitalWrite(ACcwPin, HIGH);
             Status=-2;
           }
         }else{
@@ -1874,12 +1900,22 @@ void RunByStatus(){
           Status=-2;
         }
         ; break; }
+      case -1: {
+        ReverseProcedure(true);
+        RunTimer();
+        Status=-11;
+        ; break; }
       case  0: {
         LedStatusErr();
         ; break; }
-      case  1: {
-        ErrorDetect=0;
+      case 1: {
         ReverseProcedure(false);
+        RunTimer();
+       Status=11;
+        ; break; }
+      case  11: {
+        ErrorDetect=0;
+        // ReverseProcedure(false);
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
@@ -1894,7 +1930,7 @@ void RunByStatus(){
             }
           }else{
             ledcWrite(mosfetPWMChannel, 255);
-            digitalWrite(ACcwPin, HIGH);
+            // digitalWrite(ACcwPin, HIGH);
             Status=2;
           }
         }else{
@@ -1933,10 +1969,10 @@ void RunByStatus(){
               if(dutyCycle<1){
                 dutyCycle=0;
                 ledcWrite(mosfetPWMChannel, 0);
+                digitalWrite(BrakePin, LOW);
+                delay(24);
                 // ReverseProcedure(false);
                 digitalWrite(ReversePin, LOW);
-                delay(24);
-                digitalWrite(BrakePin, LOW);
                 Status=0;
                 AzimuthTarget=-1;
               }
@@ -1944,11 +1980,11 @@ void RunByStatus(){
           }else{
             dutyCycle=0;
             ledcWrite(mosfetPWMChannel, 0);
+            digitalWrite(BrakePin, LOW);
+            delay(24);
             // ReverseProcedure(false);
             digitalWrite(ReversePin, LOW);
-            delay(24);
-            digitalWrite(BrakePin, LOW);
-            digitalWrite(ACcwPin, LOW);
+            // digitalWrite(ACcwPin, LOW);
             Status=0;
             AzimuthTarget=-1;
           }
@@ -1976,9 +2012,12 @@ void ReverseProcedure(bool CCW){
       }else{
         digitalWrite(ReversePin, HIGH);
       }
+      delay(24);
+      digitalWrite(BrakePin, HIGH);
     }else{
       //AC
       digitalWrite(BrakePin, HIGH);
+      delay(24);
     }
   }else{  // CCW
     if(ACmotor==false){
@@ -1988,9 +2027,12 @@ void ReverseProcedure(bool CCW){
       }else{
         digitalWrite(ReversePin, LOW);
       }
+      delay(24);
+      digitalWrite(BrakePin, HIGH);
     }else{
       //AC
       digitalWrite(BrakePin, HIGH);
+      delay(24);
     }
   }
    delay(12);
@@ -2118,14 +2160,14 @@ long RawTmp = 0;
 
   // R 82 Clockwise Rotation
   }else if(incomingByte==82){
-    Status=1; digitalWrite(BrakePin, HIGH); delay(24);
-    RunTimer();
+    Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
+    // RunTimer();
     Prn(OUT, 1, "CW" );
 
   // L 76 Counter Clockwise Rotation
   }else if(incomingByte==76){
-    Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
-    RunTimer();
+    Status=-1; //digitalWrite(BrakePin, HIGH); delay(24);
+    // RunTimer();
     Prn(OUT, 1, "CCW" );
 
   // A 65 CW/CCW Rotation Stop
@@ -4799,7 +4841,7 @@ if(PWMenable==true){
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
   // HtmlSrc +="<tr><td class='tdr'><a href='/'><button id='go'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></td></tr>";
-  HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><span style='color: #666;'>After change, refresh all other page for apply changes.</span><br><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><span style='color: #666;'>After change, refresh all other page for apply changes.</span><br><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
   HtmlSrc +="</body></html>\n";
 
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
@@ -4816,13 +4858,13 @@ void handleCal() {
   }
 
   if ( ajaxserver.hasArg("cw")==1 ){
-    Status=1; digitalWrite(BrakePin, HIGH); delay(24);
-    RunTimer();
+    Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
+    // RunTimer();
   }
 
   if ( ajaxserver.hasArg("ccw")==1 ){
-    Status=-1; digitalWrite(BrakePin, HIGH); delay(24);
-    RunTimer();
+    Status=-1; //digitalWrite(BrakePin, HIGH); delay(24);
+    // RunTimer();
   }
 
   if ( ajaxserver.hasArg("reverse")==1 ){
@@ -4974,7 +5016,7 @@ void handleCal() {
   HtmlSrc +="<span style='font-size: 150%;'>Panel value <span style='font-weight: bold; color: #0a0;' id='frontAZValue'>0</span><br></span>";
   HtmlSrc +="<span style='color: #ccc;'><br>Instruction:</span><br>&#8226; Rotate front panel potentiometer axis without knob to value 0&deg <br>&#8226; Put knob with orientation to north on axis<br>&#8226; Fixate knob to axis on position north</td></tr>";
 
-  HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/' target='_blank'>More on Wiki &#10138;</a></p></span></div>";
+  HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></p></span></div>";
 
   String s = CAL_page; //Read HTML contents
   HtmlSrc +=s;
