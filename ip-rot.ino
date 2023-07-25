@@ -26,7 +26,7 @@ see https://github.com/bastlirna/mqtt-wall/blob/master/license.txt
 
 MQTT monitor
 mosquitto_sub -v -h 192.168.1.200 -t 'OK1HRA/ROT/#'
-mosquitto_sub -v -h 54.38.157.134 -t 'BD:2F/ROT/#'
+mosquitto_sub -v -h 54.38.157.134 -t 'OK1HRA/1/ROT/#'
 
 MQTT topic
 mosquitto_pub -h 192.168.1.200 -t OK1HRA/ROT/Target -m '10'
@@ -111,7 +111,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230722";
+const char* REV = "20230725";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -1531,9 +1531,11 @@ void Watchdog(){
     switch (Status) {
       case -3: {StatusStr = "PwmDwn-CCW"; break; }
       case -2: {StatusStr = "CCW"; break; }
-      case -1: {StatusStr = "PwmUp-CCW"; break; }
+      case -11: {StatusStr = "PwmUp-CCW"; break; }
+      case -1: {StatusStr = "START-CCW"; break; }
       case  0: {StatusStr = "STOP"; break; }
-      case  1: {StatusStr = "PwmUp-CW"; break; }
+      case  1: {StatusStr = "START-CW"; break; }
+      case  11: {StatusStr = "PwmUp-CW"; break; }
       case  2: {StatusStr = "CW"; break; }
       case  3: {StatusStr = "PwmDwn-CW"; break; }
     }
