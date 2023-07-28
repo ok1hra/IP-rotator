@@ -111,7 +111,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230725";
+const char* REV = "20230728";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -1892,6 +1892,7 @@ void RunByStatus(){
           }
         }else{
           //AC
+          ledcWrite(mosfetPWMChannel, 0);
           if(Reverse==false){ // CCW
             digitalWrite(ACcwPin, LOW);
             digitalWrite(ReversePin, HIGH);
@@ -1937,6 +1938,7 @@ void RunByStatus(){
           }
         }else{
           //AC
+          ledcWrite(mosfetPWMChannel, 0);
           if(Reverse==false){ // CW
             digitalWrite(ACcwPin, HIGH);
             digitalWrite(ReversePin, LOW);
@@ -4701,7 +4703,7 @@ if(PWMenable==true){
   HtmlSrc += NET_ID;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += rotidERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 300px;'>1-2 chars<br>Multiple rotators with the same TOPIC must have different IDs<br>Second part of MQTT topic</span></span></td></tr>\n<tr><td class='tdr'><label for='rotname'>Rotator name:</label></td><td><input type='text' id='rotname' name='rotname' size='20' value='";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 300px;'>[1-2 chars]<br>Multiple rotators with the same TOPIC must have different IDs<br>Second part of MQTT topic</span></span></td></tr>\n<tr><td class='tdr'><label for='rotname'>Rotator name:</label></td><td><input type='text' id='rotname' name='rotname' size='20' value='";
   HtmlSrc += RotName;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += rotnameERR;
@@ -4709,20 +4711,20 @@ if(PWMenable==true){
   HtmlSrc += StartAzimuth;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += startazimuthERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>0-359&deg;</span></span></td></tr>\n<tr><td class='tdr'><label for='maxrotatedegree'>Rotation range in degrees:</label></td><td><input type='text' id='maxrotatedegree' name='maxrotatedegree' size='3' value='";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[0-359&deg;]</span></span></td></tr>\n<tr><td class='tdr'><label for='maxrotatedegree'>Rotation range in degrees:</label></td><td><input type='text' id='maxrotatedegree' name='maxrotatedegree' size='3' value='";
   HtmlSrc += MaxRotateDegree;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += maxrotatedegreeERR;
-  HtmlSrc +="</span></td></tr>\n<tr><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Range from CCW to CW endstop in degrees</span></span></td></tr>\n<tr><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
   HtmlSrc += MapUrl;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += mapurlERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left'>DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA.</span></span> <a href='https://remoteqth.com/xplanet/' target='_blank'>Available list</a></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left'>DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA, or run own services.</span></span> <a href='https://remoteqth.com/xplanet/' target='_blank'>Available list</a></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
   HtmlSrc += AntRadiationAngle;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += antradiationangleERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-180&deg;</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[1-180&deg;]</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='source'>Azimuth source:</label></td><td><select name='source' id='source'><option value='0'";
   HtmlSrc += sourceSELECT0;
@@ -4737,7 +4739,7 @@ if(PWMenable==true){
   HtmlSrc += pulseperdegreeDisable;
   HtmlSrc +="><span style='color:red;'>";
   HtmlSrc += pulseperdegreeERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>1-100</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[1-100]</span></span></td></tr>\n";
 
   HtmlSrc +="<tr><td class='tdr'><label for='twowire'><span";
   HtmlSrc += twowireSTYLE;
@@ -4761,12 +4763,12 @@ if(PWMenable==true){
   HtmlSrc += preampSELECT0;
   HtmlSrc +=">OFF</option><option value='1'";
   HtmlSrc += preampSELECT1;
-  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 200px;'>For potentiometer use one turn from any<br>Need manualy preset with two trimmer</span></span></td></tr>\n";
+  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 200px;'>For potentiometer use one turn from any<br>Need manualy preset with two trimmer<br>More in Wiki page</span></span></td></tr>\n";
 
   // if(AZsource==false){ // potentiometer
     HtmlSrc +="<tr class='b'><td class='tdr'><label for='edstops'><span";
     HtmlSrc += edstopsSTYLE;
-    HtmlSrc +=">Endstops INSTALLED:</span></label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
+    HtmlSrc +=">Hardware endstops INSTALLED:</span></label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
     HtmlSrc += edstopsCHECKED;
     HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
       HtmlSrc +="<tr><td class='tdr'><label for='edstoplowzone'><span";
@@ -4777,7 +4779,7 @@ if(PWMenable==true){
       HtmlSrc += edstoplowzoneDisable;
       HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
       HtmlSrc += edstoplowzoneERR;
-      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>2-15 tenths of a Volt</span></span></td></tr>\n";
+      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[2-15] tenths of a Volt</span></span></td></tr>\n";
 
       HtmlSrc +="<tr><td class='tdr'><label for='edstophighzone'><span";
       HtmlSrc += edstophighzoneSTYLE;
@@ -4787,20 +4789,20 @@ if(PWMenable==true){
       HtmlSrc += edstophighzoneDisable;
       HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
       HtmlSrc += edstophighzoneERR;
-      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>16-31 tenths of a Volt</span></span></td></tr>\n";
+      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[16-31] tenths of a Volt</span></span></td></tr>\n";
   // }
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
   HtmlSrc += OneTurnLimitSec;
   HtmlSrc +="'> seconds per one turn <span style='color:red;'>";
   HtmlSrc += oneturnlimitsecERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 300px;'>Allowed range 20-600sec<br>Lower speed limit activating the watchdog<br>Use a number 50% higher than the actual speed of your rotator</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 300px;'>Allowed range [20-600sec]<br>Lower speed limit activating the watchdog<br>Use a number 50% higher than the actual speed of your rotator</span></span></td></tr>\n";
 
   HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>Motor supply:</label></td><td><select name='motor' id='motor'><option value='0'";
   HtmlSrc += motorSELECT0;
   HtmlSrc +=">DC</option><option value='1'";
   HtmlSrc += motorSELECT1;
-  HtmlSrc +=">AC</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>DC use PWM<br>AC activate the other two relays</span></span></td></tr>\n";
+  HtmlSrc +=">AC</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>DC with optional PWM<br>AC activates another relay sequence</span></span></td></tr>\n";
 
   HtmlSrc +="<tr><td class='tdr'><label for='pwmenable'><span";
   HtmlSrc += pwmenableSTYLE;
@@ -4810,7 +4812,7 @@ if(PWMenable==true){
   HtmlSrc += pwmSELECT0;
   HtmlSrc +=">OFF</option><option value='1'";
   HtmlSrc += pwmSELECT1;
-  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>If disable, mosfet will be only on/off operation</span></span></td></tr>\n";
+  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>If disable, mosfet must be bridged,<br>or replace by jumper<br>More in Wiki page</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='baud'>USB serial BAUDRATE:</label></td><td><select name='baud' id='baud'><option value='0'";
   HtmlSrc += baudSELECT0;
@@ -4822,13 +4824,13 @@ if(PWMenable==true){
   HtmlSrc += baudSELECT3;
   HtmlSrc +=">9600</option><option value='4'";
   HtmlSrc += baudSELECT4;
-  HtmlSrc +=">115200</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Use for GS-232 protocol<br>Restart after change recommended</span></span></td></tr>\n";
+  HtmlSrc +=">115200</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Use for GS-232 protocol<br>Must restart after change</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='mqttip0'>MQTT broker IP:</label></td><td>";
   HtmlSrc +="<input type='text' id='mqttip0' name='mqttip0' size='1' value='" + String(mqtt_server_ip[0]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip1' name='mqttip1' size='1' value='" + String(mqtt_server_ip[1]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip2' name='mqttip2' size='1' value='" + String(mqtt_server_ip[2]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip3' name='mqttip3' size='1' value='" + String(mqtt_server_ip[3]) + "'>";
   HtmlSrc +="<span style='color:red;'>";
   HtmlSrc += mqttERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>Default public broker 54.38.157.134<br>If first digit zero, MQTT disable</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>Default public broker 54.38.157.134<br>If the first digit is zero, MQTT is disabled</span></span></td></tr>\n";
 
   HtmlSrc +="<tr><td class='tdr'><label for='mqttport'>MQTT broker PORT:</label></td><td>";
   HtmlSrc +="<input type='text' id='mqttport' name='mqttport' size='2' value='" + String(MQTT_PORT) + "'>\n";
@@ -4837,7 +4839,7 @@ if(PWMenable==true){
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form>&nbsp; ";
-  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=1100,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
+  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=1150,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
   HtmlSrc +="</td></tr>\n";
 
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
@@ -5004,11 +5006,11 @@ void handleCal() {
   if( AZsource == false && AZtwoWire == true && CwRaw < 1577 ){
     HtmlSrc +="<span style='color: #ccc;'>Recommendation: </span><span style='color: #0c0;'>If you are using a 2 wire potentiometer less than 500Ω,<br>you can increase the sensitivity if you short the J16 jumper on the back side PCB.<br><br></span>";
   }
-  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If azimuth potentiometer shows opposite values, activate reverse button <br>&#8226; Rotate to both CCW ";
+  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If azimuth potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-AZIMUTH button<br>&#8226; Rotate to both CCW ";
   HtmlSrc +=StartAzimuth;
   HtmlSrc +="&deg; and CW ";
   HtmlSrc +=StartAzimuth+MaxRotateDegree;
-  HtmlSrc +="&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, measure real azimuth<br>and put this value to &ldquo;Start CCW azimuth:&rdquo;	field in Setup page</td>";
+  HtmlSrc +="&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, then measure real azimuth<br>and put this value to &ldquo;Start CCW azimuth:&rdquo;	field in Setup page</td>";
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td></tr>";
 
