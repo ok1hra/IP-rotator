@@ -140,12 +140,12 @@ works independently without a GUI, together with the status LED (indoor desktop 
 
 ## Web interface
 
-      - Simply [[#setup_web_page|setup page]] and calibrate in three steps \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png?150}} {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png?150}}
-      - Adjustable width of the antenna radiation angle \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png?150}}
-      - Rotate with one click to map
-      - If click during run, stopped rotation
-      - Smaller range than 360° shows end limits \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-15.png?150}}
-      - Show connected status between web page and rotator \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-16.png?150}}
+- Simply [[#setup_web_page|setup page]] and calibrate in three steps \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png?150}} {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png?150}}
+- Adjustable width of the antenna radiation angle \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png?150}}
+- Rotate with one click to map
+- If click during run, stopped rotation
+- Smaller range than 360° shows end limits \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-15.png?150}}
+- Show connected status between web page and rotator \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-16.png?150}}
 
 ------------------------------------------------------------------------
 
@@ -305,28 +305,25 @@ not match.
 
 1.  **Install [Arduino IDE](https://www.arduino.cc/en/software)** rev
     1.8.19
-2.  **Install support [for
+1.  **Install support [for
     ESP32](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html)**
-3.  **Install** these **libraries** in the versions listed
-
-<!-- -->
-
-       * WiFi rev 2.0.0
-       * EEPROM rev 2.0.0
-       * WebServer rev 2.0.0
-       * Ethernet rev 2.0.0
-       * ESPmDNS rev 2.0.0
-       * ArduinoOTA rev 2.0.0
-       * Update rev 2.0.0
-       * AsyncTCP rev 1.1.1
-       * ESPAsyncWebServer rev 1.2.3
-       * FS rev 2.0.0
-       * AsyncElegantOTA rev 2.2.7
-       * PubSubClient rev 2.8
-       * Wire rev 2.0.0
-    - **Select board** 'OLIMEX ESP32-PoE'
-    - **Connect** the rotator with a **USB-C** cable and select the corresponding port in the arduino IDE
-    - Now you can **compile and upload** code using USB
+1.  **Install** these **libraries** in the versions listed
+	* WiFi rev 2.0.0
+	* EEPROM rev 2.0.0
+	* WebServer rev 2.0.0
+	* Ethernet rev 2.0.0
+	* ESPmDNS rev 2.0.0
+	* ArduinoOTA rev 2.0.0
+	* Update rev 2.0.0
+	* AsyncTCP rev 1.1.1
+	* ESPAsyncWebServer rev 1.2.3
+	* FS rev 2.0.0
+	* AsyncElegantOTA rev 2.2.7
+	* PubSubClient rev 2.8
+	* Wire rev 2.0.0
+1. **Select board** 'OLIMEX ESP32-PoE'
+1. **Connect** the rotator with a **USB-C** cable and select the corresponding port in the arduino IDE
+1. Now you can **compile and upload** code using USB
 
 ## Compile + OTA update
 
@@ -411,13 +408,11 @@ Note the connection polarity for systems that share a GND potential
 ## DC motor with PWM
 
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-dc-pwm.png" width="800" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-dc-pwm.png" />  
-\* **Activate** the PWM functionality on the [Setup web
-page](#setup_web_page)
-
+- **Activate** the PWM functionality on the [Setup webpage](#setup_web_page)
 -   **ATTENTION**
     -   Observe the **polarity of the power supply,** otherwise the
         power mosfet may be destroyed.  
-        \* Observe the **maximum prescribed loading.**
+        * Observe the **maximum prescribed loading.**
     -   We recommend using the **following safe option with software
         endstops.**
 
@@ -436,7 +431,7 @@ for the brake).
 2.  **ATTENTION**
     -   observe the **polarity of the power supply,** otherwise the
         power mosfet may be destroyed.  
-        \* observe the **maximum prescribed loading.**
+        * observe the **maximum prescribed loading.**
 
 ------------------------------------------------------------------------
 
@@ -521,8 +516,7 @@ operation
 browser** <http://%5BYOUR-IP%5D>  
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-08.png" width="400" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-08.png" />  
 How to works
-
-      - The first page contains an **information header,** including a link to the **Firmware Upload** page and the **Release page** on GitHub. Give **green the button of the link to the control page** of the rotator. Below it is the **web MQTT client** (credit [[https://github.com/bastlirna/mqtt-wall|MQTT wall]]) displaying the data sent or received by the rotator from the MQTT broker - data used to **control or debug** the rotator.
+- The first page contains an **information header,** including a link to the **Firmware Upload** page and the **Release page** on GitHub. Give **green the button of the link to the control page** of the rotator. Below it is the **web MQTT client** (credit [[https://github.com/bastlirna/mqtt-wall|MQTT wall]]) displaying the data sent or received by the rotator from the MQTT broker - data used to **control or debug** the rotator.
 
 ------------------------------------------------------------------------
 
@@ -531,14 +525,14 @@ How to works
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-06.png" width="400" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-06.png" />  
 How to works
 
-      - The basis for the display is an **azimuthal map,** centered in your QTH. The map shows the current grayline. Map settings are made in the Setup page, item Background azimuth map URL.
-      - The **direction of rotation indicator** is a transparent triangle whose angle corresponds to the width of the antenna's radiation pattern. The center is marked with a green pointer on the scale. The width of the radiation diagram is set in the Setup page, item Antenna radiation angle in degrees.
-      - **COLORS -** If the direction is in the free range, the indicator color is green. If the pointer reaches the overlap zone, the color is yellow. If the rotator is in rotated mode, the indicator color is red. If the rotator reaches the endpoints, the color is gray.
-      - The **yellow line on the edge** shows the Overlap zone. It is the angle by which one 360-degree revolution is extended.
-      - **Gray bar on the bottom** shows. | Antenna name - set in the Setup page, Rotator name item. | The power supply voltage controls the electronics from the POE injector - if it drops below 11V, the watchdog stops the rotator. | Raw angle rotated - angle without displacement, as if it were zero degrees north. | Link to the Setup page.
-      - **Below the gray bar** is shown, **MAC** address of the Ethernet interface and website **connection status** with engine electronics. If it is not connected, the data on the website is not up to date and the rotator cannot be controlled.
-      - **CONTROL -** by tapping on the map, the azimuth is calculated and the rotation starts. **Emergency stop is performed by clicking anywhere on the azimuthal map again.**
-         - **//Tip: for a short movement of the rotator, you can click on the map twice in close succession. The motor will only turn on for this time, including the PWM start/stop sequence.//**
+- The basis for the display is an **azimuthal map,** centered in your QTH. The map shows the current grayline. Map settings are made in the Setup page, item Background azimuth map URL.
+- The **direction of rotation indicator** is a transparent triangle whose angle corresponds to the width of the antenna's radiation pattern. The center is marked with a green pointer on the scale. The width of the radiation diagram is set in the Setup page, item Antenna radiation angle in degrees.
+- **COLORS -** If the direction is in the free range, the indicator color is green. If the pointer reaches the overlap zone, the color is yellow. If the rotator is in rotated mode, the indicator color is red. If the rotator reaches the endpoints, the color is gray.
+- The **yellow line on the edge** shows the Overlap zone. It is the angle by which one 360-degree revolution is extended.
+- **Gray bar on the bottom** shows. | Antenna name - set in the Setup page, Rotator name item. | The power supply voltage controls the electronics from the POE injector - if it drops below 11V, the watchdog stops the rotator. | Raw angle rotated - angle without displacement, as if it were zero degrees north. | Link to the Setup page.
+- **Below the gray bar** is shown, **MAC** address of the Ethernet interface and website **connection status** with engine electronics. If it is not connected, the data on the website is not up to date and the rotator cannot be controlled.
+- **CONTROL -** by tapping on the map, the azimuth is calculated and the rotation starts. **Emergency stop is performed by clicking anywhere on the azimuthal map again.**
+   - **Tip: for a short movement of the rotator, you can click on the map twice in close succession. The motor will only turn on for this time, including the PWM start/stop sequence.//**
 
 ------------------------------------------------------------------------
 
@@ -547,42 +541,42 @@ How to works
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png" width="400" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png" />  
 How to works
 
-      - The Setup page is used to set the basic properties of the rotator.
-      - You will **notice that the hints** for individual items are hidden under the question mark at the end of the line.
-      - **Your callsign and Rotator ID** are unique identifiers used to generate an MQTT topic in the form [callsign]/[ID]/ROT/[variable]. Changing these values requires a reload of the first page with the web MQTT client. //After the first power-on, for the Callsign firmware uses the last five characters from the MAC address until a new setting is made.//
-      - **Rotator name** is used to identify the rotator on the web control page.
-      - **Start CCW azimuth** is the end value of the start of rotation in the counter clockwise direction. This is the azimuth that the rotator is rotated in real conditions, if it is in this end position.
-      - **Rotation range in degrees** is the rotation range of the rotator between two (CCW and CW) endpoints in degrees.
-      - **Background azimuth map URL** is a link to a web file with a bitmap azimuth map. Generation of own map is described in chapter [[#background_azimuth_map_generator_with_grayline|Run own services]]
-      - **Antenna radiation angle in degrees,** is the value of the width of the radiation angle of your antenna, which will be applied in the display of the control page.
-      - **Azimuth source** is a choice between a signal source for azimuth determination. The potentiometer is the default value. The CW/CCW pulse function is then not implemented now.
-      - **The azimuth potentiometer** is a choice between two and three-wire variants. **The two-wire** variant uses a constant current source of 9mA and enables the connection of a potentiometer **smaller than 1kΩ.** The **three-wire** variant uses a constant voltage source of 9V and enables the connection of a potentiometer of **500Ω or more.** You can find the connection in the [[#azimuth_potentiometer|Azimuth potentiometer]] section.
-      - **Azimuth gain/shift op-amp,** is turned ON, **ONLY when using a multi-turn three-wire potentiometer,** of which only one turn is used. Because one turn generates a small change at the input of the AD converter, it is possible to help amplify the preamplifier. How to do it:
-        - The first step is to **set the trimmers R80 and R81 to the default position.** Connect the ohmmeter to the measuring point S (J1, J12) and turn the trimmer R81 counterclockwise until the ohmmeter shows a value close to 0Ω. We repeat the same thing with trimmer R80 and measuring points and G (J13, J14). \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-65.jpg?200}} {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-66.jpg?200}}
-        - This setting **assumes that REVERSE-CONTROL and REVERSE-AZIMUTH are correctly set** in the Calibration page.
-        - The **second** step is to physically turn the rotator up to the CCW endstop, which will not cause the AD converter input to shift to the left edge of the scale on the Calibration page. Therefore, we start moving the value towards the left endstop on the scale by turning the potentiometer S (R81) clockwise until we reach the left endstop on the scale, ATTENTION, after reaching the edge of the scale, do not continue turning the potentiometer, the input value of the AD converter must still move within the range scale.
-        - The **third** step is to physically turn the rotator up to the CW endstop, which will not cause the AD converter input to shift to the right edge of the scale on the Calibration page. Therefore, we increase the gain of the preamplifier by turning the potentiometer G (R80) clockwise until we reach the right endstop on the scale. ATTENTION, after reaching the edge of the scale, do not continue turning the potentiometer, the input value of the AD converter must still move within the range of the scale.
-        - **We repeat** the previous two steps until we achieve the desired result.
-        - Then **calibrate** the SAVE-CCW and SAVE-CW endpoints on the Calibration Page.
-      - **Endstops INSTALLED,** turning off this item activates software endstops, which are prohibited zones on the edges. The size of these zones is set in the following two items. If this item is enabled, the firmware relies on the hardware endstops in the rotator, including that they are not beyond the range of the measure potentiometer.
-      - **CW/CCW forbidden zone (software endstops),** are values of the range of forbidden zones in millivolts. the entire range of the rotator represents a voltage of 0 to 3.3V. The setting value will appear in the Calibration page as a yellow area at the edges of the range. If the rotator is set correctly, it only allows movement in the direction from the edge to the center. Keep the protection zone large enough to prevent damage to the rotator.
-      - **Watchdog speed** is the minimum rotation speed in seconds per one turn, which if the rotator does not reach, it will be stopped by the watchdog. Use a value at least 50% higher than the real speed to avoid false stops.
-      - **Motor supply,** is a choice between AC and DC rotator type. The DC type enables the activation of the PWM start-up and run-down ramps.
-      -  **DC PWM control** activates the PWM ramp-up and ramp-down when using the DC rotator. If you use a rotator without hardware endstops, the destruction of one component (power mosfet) can cause the rotator to crash. Therefore, it is safe to connect one more active element in series (relay intended for the brake). **This setup is highly recomended, see [[#dc_motor_with_pwm_without_hardware_endstop_safe_mode|Connection section]].**
-      - **USB serial BAUDRATE,** is the setting of the communication speed of the serial console on the USB-C connector using the GS-232 protocol. Enabled commands
-        * **?** display the IP address of the rotator
-        * **R** clockwise rotation
-        * **L** counter clockwise rotation
-        * **A or S** CW/CCW rotation Stop
-        * **C** show antenna direction value
-        * **Mxxx** rotate to azimuth, degree represent with three number
-        * **O** CCW calibration
-        * **F** CW calibration
-      - **MQTT broker IP,** IPV4 address of the MQTT broker server
-        - If the first digit is zero, MQTT is **disabled**
-      - **MQTT broker PORT,** number of the IP port on which the MQTT broker runs.
-      - **Change** button, save actual value.
-      - **Calibrate** button open Calibration web page.
+- The Setup page is used to set the basic properties of the rotator.
+- You will **notice that the hints** for individual items are hidden under the question mark at the end of the line.
+- **Your callsign and Rotator ID** are unique identifiers used to generate an MQTT topic in the form [callsign]/[ID]/ROT/[variable]. Changing these values requires a reload of the first page with the web MQTT client. //After the first power-on, for the Callsign firmware uses the last five characters from the MAC address until a new setting is made.//
+- **Rotator name** is used to identify the rotator on the web control page.
+- **Start CCW azimuth** is the end value of the start of rotation in the counter clockwise direction. This is the azimuth that the rotator is rotated in real conditions, if it is in this end position.
+- **Rotation range in degrees** is the rotation range of the rotator between two (CCW and CW) endpoints in degrees.
+- **Background azimuth map URL** is a link to a web file with a bitmap azimuth map. Generation of own map is described in chapter [[#background_azimuth_map_generator_with_grayline|Run own services]]
+- **Antenna radiation angle in degrees,** is the value of the width of the radiation angle of your antenna, which will be applied in the display of the control page.
+- **Azimuth source** is a choice between a signal source for azimuth determination. The potentiometer is the default value. The CW/CCW pulse function is then not implemented now.
+- **The azimuth potentiometer** is a choice between two and three-wire variants. **The two-wire** variant uses a constant current source of 9mA and enables the connection of a potentiometer **smaller than 1kΩ.** The **three-wire** variant uses a constant voltage source of 9V and enables the connection of a potentiometer of **500Ω or more.** You can find the connection in the [[#azimuth_potentiometer|Azimuth potentiometer]] section.
+- **Azimuth gain/shift op-amp,** is turned ON, **ONLY when using a multi-turn three-wire potentiometer,** of which only one turn is used. Because one turn generates a small change at the input of the AD converter, it is possible to help amplify the preamplifier. How to do it:
+  - The first step is to **set the trimmers R80 and R81 to the default position.** Connect the ohmmeter to the measuring point S (J1, J12) and turn the trimmer R81 counterclockwise until the ohmmeter shows a value close to 0Ω. We repeat the same thing with trimmer R80 and measuring points and G (J13, J14). \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-65.jpg?200}} {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-66.jpg?200}}
+  - This setting **assumes that REVERSE-CONTROL and REVERSE-AZIMUTH are correctly set** in the Calibration page.
+  - The **second** step is to physically turn the rotator up to the CCW endstop, which will not cause the AD converter input to shift to the left edge of the scale on the Calibration page. Therefore, we start moving the value towards the left endstop on the scale by turning the potentiometer S (R81) clockwise until we reach the left endstop on the scale, ATTENTION, after reaching the edge of the scale, do not continue turning the potentiometer, the input value of the AD converter must still move within the range scale.
+  - The **third** step is to physically turn the rotator up to the CW endstop, which will not cause the AD converter input to shift to the right edge of the scale on the Calibration page. Therefore, we increase the gain of the preamplifier by turning the potentiometer G (R80) clockwise until we reach the right endstop on the scale. ATTENTION, after reaching the edge of the scale, do not continue turning the potentiometer, the input value of the AD converter must still move within the range of the scale.
+  - **We repeat** the previous two steps until we achieve the desired result.
+  - Then **calibrate** the SAVE-CCW and SAVE-CW endpoints on the Calibration Page.
+- **Endstops INSTALLED,** turning off this item activates software endstops, which are prohibited zones on the edges. The size of these zones is set in the following two items. If this item is enabled, the firmware relies on the hardware endstops in the rotator, including that they are not beyond the range of the measure potentiometer.
+- **CW/CCW forbidden zone (software endstops),** are values of the range of forbidden zones in millivolts. the entire range of the rotator represents a voltage of 0 to 3.3V. The setting value will appear in the Calibration page as a yellow area at the edges of the range. If the rotator is set correctly, it only allows movement in the direction from the edge to the center. Keep the protection zone large enough to prevent damage to the rotator.
+- **Watchdog speed** is the minimum rotation speed in seconds per one turn, which if the rotator does not reach, it will be stopped by the watchdog. Use a value at least 50% higher than the real speed to avoid false stops.
+- **Motor supply,** is a choice between AC and DC rotator type. The DC type enables the activation of the PWM start-up and run-down ramps.
+-  **DC PWM control** activates the PWM ramp-up and ramp-down when using the DC rotator. If you use a rotator without hardware endstops, the destruction of one component (power mosfet) can cause the rotator to crash. Therefore, it is safe to connect one more active element in series (relay intended for the brake). **This setup is highly recomended, see [[#dc_motor_with_pwm_without_hardware_endstop_safe_mode|Connection section]].**
+- **USB serial BAUDRATE,** is the setting of the communication speed of the serial console on the USB-C connector using the GS-232 protocol. Enabled commands
+  * **?** display the IP address of the rotator
+  * **R** clockwise rotation
+  * **L** counter clockwise rotation
+  * **A or S** CW/CCW rotation Stop
+  * **C** show antenna direction value
+  * **Mxxx** rotate to azimuth, degree represent with three number
+  * **O** CCW calibration
+  * **F** CW calibration
+- **MQTT broker IP,** IPV4 address of the MQTT broker server
+  - If the first digit is zero, MQTT is **disabled**
+- **MQTT broker PORT,** number of the IP port on which the MQTT broker runs.
+- **Change** button, save actual value.
+- **Calibrate** button open Calibration web page.
 
 ------------------------------------------------------------------------
 
@@ -591,18 +585,18 @@ How to works
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" width="400" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" />  
 Calibration is divided into three steps
 
-      - **Rotate direction calibrate** \\ So that it is not necessary to observe the polarity of the rotator motor connection, you can use the CCW, CW and STOP buttons to test the direction of rotation. **If the rotator rotates in a different direction** than the control button, you can reverse the direction using the REVERSE-CONTROL button.
-      - **Azimuth calibrate** \\ The **scale shows** the status of the input AD converter in the range of 0 to 3.3V. Due to activated software linearization, regions in the range of tens of mV are not available. If **software endstops are activated** in the Setup web page, the prohibited zones at the edges of the range will be displayed in yellow. In the lower part there is an arrow showing the current read value of the AD converter. There are gray **arrows on the edges, showing the calibration values** of CCW and CW stops. How to calibrate:
-        - Turn the rotator briefly using the CW, CCW and STOP buttons in the previous section and watch the movement of the current value of the AD converter. The correct direction is left for CCW and right for CW. **If the arrow moves in reverse,** invert it using the REVERSE-AZIMUTH button
-        - Then **rotate the rotator counterclockwise** until it is stopped by a software or hardware endstop. After stopping, save the value with the help of the SAVE CCW button.
-        - Continue **rotating the rotator clockwise** until it is stopped by a software or hardware endstop. After stopping, save the value with the help of the SAVE CW button.
-        - The **RESET CW/CCW SAVE button** is used to set the default values if the setting needs to be repeated.
-        - **After calibrate,** rotate to full CCW limits, measure real azimuth, and put this value to “Start CCW azimuth:” field in Setup page.
-        - Changes to settings in the map control page will be **reflected after the page is reloaded.**
-    - **Front panel calibrate (optional)** if install [[#assembly_optional_front_panel| Optional front panel]] you can calibrate knob
-        - Rotate front panel potentiometer axis without knob to value 0°
-        - Put knob with orientation to north on axis
-        - Fixate knob to axis on position north
+- **Rotate direction calibrate** \\ So that it is not necessary to observe the polarity of the rotator motor connection, you can use the CCW, CW and STOP buttons to test the direction of rotation. **If the rotator rotates in a different direction** than the control button, you can reverse the direction using the REVERSE-CONTROL button.
+- **Azimuth calibrate** \\ The **scale shows** the status of the input AD converter in the range of 0 to 3.3V. Due to activated software linearization, regions in the range of tens of mV are not available. If **software endstops are activated** in the Setup web page, the prohibited zones at the edges of the range will be displayed in yellow. In the lower part there is an arrow showing the current read value of the AD converter. There are gray **arrows on the edges, showing the calibration values** of CCW and CW stops. How to calibrate:
+  - Turn the rotator briefly using the CW, CCW and STOP buttons in the previous section and watch the movement of the current value of the AD converter. The correct direction is left for CCW and right for CW. **If the arrow moves in reverse,** invert it using the REVERSE-AZIMUTH button
+  - Then **rotate the rotator counterclockwise** until it is stopped by a software or hardware endstop. After stopping, save the value with the help of the SAVE CCW button.
+  - Continue **rotating the rotator clockwise** until it is stopped by a software or hardware endstop. After stopping, save the value with the help of the SAVE CW button.
+  - The **RESET CW/CCW SAVE button** is used to set the default values if the setting needs to be repeated.
+  - **After calibrate,** rotate to full CCW limits, measure real azimuth, and put this value to “Start CCW azimuth:” field in Setup page.
+  - Changes to settings in the map control page will be **reflected after the page is reloaded.**
+- **Front panel calibrate (optional)** if install [[#assembly_optional_front_panel| Optional front panel]] you can calibrate knob
+  - Rotate front panel potentiometer axis without knob to value 0°
+  - Put knob with orientation to north on axis
+  - Fixate knob to axis on position north
 
 ------------------------------------------------------------------------
 
