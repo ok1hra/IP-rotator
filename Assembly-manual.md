@@ -11,7 +11,7 @@ Web interface with MQTT an USB support
 
 # Quick start guide
 
-[Start in the Connection chapter](#poe_power_module)
+[Start in the Connection chapter](#POE-power-module)
 
 # Hardware Supported:  
 * **Three type azimuth potentiometer**
@@ -141,19 +141,15 @@ works independently without a GUI, together with the status LED (indoor desktop 
 ## Web interface
 
 - Simply [[#setup_web_page|setup page]] and calibrate in three steps
-
-{{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png?150}} {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png?150}}
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png?150"> <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png?150">
 - Adjustable width of the antenna radiation angle
-
-{{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png?150}}
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png?150">
 - Rotate with one click to map
 - If click during run, stopped rotation
 - Smaller range than 360° shows end limits
-
-{{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-15.png?150}}
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-15.png?150">
 - Show connected status between web page and rotator
-
-{{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-16.png?150}}
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-16.png?150">
 
 ------------------------------------------------------------------------
 
