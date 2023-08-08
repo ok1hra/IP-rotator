@@ -141,15 +141,15 @@ works independently without a GUI, together with the status LED (indoor desktop 
 ## Web interface
 
 - Simply [[#setup_web_page|setup page]] and calibrate in three steps
-  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png?150"> <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png?150">
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png" width="150"> <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" width="150">
 - Adjustable width of the antenna radiation angle
-  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png?150">
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png" width="150">
 - Rotate with one click to map
 - If click during run, stopped rotation
 - Smaller range than 360° shows end limits
-  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-15.png?150">
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-15.png" width="150">
 - Show connected status between web page and rotator
-  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-16.png?150">
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-16.png" width="150">
 
 ------------------------------------------------------------------------
 
@@ -546,7 +546,7 @@ How to works
 - **The azimuth potentiometer** is a choice between two and three-wire variants. **The two-wire** variant uses a constant current source of 9mA and enables the connection of a potentiometer **smaller than 1kΩ.** The **three-wire** variant uses a constant voltage source of 9V and enables the connection of a potentiometer of **500Ω or more.** You can find the connection in the [[#azimuth_potentiometer|Azimuth potentiometer]] section.
 - **Azimuth gain/shift op-amp,** is turned ON, **ONLY when using a multi-turn three-wire potentiometer,** of which only one turn is used. Because one turn generates a small change at the input of the AD converter, it is possible to help amplify the preamplifier. How to do it:
   - The first step is to **set the trimmers R80 and R81 to the default position.** Connect the ohmmeter to the measuring point S (J1, J12) and turn the trimmer R81 counterclockwise until the ohmmeter shows a value close to 0Ω. We repeat the same thing with trimmer R80 and measuring points and G (J13, J14).
-  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-65.jpg?200"> <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-66.jpg?200">
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-65.jpg" width="200"> <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-66.jpg" width="200">
   - This setting **assumes that REVERSE-CONTROL and REVERSE-AZIMUTH are correctly set** in the Calibration page.
   - The **second** step is to physically turn the rotator up to the CCW endstop, which will not cause the AD converter input to shift to the left edge of the scale on the Calibration page. Therefore, we start moving the value towards the left endstop on the scale by turning the potentiometer S (R81) clockwise until we reach the left endstop on the scale, ATTENTION, after reaching the edge of the scale, do not continue turning the potentiometer, the input value of the AD converter must still move within the range scale.
   - The **third** step is to physically turn the rotator up to the CW endstop, which will not cause the AD converter input to shift to the right edge of the scale on the Calibration page. Therefore, we increase the gain of the preamplifier by turning the potentiometer G (R80) clockwise until we reach the right endstop on the scale. ATTENTION, after reaching the edge of the scale, do not continue turning the potentiometer, the input value of the AD converter must still move within the range of the scale.
