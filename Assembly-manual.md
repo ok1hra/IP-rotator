@@ -22,8 +22,8 @@ Web interface with MQTT an USB support
 * **DC motor up to 28V/3A** with smooth start/finish (PWM)
 * **AC motor max 50V/8A**
 * **Brake** max 50V/8A
-* **Natively supports [[https://remoteqth.com/w/doku.php?id=3d-print-rotator|3D printed rotator]]**
-* Optional **external control unit [[https://github.com/ok1hra/gyrotator|Gyrotator]]**
+* **Natively supports [3D printed rotator](https://remoteqth.com/w/doku.php?id=3d-print-rotator)**
+* Optional **external control unit [Gyrotator](https://github.com/ok1hra/gyrotator)**
 
 ## Source
 
