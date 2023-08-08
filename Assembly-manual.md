@@ -140,12 +140,20 @@ works independently without a GUI, together with the status LED (indoor desktop 
 
 ## Web interface
 
-- Simply [[#setup_web_page|setup page]] and calibrate in three steps \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png?150}} {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png?150}}
-- Adjustable width of the antenna radiation angle \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png?150}}
+- Simply [[#setup_web_page|setup page]] and calibrate in three steps
+
+{{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png?150}} {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png?150}}
+- Adjustable width of the antenna radiation angle
+
+{{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png?150}}
 - Rotate with one click to map
 - If click during run, stopped rotation
-- Smaller range than 360° shows end limits \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-15.png?150}}
-- Show connected status between web page and rotator \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-16.png?150}}
+- Smaller range than 360° shows end limits
+
+{{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-15.png?150}}
+- Show connected status between web page and rotator
+
+{{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-16.png?150}}
 
 ------------------------------------------------------------------------
 
@@ -348,17 +356,12 @@ The Arduino IDE will ask for a **password** during the upload, which is
 If the [previous three conditions](#ota_update) are met, you can upload
 the firmware binary using the **web interface**.
 
-1.  **Open url <http://%5BYOUR> IP\]:82/update**
-    -   Also available from the header of the first page as a link **\|
-        Upload FW \|**  
-        <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-60.png" width="350" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-60.png" />
-2.  **Download** last release **.bin** file from GitHub
-    <https://github.com/ok1hra/IP-rotator/releases>
-3.  **Upload .bin file** via web form, with the **Firmware** option
-    selected  
+1.  **Open url 'http://[YOUR IP]:82/update'**
+    -   Also available from the header of the first page as a link **| Upload FW |** <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-60.png" width="350" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-60.png" />
+2.  **Download** last release **.bin** file from [GitHub]<https://github.com/ok1hra/IP-rotator/releases>
+3.  **Upload .bin file** via web form, with the **Firmware** option selected  
     <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-61.png" width="350" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-61.png" />
-4.  **ATTENTION,** after uploading, it is necessary to **restart** the
-    rotator by disconnecting and reconnecting the power supply.
+4.  **ATTENTION,** after uploading, it is necessary to **restart** the rotator by disconnecting and reconnecting the power supply.
 
 ------------------------------------------------------------------------
 
@@ -552,7 +555,9 @@ How to works
 - **Azimuth source** is a choice between a signal source for azimuth determination. The potentiometer is the default value. The CW/CCW pulse function is then not implemented now.
 - **The azimuth potentiometer** is a choice between two and three-wire variants. **The two-wire** variant uses a constant current source of 9mA and enables the connection of a potentiometer **smaller than 1kΩ.** The **three-wire** variant uses a constant voltage source of 9V and enables the connection of a potentiometer of **500Ω or more.** You can find the connection in the [[#azimuth_potentiometer|Azimuth potentiometer]] section.
 - **Azimuth gain/shift op-amp,** is turned ON, **ONLY when using a multi-turn three-wire potentiometer,** of which only one turn is used. Because one turn generates a small change at the input of the AD converter, it is possible to help amplify the preamplifier. How to do it:
-  - The first step is to **set the trimmers R80 and R81 to the default position.** Connect the ohmmeter to the measuring point S (J1, J12) and turn the trimmer R81 counterclockwise until the ohmmeter shows a value close to 0Ω. We repeat the same thing with trimmer R80 and measuring points and G (J13, J14). \\ {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-65.jpg?200}} {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-66.jpg?200}}
+  - The first step is to **set the trimmers R80 and R81 to the default position.** Connect the ohmmeter to the measuring point S (J1, J12) and turn the trimmer R81 counterclockwise until the ohmmeter shows a value close to 0Ω. We repeat the same thing with trimmer R80 and measuring points and G (J13, J14).
+  
+  {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-65.jpg?200}} {{https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-66.jpg?200}}
   - This setting **assumes that REVERSE-CONTROL and REVERSE-AZIMUTH are correctly set** in the Calibration page.
   - The **second** step is to physically turn the rotator up to the CCW endstop, which will not cause the AD converter input to shift to the left edge of the scale on the Calibration page. Therefore, we start moving the value towards the left endstop on the scale by turning the potentiometer S (R81) clockwise until we reach the left endstop on the scale, ATTENTION, after reaching the edge of the scale, do not continue turning the potentiometer, the input value of the AD converter must still move within the range scale.
   - The **third** step is to physically turn the rotator up to the CW endstop, which will not cause the AD converter input to shift to the right edge of the scale on the Calibration page. Therefore, we increase the gain of the preamplifier by turning the potentiometer G (R80) clockwise until we reach the right endstop on the scale. ATTENTION, after reaching the edge of the scale, do not continue turning the potentiometer, the input value of the AD converter must still move within the range of the scale.
@@ -585,8 +590,12 @@ How to works
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" width="400" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" />  
 Calibration is divided into three steps
 
-- **Rotate direction calibrate** \\ So that it is not necessary to observe the polarity of the rotator motor connection, you can use the CCW, CW and STOP buttons to test the direction of rotation. **If the rotator rotates in a different direction** than the control button, you can reverse the direction using the REVERSE-CONTROL button.
-- **Azimuth calibrate** \\ The **scale shows** the status of the input AD converter in the range of 0 to 3.3V. Due to activated software linearization, regions in the range of tens of mV are not available. If **software endstops are activated** in the Setup web page, the prohibited zones at the edges of the range will be displayed in yellow. In the lower part there is an arrow showing the current read value of the AD converter. There are gray **arrows on the edges, showing the calibration values** of CCW and CW stops. How to calibrate:
+- **Rotate direction calibrate**
+
+So that it is not necessary to observe the polarity of the rotator motor connection, you can use the CCW, CW and STOP buttons to test the direction of rotation. **If the rotator rotates in a different direction** than the control button, you can reverse the direction using the REVERSE-CONTROL button.
+- **Azimuth calibrate**
+
+The **scale shows** the status of the input AD converter in the range of 0 to 3.3V. Due to activated software linearization, regions in the range of tens of mV are not available. If **software endstops are activated** in the Setup web page, the prohibited zones at the edges of the range will be displayed in yellow. In the lower part there is an arrow showing the current read value of the AD converter. There are gray **arrows on the edges, showing the calibration values** of CCW and CW stops. How to calibrate:
   - Turn the rotator briefly using the CW, CCW and STOP buttons in the previous section and watch the movement of the current value of the AD converter. The correct direction is left for CCW and right for CW. **If the arrow moves in reverse,** invert it using the REVERSE-AZIMUTH button
   - Then **rotate the rotator counterclockwise** until it is stopped by a software or hardware endstop. After stopping, save the value with the help of the SAVE CCW button.
   - Continue **rotating the rotator clockwise** until it is stopped by a software or hardware endstop. After stopping, save the value with the help of the SAVE CW button.
@@ -663,17 +672,16 @@ If you don't want to depend on the internet connection or remoteqth.com
 server functionality, you can run the real generator on any Linux
 machine, for example Raspberry PI. You need two functions for this:
 
-1.  http server, **[example
-    here](https://thepi.io/how-to-set-up-a-web-server-on-the-raspberry-pi/)**
+1.  http server, **[example here](https://thepi.io/how-to-set-up-a-web-server-on-the-raspberry-pi/)**
 2.  Script generating bitmap
     1.  Install xplanet with code
         `sudo apt install xplanet xplanet-images`
     2.  Create line in /etc/crontab
         `*/15 *  * * *   web     /usr/bin/xplanet -window -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output /var/www/remoteqth/xplanet/OK.png`
-        Where to replace \| **web user** a valid user of your system \|
+        Where to replace **web user** a valid user of your system |
         numerical coordinates of **longitude and latitude** with your
-        requested coordinates \| **path** /var/www/remoteqth/xplanet/
-        for the path published by your web server \| **file name**
+        requested coordinates | **path** /var/www/remoteqth/xplanet/
+        for the path published by your web server | **file name**
         OK.png for your desired file name
     3.  Enter the resulting path to the generated bitmap in the
         Background azimuth map URL item on the [Setup
