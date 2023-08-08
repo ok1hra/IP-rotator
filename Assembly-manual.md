@@ -13,20 +13,17 @@ Web interface with MQTT an USB support
 
 [Start in the Connection chapter](#poe_power_module)
 
-# Hardware
-
-Supported:  
-\* **Three type azimuth potentiometer**
-
-       - three wire from 500Ω to 10kΩ resistance
-       - grounded two wire from 500Ω to 1kΩ
-       - thre wire, used one turn from multiturn (typicaly 10kΩ)
-    * <del>Two azimuth **pulse** (CW/CCW) inputs</del> - NOT implemented yet
-    * **DC motor up to 28V/3A** with smooth start/finish (PWM)
-    * **AC motor max 50V/8A**
-    * **Brake** max 50V/8A
-    * **Natively supports [[https://remoteqth.com/w/doku.php?id=3d-print-rotator|3D printed rotator]]**
-    * Optional **external control unit [[https://github.com/ok1hra/gyrotator|Gyrotator]]**
+# Hardware Supported:  
+* **Three type azimuth potentiometer**
+	- three wire from 500Ω to 10kΩ resistance
+	- grounded two wire from 500Ω to 1kΩ
+	- thre wire, used one turn from multiturn (typicaly 10kΩ)
+* <del>Two azimuth **pulse** (CW/CCW) inputs</del> - NOT implemented yet
+* **DC motor up to 28V/3A** with smooth start/finish (PWM)
+* **AC motor max 50V/8A**
+* **Brake** max 50V/8A
+* **Natively supports [[https://remoteqth.com/w/doku.php?id=3d-print-rotator|3D printed rotator]]**
+* Optional **external control unit [[https://github.com/ok1hra/gyrotator|Gyrotator]]**
 
 ## Source
 
