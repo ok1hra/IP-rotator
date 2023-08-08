@@ -140,15 +140,19 @@ works independently without a GUI, together with the status LED (indoor desktop 
 
 ## Web interface
 
-- Simply [[#setup_web_page|setup page]] and calibrate in three steps
+- Simply [setup page](#setup-web-page) and calibrate in three steps
+
   <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png" width="150"> <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" width="150">
 - Adjustable width of the antenna radiation angle
+
   <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png" width="150">
 - Rotate with one click to map
 - If click during run, stopped rotation
 - Smaller range than 360° shows end limits
+
   <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-15.png" width="150">
 - Show connected status between web page and rotator
+
   <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-16.png" width="150">
 
 ------------------------------------------------------------------------
@@ -278,7 +282,7 @@ not match.
 9.  Put the knob on and gently tighten with a flat screwdriver -
     calibration of the exact setting is done later from the web
     interface, setup page. More in the [Setup and calibrate
-    section](#setup_and_calibrate)  
+    section](#setup-and-calibrate)  
     <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-51.jpg" width="350" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-51.jpg" />
     <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" width="100" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" />
 10. Solder LED diode wit orientation **beveled side into the slot marked
@@ -349,12 +353,12 @@ The Arduino IDE will ask for a **password** during the upload, which is
 
 ## Upload binary via web interface
 
-If the [previous three conditions](#ota_update) are met, you can upload
+If the [previous three conditions](#Compile-+-OTA-update) are met, you can upload
 the firmware binary using the **web interface**.
 
 1.  **Open url 'http://[YOUR IP]:82/update'**
     -   Also available from the header of the first page as a link **| Upload FW |** <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-60.png" width="350" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-60.png" />
-2.  **Download** last release **.bin** file from [GitHub]<https://github.com/ok1hra/IP-rotator/releases>
+2.  **Download** last release **.bin** file from [GitHub](https://github.com/ok1hra/IP-rotator/releases)
 3.  **Upload .bin file** via web form, with the **Firmware** option selected  
     <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-61.png" width="350" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-61.png" />
 4.  **ATTENTION,** after uploading, it is necessary to **restart** the rotator by disconnecting and reconnecting the power supply.
@@ -385,12 +389,12 @@ Note the connection polarity for systems that share a GND potential
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-az-pot.png" width="800" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-az-pot.png" />
 
 1.  The **type potentiometer** used must also be set in the web
-    interface, [Setup page.](#setup_web_page) **Option "Azimuth
+    interface, [Setup page.](#setup-web-page) **Option "Azimuth
     potentiometer" 2wire/3-wire**  
     <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png" width="100" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png" />
 2.  When using one turn of a **ten-turn potentiometer,** also **activate
     the "Azimuth gain/shift op-amp" option to ON.** About calibrate more
-    in [Calibrate section](#calibrate_web_page).
+    in [Calibrate section](#calibrate-web-page).
 3.  If you are using a **two-wire 500Ω potentiometer,** short-circuit
     jumper J16 on the bottom side of the PCB. **Do not use this jumper
     in other cases.**  
@@ -408,7 +412,7 @@ Note the connection polarity for systems that share a GND potential
 
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-dc-pwm.png" width="800" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-dc-pwm.png" />  
 
--  **Activate** the PWM functionality on the [Setup webpage](#setup_web_page)
+-  **Activate** the PWM functionality on the [Setup webpage](#setup-web-page)
 -  **ATTENTION**
 	-  Observe the **polarity of the power supply,** otherwise the power mosfet may be destroyed.  
 	-  Observe the **maximum prescribed loading.**
@@ -421,7 +425,7 @@ Note the connection polarity for systems that share a GND potential
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-dc-pwm-safe.png" width="800" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-dc-pwm-safe.png" />  
 
 1.  If you use a **rotator without hardware endstops,** the destruction of one component (power mosfet) can cause the rotator to crash. Therefore, it is safe to connect one more active element in series (relay intended for the brake).
-1.  **Activate** the PWM functionality on the [Setup web page](#setup_web_page)
+1.  **Activate** the PWM functionality on the [Setup web page](#setup-web-page)
 2.  **ATTENTION**
     -  observe the **polarity of the power supply,** otherwise the power mosfet may be destroyed.
     -  observe the **maximum prescribed loading.**
@@ -434,7 +438,7 @@ Note the connection polarity for systems that share a GND potential
 - **PWM can be replaced** with an external brake relay
 
 1.  **Deactivate** the PWM functionality on the [Setup web
-    page](#setup_web_page)
+    page](#setup-web-page)
 2.  **ATTENTION**
     1.  Don't forget to **bridge or replace the diode D24 with a
         jumper.**
@@ -449,8 +453,8 @@ Note the connection polarity for systems that share a GND potential
 ## LED status
 
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-led.png" width="800" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-led.png" />  
-**LEDs signal** static (PWR) or dynamic (PWM) states during rotator
-operation
+
+-  **LEDs signal** static (PWR) or dynamic (PWM) states during rotator operation
 
 ------------------------------------------------------------------------
 
@@ -466,17 +470,16 @@ operation
     a serial console. **DO NOT use USB-C to power electronics.**
 4.  Internal three-pin connector (balls), serves for connecting an
     **[optional front panel
-    potentiometer](#assembly_optional_front_panel).**
-5.  The 3.5mm stereo jack serves for connecting a manual control of the
-    rotator, typically a **CW bug.**  
-    ![](https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-jack.png)  
+    potentiometer](#assembly-optional-front-panel).**
+5.  The 3.5mm stereo jack serves for connecting a manual control of the rotator, typically a **CW bug.**  
+    <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-jack.png">
     <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-10.jpg" width="500" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-10.jpg" />
 
 ------------------------------------------------------------------------
 
 ## How to find the IP address of the device
 
-1.  [First is need](#poe_power_module)
+1.  [First is need](#poe-power-module)
     1.  connect POE power supply
     2.  ethernet to a site with an active DHCP server
 2.  Variant via **USB terminal**
@@ -490,7 +493,7 @@ operation
     2.  The menu will display network devices that contain OTA
         firmware - the IP address is at the end of the line starting
         with **ROT-**  
-        ![](https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-63.png)
+        <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-63.png">
 4.  With the help of the **Fing android application**
     1.  **Install**
         [Fing](https://play.google.com/store/apps/details?id=com.overlook.android.fing)
@@ -506,10 +509,10 @@ operation
 ### Main web page
 
 **Open the IP address** found using the previous instruction **in a web
-browser** <http://%5BYOUR-IP%5D>  
+browser** http://YOUR-IP  
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-08.png" width="400" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-08.png" />  
 How to works
-- The first page contains an **information header,** including a link to the **Firmware Upload** page and the **Release page** on GitHub. Give **green the button of the link to the control page** of the rotator. Below it is the **web MQTT client** (credit [[https://github.com/bastlirna/mqtt-wall|MQTT wall]]) displaying the data sent or received by the rotator from the MQTT broker - data used to **control or debug** the rotator.
+- The first page contains an **information header,** including a link to the **Firmware Upload** page and the **Release page** on GitHub. Give **green the button of the link to the control page** of the rotator. Below it is the **web MQTT client** [credit MQTT wall](https://github.com/bastlirna/mqtt-wall) displaying the data sent or received by the rotator from the MQTT broker - data used to **control or debug** the rotator.
 
 ------------------------------------------------------------------------
 
@@ -579,12 +582,8 @@ How to works
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" width="400" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" />  
 Calibration is divided into three steps
 
-- **Rotate direction calibrate**
-
-So that it is not necessary to observe the polarity of the rotator motor connection, you can use the CCW, CW and STOP buttons to test the direction of rotation. **If the rotator rotates in a different direction** than the control button, you can reverse the direction using the REVERSE-CONTROL button.
-- **Azimuth calibrate**
-
-The **scale shows** the status of the input AD converter in the range of 0 to 3.3V. Due to activated software linearization, regions in the range of tens of mV are not available. If **software endstops are activated** in the Setup web page, the prohibited zones at the edges of the range will be displayed in yellow. In the lower part there is an arrow showing the current read value of the AD converter. There are gray **arrows on the edges, showing the calibration values** of CCW and CW stops. How to calibrate:
+- **Rotate direction calibrate** So that it is not necessary to observe the polarity of the rotator motor connection, you can use the CCW, CW and STOP buttons to test the direction of rotation. **If the rotator rotates in a different direction** than the control button, you can reverse the direction using the REVERSE-CONTROL button.
+- **Azimuth calibrate** The **scale shows** the status of the input AD converter in the range of 0 to 3.3V. Due to activated software linearization, regions in the range of tens of mV are not available. If **software endstops are activated** in the Setup web page, the prohibited zones at the edges of the range will be displayed in yellow. In the lower part there is an arrow showing the current read value of the AD converter. There are gray **arrows on the edges, showing the calibration values** of CCW and CW stops. How to calibrate:
   - Turn the rotator briefly using the CW, CCW and STOP buttons in the previous section and watch the movement of the current value of the AD converter. The correct direction is left for CCW and right for CW. **If the arrow moves in reverse,** invert it using the REVERSE-AZIMUTH button
   - Then **rotate the rotator counterclockwise** until it is stopped by a software or hardware endstop. After stopping, save the value with the help of the SAVE CCW button.
   - Continue **rotating the rotator clockwise** until it is stopped by a software or hardware endstop. After stopping, save the value with the help of the SAVE CW button.
@@ -625,7 +624,7 @@ The front panel contains only two active elements:
 Manual control is available via the **3.5mm stereo jack** connector on
 the back of the electronics. By switching the left or right channel, it
 is possible to control clockwise or counterclockwise rotation.
-**[Connection is here.](#connect_and_tune)**  
+**[Connection is here.](#connect-and-tune)**  
 Your **CW key** can easily be used as a switch control.  
 This control is suitable for service movements or if you operate the
 Interface on your desk.  
@@ -673,8 +672,7 @@ machine, for example Raspberry PI. You need two functions for this:
         for the path published by your web server | **file name**
         OK.png for your desired file name
     3.  Enter the resulting path to the generated bitmap in the
-        Background azimuth map URL item on the [Setup
-        page](#setup_web_page).
+        Background azimuth map URL item on the [Setup page](#setup-web-page).
 
 ------------------------------------------------------------------------
 
