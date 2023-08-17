@@ -111,7 +111,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230728";
+const char* REV = "20230817";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -148,6 +148,7 @@ long StatusWatchdogTimer = 0;
 long RotateWatchdogTimer = 0;
 int AzimuthWatchdog = 0;
 bool ErrorDetect = 0;
+long TxMqttAzimuthTimer = 0;
 
 //---------------------------------------------------------
 // #define HWREV 8                     // PCB version [7-8]
@@ -1540,7 +1541,7 @@ void Watchdog(){
       case  3: {StatusStr = "PwmDwn-CW"; break; }
     }
     MqttPubString("StatusHuman", StatusStr, false);
-    // MqttPubString("Status", String(Status+4), false);
+    MqttPubString("Status", String(Status+4), false);
     StatusTmp=Status;
     LedStatus();
   }
@@ -1550,6 +1551,7 @@ void Watchdog(){
     if(AzimuthTmp!=Azimuth){
       MqttPubString("Azimuth", String(Azimuth), false);
       AzimuthTmp=Azimuth;
+      TxMqttAzimuthTimer=millis();
     }
     if(CwCcwInputValueTmp!=CwCcwInputValue){
       MqttPubString("CwCcwInputValue", String(CwCcwInputValue), false);
@@ -1560,6 +1562,12 @@ void Watchdog(){
       VoltageValueTmp=VoltageValue;
     }
     AZchangeTimer=millis();
+  }
+
+  // minimal Azimuth propagation (heartbeat) 1 min
+  if(millis()-TxMqttAzimuthTimer > 60000){
+    MqttPubString("Azimuth", String(Azimuth), false);
+    TxMqttAzimuthTimer=millis();
   }
 
   if(Status!=0){
@@ -3792,6 +3800,7 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
     CheckTopicBase = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/get";
     if ( CheckTopicBase.equals( String(topic) )){
       MqttPubString("Azimuth", String(Azimuth), false);
+      TxMqttAzimuthTimer=millis();
       if(EnableSerialDebug>0){
         Prn(3, 1, "/get ");
       }
