@@ -71,6 +71,7 @@ Changelog:
 + reset button for calibrate settings in setup
 + calibrate control potentiometer on north (show ° in setup gui)
 + DC use brake relay
++ add AzimuthStop mqttpub
 
 ToDo
 - test
@@ -111,7 +112,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230817";
+const char* REV = "20230818";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -1550,6 +1551,9 @@ void Watchdog(){
   if( (Status==0 && millis()-AZchangeTimer >2000) || (Status!=0 && millis()-AZchangeTimer >100) ){
     if(AzimuthTmp!=Azimuth){
       MqttPubString("Azimuth", String(Azimuth), false);
+      if(Status==0){
+        MqttPubString("AzimuthStop", String(Azimuth), false);
+      }
       AzimuthTmp=Azimuth;
       TxMqttAzimuthTimer=millis();
     }
@@ -1567,6 +1571,9 @@ void Watchdog(){
   // minimal Azimuth propagation (heartbeat) 1 min
   if(millis()-TxMqttAzimuthTimer > 60000){
     MqttPubString("Azimuth", String(Azimuth), false);
+    if(Status==0){
+      MqttPubString("AzimuthStop", String(Azimuth), false);
+    }
     TxMqttAzimuthTimer=millis();
   }
 
@@ -1822,6 +1829,7 @@ void DetectEndstopZone(){
 
 void RunByStatus(){
   static long PwmTimer = 0;
+  static bool OneTimeSend = false;
   DetectEndstopZone();
 
   // }else if( (Azimuth>=0 && Azimuth<=450) ){
@@ -1915,14 +1923,21 @@ void RunByStatus(){
         ReverseProcedure(true);
         RunTimer();
         Status=-11;
+        OneTimeSend = false;
         ; break; }
       case  0: {
         LedStatusErr();
+        if(OneTimeSend==false){
+          MqttPubString("AzimuthStop", String(Azimuth), false);
+          OneTimeSend = true;
+          TxMqttAzimuthTimer=millis();
+        }
         ; break; }
       case 1: {
         ReverseProcedure(false);
         RunTimer();
-       Status=11;
+        Status=11;
+        OneTimeSend = false;
         ; break; }
       case  11: {
         ErrorDetect=0;
@@ -3800,6 +3815,9 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
     CheckTopicBase = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/get";
     if ( CheckTopicBase.equals( String(topic) )){
       MqttPubString("Azimuth", String(Azimuth), false);
+      if(Status==0){
+        MqttPubString("AzimuthStop", String(Azimuth), false);
+      }
       TxMqttAzimuthTimer=millis();
       if(EnableSerialDebug>0){
         Prn(3, 1, "/get ");
