@@ -136,17 +136,15 @@ works independently without a GUI, together with the status LED (indoor desktop 
 </table>
 
 ## WiFi e-ink display
-**[GitHub page of the project](https://github.com/ok1hra/esp32-e-ink)**
+- **[GitHub page](https://github.com/ok1hra/esp32-e-ink)** of the project
 
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-72.jpg" width="410">
 
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-71.jpg" width="200">  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-73.jpg" width="200">
 
-**The last azimuth remains on the display even after turning off the rotator.**
-
-Optional display on external hardware from [LaskaKit - ESPink-42 ESP32 e-Paper](https://www.laskakit.cz/laskakit-espink-42-esp32-e-paper-pcb-antenna/)
-
-It is not used to control the rotator, only to display its rotated state.
+- **The last azimuth remains on the display even after turning off the rotator.**
+- Optional display on external hardware from [LaskaKit - ESPink-42 ESP32 e-Paper](https://www.laskakit.cz/laskakit-espink-42-esp32-e-paper-pcb-antenna/)
+- It is not used to control the rotator, only to display its rotated state.
 
 
 ## Web interface
