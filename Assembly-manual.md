@@ -138,7 +138,9 @@ works independently without a GUI, together with the status LED (indoor desktop 
 ## WiFi e-ink display
 **[GitHub page of the project](https://github.com/ok1hra/esp32-e-ink)**
 
-<img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-71.jpg" width="150"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-72.jpg" width="150"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-73.jpg" width="150">
+<img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-72.jpg" width="410">
+
+<img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-71.jpg" width="200">  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-73.jpg" width="200">
 
 **The last azimuth remains on the display even after turning off the rotator.**
 
@@ -151,7 +153,7 @@ It is not used to control the rotator, only to display its rotated state.
 
 - Simply [setup page](#setup-web-page) and calibrate in three steps
 
-  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png" width="150"> <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" width="150">
+  <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-12.png" width="200"> <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-13.png" width="150">
 - Adjustable width of the antenna radiation angle
 
   <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-14.png" width="150">
