@@ -113,7 +113,7 @@ with azimutal world map,<br />
 containing the current grayline<br />
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-06.png" width="250" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-06.png" /></td>
 <td><strong><a href="https://github.com/ok1hra/gyrotator">Gyrotator</a></strong><br />
-Optional controller on external hardware [5Stack FIRE](https://shop.m5stack.com/products/fire-iot-development-kit?variant=16804798169178)<br />
+Optional controller on external hardware <a href="https://shop.m5stack.com/products/fire-iot-development-kit?variant=16804798169178">5Stack FIRE</a><br />
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-07.jpg" width="350" alt="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-07.jpg" /><br />
 <img src="https://youtu.be/e5L1Iu4h3rg" alt="YouTube video" /></td>
 <td><strong>MQTT</strong><br />
@@ -136,15 +136,15 @@ works independently without a GUI, together with the status LED (indoor desktop 
 </table>
 
 ## WiFi e-ink display
-<img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-71.png" width="150"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-72.png" width="150"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-73.png" width="150">
+**[GitHub page of the project](https://github.com/ok1hra/esp32-e-ink)**
 
-Optional display on external hardware from [LaskaKit - ESPink-42 ESP32 e-Paper](https://www.laskakit.cz/laskakit-espink-42-esp32-e-paper-pcb-antenna/)
+<img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-71.jpg" width="150"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-72.jpg" width="150"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/img/wiki-simple-rot-73.jpg" width="150">
 
 **The last azimuth remains on the display even after turning off the rotator.**
 
-It is not used to control the rotator, only to display its rotated state.
+Optional display on external hardware from [LaskaKit - ESPink-42 ESP32 e-Paper](https://www.laskakit.cz/laskakit-espink-42-esp32-e-paper-pcb-antenna/)
 
-**[GitHub page of the project](https://github.com/ok1hra/esp32-e-ink)**
+It is not used to control the rotator, only to display its rotated state.
 
 
 ## Web interface
