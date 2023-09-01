@@ -112,7 +112,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230818";
+const char* REV = "20230901";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -3817,6 +3817,8 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
       MqttPubString("Azimuth", String(Azimuth), false);
       if(Status==0){
         MqttPubString("AzimuthStop", String(Azimuth), false);
+        MqttPubString("StartAzimuth", String(StartAzimuth), false);
+        MqttPubString("Name", String(RotName), false);
       }
       TxMqttAzimuthTimer=millis();
       if(EnableSerialDebug>0){
