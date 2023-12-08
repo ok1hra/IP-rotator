@@ -72,6 +72,7 @@ Changelog:
 + calibrate control potentiometer on north (show ° in setup gui)
 + DC use brake relay
 + add AzimuthStop mqttpub
++ support HW rev 6
 
 ToDo
 - test
@@ -112,7 +113,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20230901";
+const char* REV = "20231208";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -184,6 +185,7 @@ int AzimuthTarget       = 0;
 int Status              = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
 const int VoltagePin    = 35;  // analog
 float VoltageValue      = 0.0;
+const float VoltageLimit = 11.5; // (11.0) Voltage limit below which the control electronics is unstable
 const int ReversePin    = 16;  //
 const int PwmPin        = 4;   //
 
@@ -615,8 +617,10 @@ void setup() {
       HardwareRev=3;  // 319
     }else if(HWidValue>450 && HWidValue<=700){
       HardwareRev=4;  // 604
-    }else if(HWidValue>700){
+    }else if(HWidValue>700 && HWidValue<=900){
       HardwareRev=5;  // 807
+    }else if(HWidValue>900){
+      HardwareRev=6;  // 1036
     }
   pinMode(VoltagePin, INPUT);
   pinMode(ReversePin, OUTPUT);
@@ -1611,7 +1615,7 @@ void Watchdog(){
   static long DCunderVoltageWatchdog = 0;
   if(millis()-DCunderVoltageWatchdog > 1000){
     if(Status==2 || Status==-2){
-        if(VoltageValue < 11.0){
+        if(VoltageValue < VoltageLimit){
           if(Status<0){
             Status=-3;
           }else{
