@@ -209,7 +209,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  var xhttp = new XMLHttpRequest();
 	  xhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-				if( Number(this.responseText)<11){
+				if( Number(this.responseText)<11.5){
 
 					document.getElementById("ADCValue").innerHTML = "<span style='color:red;'>"+ Math.round(this.responseText * 10) / 10 +"</span>";
 				}else{

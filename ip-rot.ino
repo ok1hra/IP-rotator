@@ -79,8 +79,6 @@ ToDo
   - if stop, after run over target
   + 10 turn pot without preamp
   + test preamp linearity
-
-- HW rev 06 - change POE voltage limit with enable AMP to 13,0V (2V dropout 11V LDO)
 - PWM up/dwn ramp long to setup page, and ° before target start PWM (measure and saved) - PwmDwnDelay/PwmUpDelay set from setup gui
 - save settings (dump eeprom?)
 - show target from az pot in map
@@ -113,7 +111,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20231208";
+const char* REV = "20240420";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -185,7 +183,7 @@ int AzimuthTarget       = 0;
 int Status              = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
 const int VoltagePin    = 35;  // analog
 float VoltageValue      = 0.0;
-const float VoltageLimit = 11.5; // (11.0) Voltage limit below which the control electronics is unstable
+const float VoltageLimit = 11.5; // ! also change if( Number(this.responseText)<11.5){ in index.h file | (11.0) Voltage limit below which the control electronics is unstable
 const int ReversePin    = 16;  //
 const int PwmPin        = 4;   //
 
@@ -1614,14 +1612,14 @@ void Watchdog(){
   //POE voltage check
   static long DCunderVoltageWatchdog = 0;
   if(millis()-DCunderVoltageWatchdog > 1000){
-    if(Status==2 || Status==-2){
+    if(Status==1 || Status==2 || Status==-1 || Status==-2){
         if(VoltageValue < VoltageLimit){
           if(Status<0){
             Status=-3;
           }else{
             Status=3;
           }
-          MqttPubString("Debug", "Stopped by under voltage 11V POE", false);
+          MqttPubString("Debug", "Stopped by under voltage 11,5V POE", false);
           ErrorDetect=1;
         }
     }
@@ -1752,35 +1750,40 @@ void LedStatusErr(){
 //-------------------------------------------------------------------------------------------------------
 
 void RotCalculate(){
-  // overlap detect
-  if(Azimuth < MaxRotateDegree/2 && AzimuthTarget < MaxRotateDegree/2){ // MaxRotateDegree/2 = HalfPoint
-    //CCW
+  if(VoltageValue < VoltageLimit){
+    AzimuthTarget=-1;
+    MqttPubString("Debug", "Target ignore by under voltage 11,5V POE", false);
   }else{
-    if(MaxRotateDegree>360 && AzimuthTarget<MaxRotateDegree-360){  // if in overlap
-      AzimuthTarget=AzimuthTarget+360;      // go to overlap
+    // overlap detect
+    if(Azimuth < MaxRotateDegree/2 && AzimuthTarget < MaxRotateDegree/2){ // MaxRotateDegree/2 = HalfPoint
+      //CCW
+    }else{
+      if(MaxRotateDegree>360 && AzimuthTarget<MaxRotateDegree-360){  // if in overlap
+        AzimuthTarget=AzimuthTarget+360;      // go to overlap
+      }
+      //CW
     }
-    //CW
-  }
 
-  // direction
-  if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
-    if(AzimuthTarget>Azimuth){
+    // direction
+    if(AzimuthTarget>=0 && AzimuthTarget <=MaxRotateDegree){
+      if(AzimuthTarget>Azimuth){
+        Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
+        // RunTimer();
+      }else{
+        Status=-1; //digitalWrite(BrakePin, HIGH); delay(24);
+        // RunTimer();
+      }
+
+    // escape from the forbidden zone
+    }else if(Azimuth<0 && AzimuthTarget>0){
       Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
       // RunTimer();
-    }else{
+    }else if(Azimuth>MaxRotateDegree && AzimuthTarget<MaxRotateDegree){
       Status=-1; //digitalWrite(BrakePin, HIGH); delay(24);
       // RunTimer();
+    }else{
+      AzimuthTarget=-1;
     }
-
-  // escape from the forbidden zone
-  }else if(Azimuth<0 && AzimuthTarget>0){
-    Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
-    // RunTimer();
-  }else if(Azimuth>MaxRotateDegree && AzimuthTarget<MaxRotateDegree){
-    Status=-1; //digitalWrite(BrakePin, HIGH); delay(24);
-    // RunTimer();
-  }else{
-    AzimuthTarget=-1;
   }
 }
 
