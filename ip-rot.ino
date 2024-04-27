@@ -1463,37 +1463,6 @@ void Watchdog(){
     }
   }
 
-  // AZ master potentiometer - NOT TESTED
-  // static int AZtargetTmp = 0;
-  static bool Run = false;
-  static long AZmasterChangeTimer = 0;
-  static int AZmasterTmp = AZmaster;
-  if(millis()<10000 || Status!=0){
-    AZmasterTmp=AZmaster;
-  }
-  if( Status==0 && abs(AZmaster-AZmasterTmp)>3 && Run==false){
-    AZmasterTmp=AZmaster;
-    Run = true;
-    AZmasterChangeTimer=millis();
-    // MqttPubString("AZmasterStart", String(AZmaster), false);
-  }
-  if( Status==0 && abs(AZmaster-AZmasterTmp)>3 && Run==true){
-    AZmasterChangeTimer=millis();
-    AZmasterTmp=AZmaster;
-    // MqttPubString("AZmasterRun", String(AZmaster), false);
-  }
-  if( Status==0 && millis()-AZmasterChangeTimer >2000 && abs(AZmaster-AZmasterTmp)<=3 && Run==true){
-    AZmasterTmp=AZmaster;
-    AzimuthTarget = AZmaster - StartAzimuth;
-    if(AzimuthTarget<0){
-        AzimuthTarget = 360+AzimuthTarget;
-    }
-    RotCalculate();
-    Run = false;
-    MqttPubString("AzimuthTargetPot", String(AzimuthTarget), false);
-    // MqttPubString("AZmasterStop", String(AZmaster), false);
-  }
-
   // KEY
   if(AZsource==false){ // potentiometer
     static bool RunByKey = false;
@@ -1687,6 +1656,36 @@ void Watchdog(){
     FirstListCommands=true;
   }
 
+  // AZ master potentiometer - must ne on end of Watchdog() because RunByStatus() must be next step
+  // static int AZtargetTmp = 0;
+  static bool Run = false;
+  static long AZmasterChangeTimer = 0;
+  static int AZmasterTmp = AZmaster;
+  if(millis()<10000 || Status!=0){
+    AZmasterTmp=AZmaster;
+  }
+  if( Status==0 && abs(AZmaster-AZmasterTmp)>3 && Run==false){
+    AZmasterTmp=AZmaster;
+    Run = true;
+    AZmasterChangeTimer=millis();
+    // MqttPubString("AZmasterStart", String(AZmaster), false);
+  }
+  if( Status==0 && abs(AZmaster-AZmasterTmp)>3 && Run==true){
+    AZmasterChangeTimer=millis();
+    AZmasterTmp=AZmaster;
+    // MqttPubString("AZmasterRun", String(AZmaster), false);
+  }
+  if( Status==0 && millis()-AZmasterChangeTimer >2000 && abs(AZmaster-AZmasterTmp)<=3 && Run==true){
+    AZmasterTmp=AZmaster;
+    AzimuthTarget = AZmaster - StartAzimuth;
+    if(AzimuthTarget<0){
+        AzimuthTarget = 360+AzimuthTarget;
+    }
+    RotCalculate();
+    Run = false;
+    MqttPubString("AzimuthTargetPot", String(AzimuthTarget), false);
+    // MqttPubString("AZmasterStop", String(AZmaster), false);
+  }
 }
 
 //-------------------------------------------------------------------------------------------------------
