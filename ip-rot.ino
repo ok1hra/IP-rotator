@@ -111,7 +111,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20240420";
+const char* REV = "20240428";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
