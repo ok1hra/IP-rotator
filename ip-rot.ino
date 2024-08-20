@@ -72,7 +72,7 @@ Changelog:
 + calibrate control potentiometer on north (show ° in setup gui)
 + DC use brake relay
 + add AzimuthStop mqttpub
-+ support HW rev 6
++ support HW rev 6 and 7
 
 ToDo
 - test
@@ -111,7 +111,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20240428";
+const char* REV = "20240821";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -617,8 +617,10 @@ void setup() {
       HardwareRev=4;  // 604
     }else if(HWidValue>700 && HWidValue<=900){
       HardwareRev=5;  // 807
-    }else if(HWidValue>900){
+    }else if(HWidValue>900 && HWidValue<=1170){
       HardwareRev=6;  // 1036
+    }else if(HWidValue>1170){
+      HardwareRev=7;  // 1304
     }
   pinMode(VoltagePin, INPUT);
   pinMode(ReversePin, OUTPUT);
