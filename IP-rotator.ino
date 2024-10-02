@@ -3675,7 +3675,7 @@ void EthEvent(WiFiEvent_t event)
           mqttClient.setCallback(MqttRx);
           lastMqttReconnectAttempt = 0;
           // Check if this is a cold start
-          // If it is then read in YOUR_CALL from EEPROM
+          // If so then read in YOUR_CALL from EEPROM
           if (YOUR_CALL.isEmpty()){
             // EEPROM YOUR_CALL
             if(EEPROM.read(141)==0xff){
