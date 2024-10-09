@@ -3674,17 +3674,20 @@ void EthEvent(WiFiEvent_t event)
           mqttClient.setServer(mqtt_server_ip, MQTT_PORT);
           mqttClient.setCallback(MqttRx);
           lastMqttReconnectAttempt = 0;
-
-          // EEPROM YOUR_CALL
-          if(EEPROM.read(141)==0xff){
-            YOUR_CALL=MACString;
-            YOUR_CALL.remove(0, 12);
-          }else{
-            for (int i=141; i<161; i++){
-              if(EEPROM.read(i)!=0xff){
-                YOUR_CALL=YOUR_CALL+char(EEPROM.read(i));
+          // Check if this is a cold start
+          // If so then read in YOUR_CALL from EEPROM
+          if (YOUR_CALL.isEmpty()){
+            // EEPROM YOUR_CALL
+            if(EEPROM.read(141)==0xff){
+              YOUR_CALL=MACString;
+              YOUR_CALL.remove(0, 12);
+              }else{
+                for (int i=141; i<161; i++){
+                  if(EEPROM.read(i)!=0xff){
+                    YOUR_CALL=YOUR_CALL+char(EEPROM.read(i));
+                  }
+                }
               }
-            }
           }
 
           char charbuf[50];
