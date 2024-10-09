@@ -24,6 +24,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 Used MQTT-WALL, credit Adam Hořčica, is under MIT license,
 see https://github.com/bastlirna/mqtt-wall/blob/master/license.txt
 
+Contributors: Joerg DL3QQ, Mark G4MEM
+
 MQTT monitor
 mosquitto_sub -v -h 192.168.1.200 -t 'OK1HRA/ROT/#'
 mosquitto_sub -v -h 54.38.157.134 -t 'OK1HRA/1/ROT/#'
@@ -111,7 +113,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20240821";
+const char* REV = "20241009";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -1886,7 +1888,7 @@ void RunByStatus(){
       case -2: {
         if(PWMenable==true){
           if(abs(AzimuthTarget-Azimuth)<10){
-            Status=3;
+            Status=-3;
           }
         }else{
           if(abs(AzimuthTarget-Azimuth)<2){
