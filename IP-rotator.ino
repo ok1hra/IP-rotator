@@ -75,13 +75,15 @@ Changelog:
 + DC use brake relay
 + add AzimuthStop mqttpub
 + support HW rev 6 and 7
++ add new settings to setup gui for PWM
+  - PWM ramp length
+  - PWM start distance
 
 ToDo
 - test
   - if stop, after run over target
   + 10 turn pot without preamp
   + test preamp linearity
-- PWM up/dwn ramp long to setup page, and ° before target start PWM (measure and saved) - PwmDwnDelay/PwmUpDelay set from setup gui
 - save settings (dump eeprom?)
 - show target from az pot in map
 - disable target in map if status = 0 (not rotate)
@@ -113,7 +115,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20241009";
+const char* REV = "20241011";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -143,8 +145,10 @@ bool AZtwoWire =  false;
 bool AZpreamp =  false;
 
 bool PWMenable = true;
-unsigned int PwmUpDelay  = 3;  // [ms]*255
-unsigned int PwmDwnDelay = 2;  // [ms]*255
+unsigned int PwmDegree = 0;
+unsigned int PwmRampSteps = 0;
+unsigned int PwmUpDelay  = 3;  // [ms]*255steps
+unsigned int PwmDwnDelay = 2;  // [ms]*255steps
 byte dutyCycle = 0;
 long StatusWatchdogTimer = 0;
 long RotateWatchdogTimer = 0;
@@ -281,7 +285,7 @@ int i = 0;
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 244   /*
+#define EEPROM_SIZE 245   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -325,13 +329,8 @@ int i = 0;
 229 AZpreamp
 230 - ReverseAZ
 231 - PWMenable
-
-231-234 - Altitude 4
-// 232 - SpeedAlert 4
-235-238 - SpeedAlert 4
-// 233 - DS18B20 on/off 1
-239 - DS18B20 on/off 1
-240-243 - WindDirShift 4
+232 PwmDegree UShort
+234 PwmRampSteps UShort
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -1020,7 +1019,26 @@ void setup() {
     }
   }
 
+  // 232 PwmDegree UShort
+  if(EEPROM.read(232)==0xff){
+    PwmDegree=10;
+    PwmDegree=10;
+  }else{
+    PwmDegree = EEPROM.readUShort(232);
+    if(PwmDegree<1 || PwmDegree>50){
+      PwmDegree=10;
+    }
+  }
 
+  // 234 PwmRampSteps UShort
+  if(EEPROM.read(234)==0xff){
+    PwmRampSteps=5;
+  }else{
+    PwmRampSteps = EEPROM.readUShort(234);
+    if(PwmRampSteps<1 || PwmRampSteps>200){
+      PwmRampSteps=5;
+    }
+  }
 
 
 
@@ -1431,6 +1449,7 @@ void Watchdog(){
   static int AZBuffer = 0;
   static int AZmasterBuffer = 0;
   static float VoltageBuffer = 0;
+  // Azimuth refresh 175 ms
   if(millis()-ADCTimer > 5){
     AZBuffer = AZBuffer + readADC_Cal(analogRead(AzimuthPin));
     AZmasterBuffer = AZmasterBuffer + readADC_Cal(analogRead(AZmasterPin));
@@ -1840,6 +1859,7 @@ void DetectEndstopZone(){
 void RunByStatus(){
   static long PwmTimer = 0;
   static bool OneTimeSend = false;
+  static int FromAzimuth = 0;
   DetectEndstopZone();
 
   // }else if( (Azimuth>=0 && Azimuth<=450) ){
@@ -1848,13 +1868,13 @@ void RunByStatus(){
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
-            if(millis()-PwmTimer > PwmDwnDelay){
+            if(millis()-PwmTimer > PwmRampSteps){   //PwmDwnDelay){
               if(dutyCycle!=0){
-                dutyCycle--;
+                dutyCycle-=10;  //-10
               }
               ledcWrite(mosfetPWMChannel, dutyCycle);
               PwmTimer=millis();
-              if(dutyCycle<1){
+              if(dutyCycle<10){ // || (abs(AzimuthTarget-Azimuth)<1) ){ //
                 dutyCycle=0;
                 ledcWrite(mosfetPWMChannel, 0);
                 digitalWrite(BrakePin, LOW);
@@ -1863,6 +1883,7 @@ void RunByStatus(){
                 digitalWrite(ReversePin, LOW);
                 Status=0;
                 AzimuthTarget=-1;
+                FromAzimuth=-1;
               }
             }
           }else{
@@ -1887,7 +1908,7 @@ void RunByStatus(){
         ; break; }
       case -2: {
         if(PWMenable==true){
-          if(abs(AzimuthTarget-Azimuth)<10){
+          if(abs(AzimuthTarget-Azimuth)<PwmDegree){
             Status=-3;
           }
         }else{
@@ -1902,14 +1923,17 @@ void RunByStatus(){
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
-            if(millis()-PwmTimer > PwmUpDelay){
-              dutyCycle+=2;
+            if(millis()-PwmTimer > PwmRampSteps){
+              dutyCycle+=10;
               ledcWrite(mosfetPWMChannel, dutyCycle);
               PwmTimer=millis();
-              if(dutyCycle>253){
+              if(dutyCycle>244){
                 ledcWrite(mosfetPWMChannel, 255);
                 Status=-2;
               }
+            }
+            if(abs(AzimuthTarget-Azimuth) < abs(AzimuthTarget-FromAzimuth)/2 ){  // if target near than PwmDegree, switch in 1/2 path to PWMdwn
+              Status=-3;
             }
           }else{
             ledcWrite(mosfetPWMChannel, 255);
@@ -1934,6 +1958,7 @@ void RunByStatus(){
         RunTimer();
         Status=-11;
         OneTimeSend = false;
+        FromAzimuth=Azimuth;
         ; break; }
       case  0: {
         LedStatusErr();
@@ -1948,6 +1973,7 @@ void RunByStatus(){
         RunTimer();
         Status=11;
         OneTimeSend = false;
+        FromAzimuth=Azimuth;
         ; break; }
       case  11: {
         ErrorDetect=0;
@@ -1955,14 +1981,17 @@ void RunByStatus(){
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
-            if(millis()-PwmTimer > PwmUpDelay){
-              dutyCycle+=2;
+            if(millis()-PwmTimer > PwmRampSteps){
+              dutyCycle+=10;
               ledcWrite(mosfetPWMChannel, dutyCycle);
               PwmTimer=millis();
-              if(dutyCycle>253){
+              if(dutyCycle>244){
                 ledcWrite(mosfetPWMChannel, 255);
                 Status=2;
               }
+            }
+            if(abs(AzimuthTarget-Azimuth) < abs(AzimuthTarget-FromAzimuth)/2 ){  // if target near than PwmDegree, switch in 1/2 path to PWMdwn
+              Status=3;
             }
           }else{
             ledcWrite(mosfetPWMChannel, 255);
@@ -1984,7 +2013,7 @@ void RunByStatus(){
         ; break; }
       case  2: {
         if(PWMenable==true){
-          if(abs(AzimuthTarget-Azimuth)<10){
+          if(abs(AzimuthTarget-Azimuth)<PwmDegree){
             Status=3;
           }
         }else{
@@ -1997,13 +2026,13 @@ void RunByStatus(){
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
-            if(millis()-PwmTimer > PwmDwnDelay){
+            if(millis()-PwmTimer > PwmRampSteps){   //PwmDwnDelay){
               if(dutyCycle!=0){
-                dutyCycle--;
+                dutyCycle-=10;  // -10
               }
               ledcWrite(mosfetPWMChannel, dutyCycle);
               PwmTimer=millis();
-              if(dutyCycle<1){
+              if(dutyCycle<10){ // || (abs(AzimuthTarget-Azimuth)<1) ){
                 dutyCycle=0;
                 ledcWrite(mosfetPWMChannel, 0);
                 digitalWrite(BrakePin, LOW);
@@ -2012,6 +2041,7 @@ void RunByStatus(){
                 digitalWrite(ReversePin, LOW);
                 Status=0;
                 AzimuthTarget=-1;
+                FromAzimuth=-1;
               }
             }
           }else{
@@ -4244,6 +4274,12 @@ void handleSet() {
   String twowireSELECT1= "";
   String preampSELECT0= "";
   String preampSELECT1= "";
+  String pwmdegreeERR= "";
+  String pwmdegreeSTYLE= "";
+  String pwmdegreeDisable= "";
+  String pwmrampstepsERR= "";
+  String pwmrampstepsSTYLE= "";
+  String pwmrampstepsDisable= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -4254,6 +4290,8 @@ void handleSet() {
     && ajaxserver.hasArg("antradiationangle") == false \
     && ajaxserver.hasArg("edstoplowzone") == false \
     && ajaxserver.hasArg("edstophighzone") == false \
+    && ajaxserver.hasArg("pwmdegree") == false \
+    && ajaxserver.hasArg("pwmrampsteps") == false \    
   ) {
     // MqttPubString("Debug", "Form not valid", false);
   }else{
@@ -4552,6 +4590,40 @@ void handleSet() {
       MqttPubString("PWMenable", "ON", true);
     }
 
+    // 232 PwmDegree
+    if (ACmotor==false && PWMenable==true){
+      if (ajaxserver.arg("pwmdegree").length()<1 || ajaxserver.arg("pwmdegree").toInt()<1 || ajaxserver.arg("pwmdegree").toInt()>50){
+        pwmdegreeERR= " Out of range number 1-30";
+      }else{
+        if(PwmDegree == ajaxserver.arg("pwmdegree").toInt()){
+          pwmdegreeERR="";
+        }else{
+          pwmdegreeERR="";
+          PwmDegree = ajaxserver.arg("pwmdegree").toInt();
+          EEPROM.writeUShort(232, PwmDegree);
+          // EEPROM.commit();
+          MqttPubString("PwmDegree", String(PwmDegree), true);
+        }
+      }
+    }
+
+    // 233 PwmRampSteps UShort
+    if (ACmotor==false && PWMenable==true){
+      if(ajaxserver.arg("pwmrampsteps").length()<1 || ajaxserver.arg("pwmrampsteps").toInt()<1 || ajaxserver.arg("pwmrampsteps").toInt()>200){
+        pwmrampstepsERR= " Out of range number 1-200";
+      }else{
+        if(PwmRampSteps == ajaxserver.arg("pwmrampsteps").toInt()){
+          pwmrampstepsERR="";
+        }else{
+          pwmrampstepsERR="";
+          PwmRampSteps = ajaxserver.arg("pwmrampsteps").toInt();
+          EEPROM.writeUShort(234, PwmRampSteps);
+          // EEPROM.commit();
+          MqttPubString("PwmRampSteps", String(PwmRampSteps), true);
+        }
+      }
+    }
+
     // 226-227 BaudRate
     static int BaudRateTmp=115200;
     switch (ajaxserver.arg("baud").toInt()) {
@@ -4706,20 +4778,33 @@ if(ACmotor==true){
   motorSELECT1= " selected";
   pwmenableSTYLE=" style='text-decoration: line-through; color: #555;'";
   pwmenableDisable=" disabled";
+    pwmdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
+    pwmdegreeDisable=" disabled";
+    pwmrampstepsSTYLE=" style='text-decoration: line-through; color: #555;'";
+    pwmrampstepsDisable=" disabled";
 }else{
   motorSELECT0= " selected";
   motorSELECT1= "";
   pwmenableSTYLE="";
   pwmenableDisable="";
+
+  if(PWMenable==true){
+    pwmSELECT0= "";
+    pwmSELECT1= " selected";
+    pwmdegreeSTYLE= "";
+    pwmdegreeDisable= "";
+    pwmrampstepsSTYLE= "";
+    pwmrampstepsDisable= "";
+  }else{
+    pwmSELECT0= " selected";
+    pwmSELECT1= "";
+    pwmdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
+    pwmdegreeDisable=" disabled";
+    pwmrampstepsSTYLE=" style='text-decoration: line-through; color: #555;'";
+    pwmrampstepsDisable=" disabled";
+  }
 }
 
-if(PWMenable==true){
-  pwmSELECT0= "";
-  pwmSELECT1= " selected";
-}else{
-  pwmSELECT0= " selected";
-  pwmSELECT1= "";
-}
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>\n";
@@ -4772,7 +4857,7 @@ if(PWMenable==true){
   HtmlSrc += sourceSELECT0;
   HtmlSrc +=">Potentiometer</option><option value='1'";
   HtmlSrc += sourceSELECT1;
-  HtmlSrc +=">CW/CCW pulse</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>Pulse deactivate control with KEY, and SW endstop</span></span></td></tr>\n";
+  HtmlSrc +=">CW/CCW pulse</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 300px;'>Pulse deactivate control with KEY, and SW endstop<BR>PULSE NOT IMPLEMENTED!</span></span></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='pulseperdegree'><span";
   HtmlSrc += pulseperdegreeSTYLE;
   HtmlSrc +=">Pulse count per degree:</span></label></td><td><input type='text' id='pulseperdegree' name='pulseperdegree' size='3' value='";
@@ -4821,7 +4906,7 @@ if(PWMenable==true){
       HtmlSrc += edstoplowzoneDisable;
       HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
       HtmlSrc += edstoplowzoneERR;
-      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[2-15] tenths of a Volt</span></span></td></tr>\n";
+      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Allowed range<br>[2-15] tenths of a Volt</span></span></td></tr>\n";
 
       HtmlSrc +="<tr><td class='tdr'><label for='edstophighzone'><span";
       HtmlSrc += edstophighzoneSTYLE;
@@ -4831,7 +4916,7 @@ if(PWMenable==true){
       HtmlSrc += edstophighzoneDisable;
       HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
       HtmlSrc += edstophighzoneERR;
-      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[16-31] tenths of a Volt</span></span></td></tr>\n";
+      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Allowed range<br>[16-31] tenths of a Volt</span></span></td></tr>\n";
   // }
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
@@ -4854,7 +4939,27 @@ if(PWMenable==true){
   HtmlSrc += pwmSELECT0;
   HtmlSrc +=">OFF</option><option value='1'";
   HtmlSrc += pwmSELECT1;
-  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>If disable, mosfet must be bridged,<br>or replace by jumper<br>More in Wiki page</span></span></td></tr>\n";
+  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 200px;'>If disable, mosfet must be bridged,<br>or replace by jumper<br>More in Wiki page</span></span></span></td></tr>\n";
+
+    HtmlSrc +="<tr><td class='tdr'><label for='pwmrampsteps'><span";
+    HtmlSrc += pwmrampstepsSTYLE;
+    HtmlSrc += ">PWM ramp length in steps of 25ms:</label></td><td><input type='text' id='pwmrampsteps' name='pwmrampsteps' size='3' value='";
+    HtmlSrc += PwmRampSteps;
+    HtmlSrc +="' ";
+    HtmlSrc += pwmrampstepsDisable;
+    HtmlSrc +="> = " + String(float(PwmRampSteps*25)/1000) + " seconds <span style='color:red;'>";
+    HtmlSrc += pwmrampstepsERR;
+    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 250px;'>Allowed range [1-200] steps<br>it corresponds 25ms-5second<br>Parameter needs to be set so that the rotator stops at distance of " + String(PwmDegree) + "&deg;<br>WARNING: long time means long stopping time!</span></span></span></td></tr>\n";
+
+    HtmlSrc +="<tr><td class='tdr'><label for='pwmdegree'><span";
+    HtmlSrc += pwmdegreeSTYLE;
+    HtmlSrc += ">PWM ramp start distance:</label></td><td><input type='text' id='pwmdegree' name='pwmdegree' size='3' value='";
+    HtmlSrc += PwmDegree;
+    HtmlSrc +="' ";
+    HtmlSrc += pwmdegreeDisable;
+    HtmlSrc +=">&deg; <span style='color:red;'>";
+    HtmlSrc += pwmdegreeERR;
+    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 150px;'>Allowed range [1-50&deg;]</span></span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='baud'>USB serial BAUDRATE:</label></td><td><select name='baud' id='baud'><option value='0'";
   HtmlSrc += baudSELECT0;
@@ -5060,7 +5165,7 @@ void handleCal() {
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'>";
   HtmlSrc +="<span style='font-size: 150%;'>Panel value <span style='font-weight: bold; color: #0a0;' id='frontAZValue'>0</span><br></span>";
-  HtmlSrc +="<span style='color: #ccc;'><br>Instruction:</span><br>&#8226; Rotate front panel potentiometer axis without knob to value 0&deg <br>&#8226; Put knob with orientation to north on axis<br>&#8226; Fixate knob to axis on position north</td></tr>";
+  HtmlSrc +="<span style='color: #ccc;'><br>Instruction:</span><br>&#8226; Rotate front panel potentiometer axis without knob to value 360&deg <br>&#8226; Put knob with orientation to north on axis<br>&#8226; Fixate knob to axis on position north</td></tr>";
 
   HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></p></span></div>";
 
