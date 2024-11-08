@@ -2249,6 +2249,7 @@ long RawTmp = 0;
 
   // C 67 Antenna Direction Value
   }else if(incomingByte==67){
+    Prn(OUT, 0, "+0" );
     if(Azimuth+StartAzimuth < 100){
       Prn(OUT, 0, "0" );
       if(Azimuth+StartAzimuth < 10){
