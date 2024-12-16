@@ -31,8 +31,9 @@ mosquitto_sub -v -h 192.168.1.200 -t 'OK1HRA/ROT/#'
 mosquitto_sub -v -h 54.38.157.134 -t 'OK1HRA/1/ROT/#'
 
 MQTT topic
-mosquitto_pub -h 192.168.1.200 -t OK1HRA/ROT/Target -m '10'
-mosquitto_pub -h 54.38.157.134 -t BD:2F/ROT/Target -m '10'
+mosquitto_pub -h 192.168.1.200 -t OK1HRA/0/ROT/Target -m '10'
+mosquitto_pub -h 54.38.157.134 -t BD:2F/0/ROT/Target -m '10'
+mosquitto_pub -h 54.38.157.134 -t 3D:D3/0/ROT/RxAzimuth -m '10'
 
 
 Changelog:
@@ -78,6 +79,7 @@ Changelog:
 + add new settings to setup gui for PWM
   - PWM ramp length
   - PWM start distance
++ add new azimuth source from MQTT with topic /RxAzimuth
 
 ToDo
 - test
@@ -115,7 +117,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20241108";
+const char* REV = "20241216";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -139,7 +141,7 @@ String MapUrl = "" ;
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -radius 500 -num_times 1 -output ./OK500.png
 bool Endstop =  false;
 bool ACmotor =  false;
-bool AZsource =  false;
+byte AZsource = 0;
 short PulsePerDegree = 0;
 bool AZtwoWire =  false;
 bool AZpreamp =  false;
@@ -186,6 +188,7 @@ const int AzimuthPin    = 39;  // analog
 float AzimuthValue      = 0.0;
 int Azimuth             = 0;
 int AzimuthTarget       = 0;
+int RxAzimuth           = 0;
 int Status              = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
 const int VoltagePin    = 35;  // analog
 float VoltageValue      = 0.0;
@@ -950,13 +953,9 @@ void setup() {
 
   // 223 - AZsource
   if(EEPROM.read(223)==0xff){
-    AZsource=false;
+    AZsource=0;
   }else{
-    if(EEPROM.readBool(223)==1){
-      AZsource=true;
-    }else{
-      AZsource=false;
-    }
+    AZsource=EEPROM.readByte(223);
   }
 
   // 224-225  PulsePerDegree
@@ -1476,7 +1475,9 @@ void Watchdog(){
         AzimuthValue=map(AzimuthValue, 142, 3155, 3155, 142);
       }
     }
-    Azimuth=map(AzimuthValue, CcwRaw, CwRaw, 0, MaxRotateDegree);
+    if(AZsource == 0){ //potentiometer
+      Azimuth=map(AzimuthValue, CcwRaw, CwRaw, 0, MaxRotateDegree);
+    }
     ADCTimer=millis();
     AZmaster=map(AZmasterValue, 142, 3150, 0, 360);
     if(AZmaster<=180){
@@ -1487,7 +1488,7 @@ void Watchdog(){
   }
 
   // KEY
-  if(AZsource==false){ // potentiometer
+  if(AZsource<=1){ // potentiometer
     static bool RunByKey = false;
     if(CwCcwInputValue==1 && Status>=0){
       if(Status==0){
@@ -3828,6 +3829,13 @@ bool mqttReconnect() {
         Prn(3, 1, " > subscribe "+String(cstr2));
       }
     }
+    topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/RxAzimuth";
+    const char *cstr3 = topic.c_str();
+    if(mqttClient.subscribe(cstr3)==true){
+      if(EnableSerialDebug>0){
+        Prn(3, 1, " > subscribe "+String(cstr3));
+      }
+    }
 
   }
   return mqttClient.connected();
@@ -3843,6 +3851,24 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
   if(EnableSerialDebug>0){
     Prn(3, 0, "RX MQTT ");
   }
+
+    // RxAzimuth
+    CheckTopicBase = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/RxAzimuth";
+    if ( CheckTopicBase.equals( String(topic) ) ){
+      RxAzimuth = 0;
+      unsigned long exp = 1;
+      for (int i = length-1; i >=0 ; i--) {
+        // Numbers only
+        if(p[i]>=48 && p[i]<=58){
+          RxAzimuth = RxAzimuth + (p[i]-48)*exp;
+          exp = exp*10;
+        }
+      }
+      if(AZsource == 2){ //MQTT
+        Azimuth=RxAzimuth;
+      }
+        Prn(3, 1, "/RxAzimuth " + String(RxAzimuth));
+    }
 
     CheckTopicBase = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/stop";
     if ( CheckTopicBase.equals( String(topic) )){
@@ -4266,6 +4292,7 @@ void handleSet() {
   String pwmSELECT1= "";
   String sourceSELECT0= "";
   String sourceSELECT1= "";
+  String sourceSELECT2= "";
   String baudSELECT0= "";
   String baudSELECT1= "";
   String baudSELECT2= "";
@@ -4445,20 +4472,44 @@ void handleSet() {
     }
 
     // 223 AZsource
-    if(ajaxserver.arg("source").toInt()==0 && AZsource==true){
-      AZsource = false;
-      EEPROM.writeBool(223, 0);
-      MqttPubString("AZsource", "Potentiometer", true);
-    }else if(ajaxserver.arg("source").toInt()==1 && AZsource==false){
-      AZsource = true;
-      EEPROM.writeBool(223, 1);
-      MqttPubString("AZsource", "CW/CCW pulse", true);
-      if(Endstop == false){
-        Endstop = true;
-        EEPROM.writeBool(29, Endstop);
-        MqttPubString("EndstopUse", String(Endstop), true);
-      }
+    switch (ajaxserver.arg("source").toInt()) {
+      case 0: {AZsource = 0;
+        EEPROM.writeByte(223, 0);
+        MqttPubString("AZsource", "Potentiometer", true);
+        break; }
+      case 1: {AZsource = 1;
+        EEPROM.writeByte(223, 1);
+        MqttPubString("AZsource", "CW/CCW pulse", true);
+        if(Endstop == false){
+          Endstop = true;
+          EEPROM.writeBool(29, Endstop);
+          MqttPubString("EndstopUse", String(Endstop), true);
+        }
+        break; }
+      case 2: {AZsource = 2;
+        EEPROM.writeByte(223, 2);
+        MqttPubString("AZsource", "MQTT", true);
+        if(Endstop == false){
+          Endstop = true;
+          EEPROM.writeBool(29, Endstop);
+          MqttPubString("EndstopUse", String(Endstop), true);
+        }
+        break; }
     }
+    // if(ajaxserver.arg("source").toInt()==0 && AZsource==true){
+    //   AZsource = false;
+    //   EEPROM.writeBool(223, 0);
+    //   MqttPubString("AZsource", "Potentiometer", true);
+    // }else if(ajaxserver.arg("source").toInt()==1 && AZsource==false){
+    //   AZsource = true;
+    //   EEPROM.writeBool(223, 1);
+    //   MqttPubString("AZsource", "CW/CCW pulse", true);
+    //   if(Endstop == false){
+    //     Endstop = true;
+    //     EEPROM.writeBool(29, Endstop);
+    //     MqttPubString("EndstopUse", String(Endstop), true);
+    //   }
+    // }
 
     // 224-225 PulsePerDegree
     if ( ajaxserver.arg("pulseperdegree").length()<1 || ajaxserver.arg("pulseperdegree").toInt()<1 || ajaxserver.arg("pulseperdegree").toInt()>100){
@@ -4482,7 +4533,7 @@ void handleSet() {
       // EEPROM.commit();
       MqttPubString("EndstopUse", String(Endstop), true);
     }else if(ajaxserver.arg("edstops").toInt()!=1 && Endstop==true){
-      if(AZsource == true){ //pulse
+      if(AZsource == 1){ //pulse
         Endstop=true;
       }else{  // potentiometer
         Endstop = false;
@@ -4715,21 +4766,58 @@ void handleSet() {
     EEPROM.commit();
   } // else form valid
 
-if(AZsource==true){
-  sourceSELECT0= "";
-  sourceSELECT1= " selected";
-  pulseperdegreeDisable="";
-  pulseperdegreeSTYLE="";
-  twowireSTYLE=" style='text-decoration: line-through; color: #555;'";
-  twowireDisable=" disabled";
-}else{
-  sourceSELECT0= " selected";
-  sourceSELECT1= "";
-  pulseperdegreeDisable=" disabled";
-  pulseperdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
-  twowireDisable="";
-  twowireSTYLE="";
+
+sourceSELECT0= "";
+sourceSELECT1= "";
+sourceSELECT2= "";
+switch (AZsource) {
+  case 0: {
+    sourceSELECT0= " selected";
+    sourceSELECT1= "";
+    sourceSELECT2= "";
+    pulseperdegreeDisable=" disabled";
+    pulseperdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
+    twowireDisable="";
+    twowireSTYLE=""; 
+    break;   
+    }
+  case 1: {
+    sourceSELECT0= "";
+    sourceSELECT1= " selected";
+    sourceSELECT2= "";
+    pulseperdegreeDisable="";
+    pulseperdegreeSTYLE="";
+    twowireSTYLE=" style='text-decoration: line-through; color: #555;'";
+    twowireDisable=" disabled";
+    break;
+    }
+  case 2: {
+    sourceSELECT0= "";
+    sourceSELECT1= "";
+    sourceSELECT2= " selected";
+    pulseperdegreeDisable=" disabled";
+    pulseperdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
+    twowireSTYLE=" style='text-decoration: line-through; color: #555;'";
+    twowireDisable=" disabled";
+    break;
+    }
 }
+
+// if(AZsource==true){
+//   sourceSELECT0= "";
+//   sourceSELECT1= " selected";
+//   pulseperdegreeDisable="";
+//   pulseperdegreeSTYLE="";
+//   twowireSTYLE=" style='text-decoration: line-through; color: #555;'";
+//   twowireDisable=" disabled";
+// }else{
+//   sourceSELECT0= " selected";
+//   sourceSELECT1= "";
+//   pulseperdegreeDisable=" disabled";
+//   pulseperdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
+//   twowireDisable="";
+//   twowireSTYLE="";
+// }
 
 if(AZtwoWire==true){
   twowireSELECT0= "";
@@ -4858,7 +4946,9 @@ if(ACmotor==true){
   HtmlSrc += sourceSELECT0;
   HtmlSrc +=">Potentiometer</option><option value='1'";
   HtmlSrc += sourceSELECT1;
-  HtmlSrc +=">CW/CCW pulse</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 300px;'>Pulse deactivate control with KEY, and SW endstop<BR>PULSE NOT IMPLEMENTED!</span></span></td></tr>\n";
+  HtmlSrc +=">CW/CCW pulse</option><option value='2'";
+  HtmlSrc += sourceSELECT2;
+  HtmlSrc +=">MQTT</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 300px;'>Pulse deactivate control with KEY, and SW endstop<BR>PULSE NOT IMPLEMENTED!<BR>MQTT rx on topic " + String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/RxAzimuth</span></span></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='pulseperdegree'><span";
   HtmlSrc += pulseperdegreeSTYLE;
   HtmlSrc +=">Pulse count per degree:</span></label></td><td><input type='text' id='pulseperdegree' name='pulseperdegree' size='3' value='";
@@ -5151,7 +5241,7 @@ void handleCal() {
   HtmlSrc +="</strong></button></td>";
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'>";
-  if( AZsource == false && AZtwoWire == true && CwRaw < 1577 ){
+  if( AZsource == 0 && AZtwoWire == true && CwRaw < 1577 ){
     HtmlSrc +="<span style='color: #ccc;'>Recommendation: </span><span style='color: #0c0;'>If you are using a 2 wire potentiometer less than 500Ω,<br>you can increase the sensitivity if you short the J16 jumper on the back side PCB.<br><br></span>";
   }
   HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If azimuth potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-AZIMUTH button<br>&#8226; Rotate to both CCW ";
