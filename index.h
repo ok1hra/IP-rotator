@@ -138,6 +138,17 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  ihttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
+				Elevation = this.responseText;
+				// console.log ('Elevation ' + Elevation);
+	    }
+	  };
+	  ihttp.open("GET", "readElevation", true);
+	  ihttp.send();
+
+	  var ihttp = new XMLHttpRequest();
+	  ihttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				AzShift = this.responseText;
 				// console.log ('AzShift ' + AzShift);
 	    }
@@ -378,7 +389,11 @@ const char MAIN_page[] PROGMEM = R"=====(
 			az.font = "bold 100px Arial";
 			az.textAlign = 'center';
 			az.textBaseline = 'middle';
-			var ShowAzimuth = Number(Azimuth) + Number(AzShift);
+			if(Elevation==0){
+				var ShowAzimuth = Number(Azimuth) + Number(AzShift);
+			}else{
+				var ShowAzimuth = Number(Azimuth);
+			}
 			if(ShowAzimuth > 359){
 				ShowAzimuth = Number(ShowAzimuth) - 360;
 			}
@@ -441,33 +456,57 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  // direction
 	  var direction = con.getContext("2d");
 	  direction.beginPath();
-	  direction.arc(Xcenter, Ycenter, BoxSize/2*0.9, 0, 2 * Math.PI);
+		if(Elevation==0){
+			direction.arc(Xcenter, Ycenter, BoxSize/2*0.9, 0, 2 * Math.PI);
+		}else{
+			direction.arc(Xcenter, Ycenter, BoxSize/2*0.9, Math.PI, 2 * Math.PI);
+		}
 	  direction.lineWidth = 2;
 	  direction.strokeStyle = '#c0c0c0';
 	  direction.font = "20px Arial";
 		direction.textAlign = 'center';
 		direction.textBaseline = 'middle';
 	  direction.fillStyle = "#808080";
-	    for(var i=0;i<36;i++){
-	  		if(i %9 === 0){
-	  		}else{
-	  			direction.moveTo(Xcoordinate(i*10, BoxSize/2*0.95), Ycoordinate(i*10, BoxSize/2*0.95));
-	  			direction.lineTo(Xcoordinate(i*10, BoxSize/2*0.9), Ycoordinate(i*10, BoxSize/2*0.9));
-	  		}
-	  		if(i %3 === 0){
-	  			if(i %9 === 0){
-	  			}else{
-	  				direction.fillText(i*10, Xcoordinate(i*10, BoxSize/2), Ycoordinate(i*10, BoxSize/2));
-	  			}
-	  		}
-    	}
-  	direction.fillStyle = "white";
-	  direction.fillText("N", BoxSize/2, BoxSize*0.025);
-	  direction.fillText("E", BoxSize*0.975, BoxSize/2);
-	  direction.fillText("S", BoxSize/2, BoxSize* 0.975);
-	  direction.fillText("W", BoxSize*0.025, BoxSize/2);
-	  direction.stroke();
-
+		if(Elevation==0){
+			for(var i=0;i<36;i++){
+				if(i %9 === 0){
+				}else{
+					direction.moveTo(Xcoordinate(i*10, BoxSize/2*0.95), Ycoordinate(i*10, BoxSize/2*0.95));
+					direction.lineTo(Xcoordinate(i*10, BoxSize/2*0.9), Ycoordinate(i*10, BoxSize/2*0.9));
+				}
+				if(i %3 === 0){
+					if(i %9 === 0){
+					}else{
+						direction.fillText(i*10, Xcoordinate(i*10, BoxSize/2), Ycoordinate(i*10, BoxSize/2));
+					}
+				}
+			}
+		}else{
+			for (var i = 0; i <= 18; i++) {
+				direction.moveTo(Xcoordinate(i*10+270, BoxSize/2*0.95), Ycoordinate(i*10+270, BoxSize/2*0.95));
+				direction.lineTo(Xcoordinate(i*10+270, BoxSize/2*0.9), Ycoordinate(i*10+270, BoxSize/2*0.9));
+				if(i %3 === 0){
+					if(i %9 === 0){
+					}else{
+						direction.fillText(i*10, Xcoordinate(i*10+270, BoxSize/2), Ycoordinate(i*10+270, BoxSize/2));
+					}
+				}
+			}
+		}
+		if(Elevation==0){
+		  	direction.fillStyle = "white";
+			direction.fillText("N", BoxSize/2, BoxSize*0.025);
+			direction.fillText("E", BoxSize*0.975, BoxSize/2);
+			direction.fillText("S", BoxSize/2, BoxSize* 0.975);
+			direction.fillText("W", BoxSize*0.025, BoxSize/2);
+		}else{
+			direction.fillStyle = "#404040";
+			direction.font = "73px Arial";
+			direction.textAlign = 'center';
+			direction.textBaseline = 'middle';
+			// direction.fillText("Elevation", BoxSize/2, BoxSize* 0.95);
+		}
+		direction.stroke();
 		// darkzone if <360
 		if(AzRange<360){
 			direction.beginPath();

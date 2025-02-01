@@ -81,6 +81,7 @@ Changelog:
   - PWM start distance
 + add new azimuth source from MQTT with topic /RxAzimuth
 + add new parameter MQTT Login and Password
++ add support for Elevation only
 
 ToDo
 - test
@@ -118,7 +119,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20250201";
+const char* REV = "20250202";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -1425,6 +1426,7 @@ void setup() {
    ajaxserver.on("/readAZadc", handleAZadc);
    ajaxserver.on("/readStat", handleStat);
    ajaxserver.on("/readStart", handleStart);
+   ajaxserver.on("/readElevation", handleElevation);
    ajaxserver.on("/readMax", handleMax);
    ajaxserver.on("/readAnt", handleAnt);
    ajaxserver.on("/readAntName", handleAntName);
@@ -3656,7 +3658,11 @@ void http(){
             webClient.println(ETH.localIP());
             webClient.print(F(":82/update\" target=_blank>Upload&nbsp;FW</a>&nbsp;| <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a><br><a href=\"http://"));
             webClient.println(ETH.localIP());
-            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Azimuth Map Control</button></a>"));
+            if(ELEVATION==false){
+              webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Azimuth Map Control</button></a>"));
+            }else{
+              webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Elevation Map Control</button></a>"));
+            }
           #endif
           // END STATUS
           webClient.println(F("              </p>"));
@@ -4352,6 +4358,8 @@ void handleSet() {
   String rotidERR= "";
   String rotnameERR= "";
   String startazimuthERR= "";
+  String startazimuthSTYLE= "";
+  String startazimuthDisable= "";
   String maxrotatedegreeERR= "";
   String antradiationangleERR= "";
   String oneturnlimitsecERR= "";
@@ -4398,7 +4406,6 @@ void handleSet() {
   String pwmrampstepsDisable= "";
   String mqtt_loginSTYLE= "";
   String mqtt_loginCHECKED= "";
-  String elevationSTYLE= "";
   String elevationCHECKED= "";
   String mqtt_userSTYLE= "";
   String mqtt_userERR= "";
@@ -4556,32 +4563,54 @@ void handleSet() {
     }
 
     // StartAzimuth
-    if ( ajaxserver.arg("startazimuth").length()<1 || ajaxserver.arg("startazimuth").toInt()<0 || ajaxserver.arg("startazimuth").toInt()>359){
-      startazimuthERR= " Out of range number 0-359";
-    }else{
-      if(StartAzimuth == ajaxserver.arg("startazimuth").toInt()){
-        startazimuthERR="";
+    if(ELEVATION==false){
+      if ( ajaxserver.arg("startazimuth").length()<1 || ajaxserver.arg("startazimuth").toInt()<0 || ajaxserver.arg("startazimuth").toInt()>359){
+        startazimuthERR= " Out of range number 0-359";
       }else{
-        startazimuthERR="";
-        StartAzimuth = ajaxserver.arg("startazimuth").toInt();
-        EEPROM.writeUShort(23, StartAzimuth);
-        // EEPROM.commit();
-        MqttPubString("StartAzimuth", String(StartAzimuth), true);
+        if(StartAzimuth == ajaxserver.arg("startazimuth").toInt()){
+          startazimuthERR="";
+        }else{
+          startazimuthERR="";
+          StartAzimuth = ajaxserver.arg("startazimuth").toInt();
+          EEPROM.writeUShort(23, StartAzimuth);
+          // EEPROM.commit();
+          MqttPubString("StartAzimuth", String(StartAzimuth), true);
+        }
+      }
+    }else{
+      if (ajaxserver.arg("startazimuth").toInt()!=270){
+        // startazimuthERR= " If enable Elevation, must be set to 270";
       }
     }
 
     // MaxRotateDegree
-    if ( ajaxserver.arg("maxrotatedegree").length()<1 || ajaxserver.arg("maxrotatedegree").toInt()<0 || ajaxserver.arg("maxrotatedegree").toInt()>719){
-      maxrotatedegreeERR= " Out of range number 0-719";
-    }else{
-      if(MaxRotateDegree == ajaxserver.arg("maxrotatedegree").toInt()){
-        maxrotatedegreeERR="";
+    if(ELEVATION==false){
+      if ( ajaxserver.arg("maxrotatedegree").length()<1 || ajaxserver.arg("maxrotatedegree").toInt()<0 || ajaxserver.arg("maxrotatedegree").toInt()>719){
+        maxrotatedegreeERR= " Out of range number 0-719";
       }else{
-        maxrotatedegreeERR="";
-        MaxRotateDegree = ajaxserver.arg("maxrotatedegree").toInt();
-        EEPROM.writeUShort(25, MaxRotateDegree);
-        // EEPROM.commit();
-        MqttPubString("MaxRotateDegree", String(MaxRotateDegree), true);
+        if(MaxRotateDegree == ajaxserver.arg("maxrotatedegree").toInt()){
+          maxrotatedegreeERR="";
+        }else{
+          maxrotatedegreeERR="";
+          MaxRotateDegree = ajaxserver.arg("maxrotatedegree").toInt();
+          EEPROM.writeUShort(25, MaxRotateDegree);
+          // EEPROM.commit();
+          MqttPubString("MaxRotateDegree", String(MaxRotateDegree), true);
+        }
+      }
+    }else{
+      if ( ajaxserver.arg("maxrotatedegree").length()<1 || ajaxserver.arg("maxrotatedegree").toInt()<0 || ajaxserver.arg("maxrotatedegree").toInt()>180){
+        maxrotatedegreeERR= " Out of range number 0-180 (with enable Elevation)";
+      }else{
+        if(MaxRotateDegree == ajaxserver.arg("maxrotatedegree").toInt()){
+          maxrotatedegreeERR="";
+        }else{
+          maxrotatedegreeERR="";
+          MaxRotateDegree = ajaxserver.arg("maxrotatedegree").toInt();
+          EEPROM.writeUShort(25, MaxRotateDegree);
+          // EEPROM.commit();
+          MqttPubString("MaxRotateDegree", String(MaxRotateDegree), true);
+        }
       }
     }
 
@@ -4927,9 +4956,15 @@ void handleSet() {
       MqttPubString("MQTToginEnable", String(MQTT_LOGIN), true);
     }
 
-    // 167 - ELEVATION elevation
+    // 167 - ELEVATION
     if(ajaxserver.arg("elevation").toInt()==1 && ELEVATION==false){
       ELEVATION = true;
+        StartAzimuth = 270;
+        EEPROM.writeUShort(23, StartAzimuth);
+        MqttPubString("StartAzimuth", String(StartAzimuth), true);
+        MaxRotateDegree = 180;
+        EEPROM.writeUShort(25, MaxRotateDegree);
+        MqttPubString("MaxRotateDegree", String(MaxRotateDegree), true);
       EEPROM.writeBool(167, ELEVATION);
       MqttPubString("ElevationEnable", String(ELEVATION), true);
     }else if(ajaxserver.arg("elevation").toInt()!=1 && ELEVATION==true){
@@ -5022,6 +5057,16 @@ if(Endstop==true){
   edstophighzoneSTYLE=" style='color: orange;'";
   edstopsCHECKED= "";
   // edstopsSTYLE=" style='text-decoration: line-through; color: #555;'";
+}
+
+if(ELEVATION==true){
+  elevationCHECKED= "checked";
+  startazimuthSTYLE=" style='text-decoration: line-through; color: #555;'";
+  startazimuthDisable=" disabled";
+}else{
+  elevationCHECKED= "";
+  startazimuthSTYLE="";
+  startazimuthDisable="";
 }
 
 if(MQTT_LOGIN==true){
@@ -5118,9 +5163,17 @@ if(ACmotor==true){
   HtmlSrc += RotName;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += rotnameERR;
-  HtmlSrc +="</span></td></tr>\n<tr><td class='tdr'><label for='startazimuth'>Start CCW azimuth:</label></td><td><input type='text' id='startazimuth' name='startazimuth' size='3' value='";
+  HtmlSrc +="</span></td></tr>\n";
+    HtmlSrc +="<tr class='b'><td class='tdr'><label for='elevation'>Use only for Elevation:</label></td><td><input type='checkbox' id='elevation' name='elevation' value='1' ${postData.elevation?'checked':''} ";
+    HtmlSrc += elevationCHECKED;
+    HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>Will be SET<br>Start Azimuth to 270<br>Max Rotate Degree to 180 (may be change to 0-180)<br><br>For map use<br>https://remoteqth.com/xplanet/SKY.jpg</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='startazimuth'><span";
+  HtmlSrc += startazimuthSTYLE;
+  HtmlSrc += ">Start CCW azimuth:</span></label></td><td><input type='text' id='startazimuth' name='startazimuth' size='3' value='";
   HtmlSrc += StartAzimuth;
-  HtmlSrc +="'>&deg; <span style='color:red;'>";
+  HtmlSrc +="' ";
+  HtmlSrc += startazimuthDisable;
+  HtmlSrc +=">&deg; <span style='color:red;'>";
   HtmlSrc += startazimuthERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[0-359&deg;]</span></span></td></tr>\n<tr><td class='tdr'><label for='maxrotatedegree'>Rotation range in degrees:</label></td><td><input type='text' id='maxrotatedegree' name='maxrotatedegree' size='3' value='";
   HtmlSrc += MaxRotateDegree;
@@ -5136,13 +5189,6 @@ if(ACmotor==true){
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += antradiationangleERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[1-180&deg;]</span></span></td></tr>\n";
-
-    HtmlSrc +="<tr class='b'><td class='tdr'><label for='elevation'><span";
-    HtmlSrc += elevationSTYLE;
-    HtmlSrc +=">Use only for Elevation:</span></label></td><td><input type='checkbox' id='elevation' name='elevation' value='1' ${postData.elevation?'checked':''} ";
-    HtmlSrc += elevationCHECKED;
-    HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>NOT IMPLEMENTED YET!</span></span></td></tr>\n";
-
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='source'>Azimuth source:</label></td><td><select name='source' id='source'><option value='0'";
   HtmlSrc += sourceSELECT0;
   HtmlSrc +=">Potentiometer</option><option value='1'";
@@ -5282,7 +5328,7 @@ if(ACmotor==true){
   HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Enable login for<br>connect to MQTT broker<br>WARNING, does not support encryption!</span></span></td></tr>\n";
     HtmlSrc +="<tr><td class='tdr'><label for='mqttuser'><span";
     HtmlSrc += mqtt_userSTYLE;
-    HtmlSrc += ">MQTT Login:</label></td><td><input type='text' id='mqttuser' name='mqttuser' size='10' value='";
+    HtmlSrc += ">MQTT Login:</span></label></td><td><input type='text' id='mqttuser' name='mqttuser' size='10' value='";
     HtmlSrc += MQTT_USER;
     HtmlSrc +="' ";
     HtmlSrc += mqtt_loginDisable;
@@ -5292,7 +5338,7 @@ if(ACmotor==true){
 
     HtmlSrc +="<tr><td class='tdr'><label for='mqttpass'><span";
     HtmlSrc += mqtt_passSTYLE;
-    HtmlSrc += ">MQTT Password:</label></td><td><input type='password' id='mqttpass' name='mqttpass' size='20' value='";
+    HtmlSrc += ">MQTT Password:</span></label></td><td><input type='password' id='mqttpass' name='mqttpass' size='20' value='";
     HtmlSrc += MQTT_PASS;
     HtmlSrc +="' ";
     HtmlSrc += mqtt_loginDisable;
@@ -5433,7 +5479,13 @@ void handleCal() {
   // HtmlSrc +=String(HWidValue);
   HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'>";
   HtmlSrc +="<table cellspacing='0' cellpadding='0'><form action='/cal' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>";
-  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>1. Rotate direction calibrate</span></td></tr>";
+  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>";
+  if(ELEVATION==false){
+    HtmlSrc +="1. Rotate direction calibrate";  
+  }else{
+      HtmlSrc +="1. Elevation direction calibrate";
+  }
+  HtmlSrc +="</span></td></tr>";
   HtmlSrc +="<tr style='background-color: #666;'>";
   HtmlSrc +="<td class='tdr'><button id='ccw' name='ccw'>&#8630; CCW</button></td>";
   HtmlSrc +="<td class='tdc'><button id='stop' name='stop'>&#10008; STOP</button></td>";
@@ -5449,8 +5501,13 @@ void handleCal() {
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td></tr>";
 
-  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>2. Azimuth calibrate</span></td>";
-  HtmlSrc +="</tr><tr>";
+  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>";
+  if(ELEVATION==false){
+    HtmlSrc +="2. Azimuth calibrate";  
+  }else{
+      HtmlSrc +="2. Elevation calibrate";
+  }
+  HtmlSrc +="</span></td></tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='140'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
   HtmlSrc +="</tr><tr style='background-color: #666;'>";
   HtmlSrc +="<td class='tdl'><button id='setccw' name='setccw'>&#8676; SAVE CCW</button></td>";
@@ -5460,7 +5517,11 @@ void handleCal() {
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><button id='reverseaz' name='reverseaz'";
   HtmlSrc +=ReverseAzCOLOR;
-  HtmlSrc +=">REVERSE-AZIMUTH-<strong>";
+  if(ELEVATION==false){
+    HtmlSrc +=">REVERSE-AZIMUTH-<strong>";
+  }else{
+    HtmlSrc +=">REVERSE-ELEVATION-<strong>";
+  }
   HtmlSrc +=ReverseAzSTATUS;
   HtmlSrc +="</strong></button></td>";
   HtmlSrc +="</tr><tr>";
@@ -5468,11 +5529,18 @@ void handleCal() {
   if( AZsource == 0 && AZtwoWire == true && CwRaw < 1577 ){
     HtmlSrc +="<span style='color: #ccc;'>Recommendation: </span><span style='color: #0c0;'>If you are using a 2 wire potentiometer less than 500Ω,<br>you can increase the sensitivity if you short the J16 jumper on the back side PCB.<br><br></span>";
   }
-  HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If azimuth potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-AZIMUTH button<br>&#8226; Rotate to both CCW ";
-  HtmlSrc +=StartAzimuth;
-  HtmlSrc +="&deg; and CW ";
-  HtmlSrc +=StartAzimuth+MaxRotateDegree;
-  HtmlSrc +="&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, then measure real azimuth<br>and put this value to &ldquo;Start CCW azimuth:&rdquo;	field in Setup page</td>";
+  if(ELEVATION==false){
+    HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If azimuth potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-AZIMUTH button<br>&#8226; Rotate to both CCW ";
+    HtmlSrc +=StartAzimuth;
+    HtmlSrc +="&deg; and CW ";
+    HtmlSrc +=StartAzimuth+MaxRotateDegree;
+    HtmlSrc +="&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, then measure real azimuth<br>and put this value to &ldquo;Start CCW azimuth:&rdquo;	field in Setup page</td>";
+  }else{
+    HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If elevation potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-ELEVATION button<br>&#8226; Rotate to both CCW 0&deg; and CW ";
+    HtmlSrc +=MaxRotateDegree;
+    HtmlSrc +="&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, then measure real elevation<br>and put this value to &ldquo;Start CCW elevation:&rdquo;	field in Setup page</td>";
+  }
+  
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td></tr>";
 
@@ -5521,6 +5589,13 @@ void handleStat() {
 }
 void handleStart() {
   ajaxserver.send(200, "text/plane", String(StartAzimuth) );
+}
+void handleElevation() {
+  if(ELEVATION==true){
+    ajaxserver.send(200, "text/plane", String("1") );
+  }else{
+    ajaxserver.send(200, "text/plane", String("0") );
+  }
 }
 void handleMax() {
   ajaxserver.send(200, "text/plane", String(MaxRotateDegree) );

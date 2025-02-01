@@ -20,6 +20,16 @@ const char CAL_page[] PROGMEM = R"=====(
 	setTimeout(() => { Static(); }, 1000);
 
 	function getSet() {
+	  var ghttp = new XMLHttpRequest();
+	  ghttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+	      // document.getElementById("StartValue").innerHTML = this.responseText;
+				Elevation = this.responseText;
+				// console.log ('Elevation ' + Elevation);
+	    }
+	  };
+	  ghttp.open("GET", "readElevation", true);
+	  ghttp.send();
 
 		var ghttp = new XMLHttpRequest();
 	  ghttp.onreadystatechange = function() {
@@ -184,8 +194,13 @@ const char CAL_page[] PROGMEM = R"=====(
 				pointer.moveTo( CWpos, 55);
 				pointer.lineTo( CWpos-7, 65);
 				pointer.lineTo( CWpos, 75);
-				pointer.fillText( Number(AzShift) + "°", CCWpos, 90+20);
-				pointer.fillText( Number(AzShift) + Number(AzRange) + "°", CWpos, 90+20);
+				if(Elevation==0){
+					pointer.fillText( Number(AzShift) + "°", CCWpos, 90+20);
+					pointer.fillText( Number(AzShift) + Number(AzRange) + "°", CWpos, 90+20);
+				}else{
+					pointer.fillText( "0°", CCWpos, 90+20);
+					pointer.fillText( Number(AzRange) + "°", CWpos, 90+20);
+				}
 		pointer.fill();
 
 		var Position = (Number(BoxSize)-60)/33* Number(PointerValue)/100+30;
