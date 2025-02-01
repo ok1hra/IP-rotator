@@ -80,6 +80,7 @@ Changelog:
   - PWM ramp length
   - PWM start distance
 + add new azimuth source from MQTT with topic /RxAzimuth
++ add new parameter MQTT Login and Password
 
 ToDo
 - test
@@ -117,7 +118,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20241216";
+const char* REV = "20250201";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -288,7 +289,7 @@ int i = 0;
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 245   /*
+#define EEPROM_SIZE 267   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -321,7 +322,8 @@ int i = 0;
 141-160 - YOUR_CALL
 161-164 - MQTT broker IP
 165-166 - MQTT_PORT
-167-168 - none
+167 - ELEVATION
+168 - MQTT_LOGIN
 169-219 - MapUrl
 220-221 - OneTurnLimitSec
 222 - NoEndstopHighZone
@@ -332,8 +334,10 @@ int i = 0;
 229 AZpreamp
 230 - ReverseAZ
 231 - PWMenable
-232 PwmDegree UShort
-234 PwmRampSteps UShort
+232-3 PwmDegree UShort
+234-5 PwmRampSteps UShort
+236-245 - MQTT_USER
+246-265 - MQTT_PASS
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -407,9 +411,11 @@ int MQTT_PORT;       // MQTT broker PORT
 //   1883,
 //   1883
 // };       // MQTT broker PORT
+boolean ELEVATION      = 0;          // enable Elevation function
 boolean MQTT_LOGIN      = 0;          // enable MQTT broker login
-// char MQTT_USER= 'login';    // MQTT broker user login
-// char MQTT_PASS= 'passwd';   // MQTT broker password
+String MQTT_USER= "";    // MQTT broker user login
+String MQTT_PASS= "";   // MQTT broker password
+
 const int MqttBuferSize = 1000; // 1000
 char mqttTX[MqttBuferSize];
 char mqttPath[MqttBuferSize];
@@ -935,8 +941,29 @@ void setup() {
       NoEndstopLowZone = 0.5;
     }
   }
-  // NoEndstopHighZone = 3.3 - NoEndstopLowZone;
-  // NoEndstopLowZone = NoEndstopLowZone;
+
+
+  // 167  - ELEVATION
+  if(EEPROM.read(167)==0xff){
+    ELEVATION=false;
+  }else{
+    if(EEPROM.readBool(167)==1){
+      ELEVATION=true;
+    }else{
+      ELEVATION=false;
+    }
+  }
+
+  // 168  - MQTT_LOGIN
+  if(EEPROM.read(168)==0xff){
+    MQTT_LOGIN=false;
+  }else{
+    if(EEPROM.readBool(168)==1){
+      MQTT_LOGIN=true;
+    }else{
+      MQTT_LOGIN=false;
+    }
+  }
 
   // 222 - NoEndstopHighZone
   if(EEPROM.read(222)==0xff){
@@ -1039,6 +1066,27 @@ void setup() {
     }
   }
 
+  // 236-245 - MQTT_USER
+  if(EEPROM.read(236)==0xff){
+    MQTT_USER="Login";
+  }else{
+    for (int i=236; i<246; i++){
+      if(EEPROM.read(i)!=0xff){
+        MQTT_USER=MQTT_USER+char(EEPROM.read(i));
+      }
+    }
+  }
+
+  // 246-265 - MQTT_PASS
+  if(EEPROM.read(246)==0xff){
+    MQTT_PASS="Password";
+  }else{
+    for (int i=246; i<266; i++){
+      if(EEPROM.read(i)!=0xff){
+        MQTT_PASS=MQTT_PASS+char(EEPROM.read(i));
+      }
+    }
+  }
 
 
   // 2-encoder range
@@ -1067,6 +1115,12 @@ void setup() {
       }
     }
   }
+
+
+
+
+
+
 
   SERIAL1_BAUDRATE=EEPROM.readInt(14);
   SerialServerIPport=EEPROM.readInt(18);
@@ -3698,13 +3752,8 @@ void EthEvent(WiFiEvent_t event)
       eth_connected = true;
 
       #if defined(MQTT)
-        if (MQTT_ENABLE == true && MQTT_LOGIN == true){
-          // if (mqttClient.connect("esp32gwClient", MQTT_USER, MQTT_PASS)){
-          //   AfterMQTTconnect();
-          // }
-        }else if(MQTT_ENABLE == true){
+        if(MQTT_ENABLE == true){
           Serial.print("EthEvent-mqtt ");
-
           mqttClient.setServer(mqtt_server_ip, MQTT_PORT);
           mqttClient.setCallback(MqttRx);
           lastMqttReconnectAttempt = 0;
@@ -3728,26 +3777,46 @@ void EthEvent(WiFiEvent_t event)
            // // memcpy( charbuf, ETH.macAddress(), 6);
            // ETH.macAddress().toCharArray(charbuf, 18);
            // // charbuf[6] = 0;
-          if (mqttClient.connect(MACchar)){
-            // Serial.println(charbuf);
-            Prn(0, 1, String(MACchar));
-            mqttReconnect();
-            AfterMQTTconnect();
-            Prn(0, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
-            if(BaudRate!=115200){
-              MqttPubString("USB-BaudRate", String(BaudRate), true);
-              Serial.println("Baudrate change to "+String(BaudRate)+"...");
-              Serial.flush();
-              // Serial.end();
-              delay(1000);
-              Serial.begin(BaudRate);
-              delay(500);
-              Serial.println();
-              Serial.println();
-              Serial.println("New Baudrate "+String(BaudRate));
+          if(MQTT_LOGIN == true){
+            if (mqttClient.connect(MACchar,MQTT_USER.c_str(),MQTT_PASS.c_str())){
+              Prn(0, 1, String(MACchar));
+              mqttReconnect();
+              AfterMQTTconnect();
               Prn(0, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
+              if(BaudRate!=115200){
+                MqttPubString("USB-BaudRate", String(BaudRate), true);
+                Serial.println("Baudrate change to "+String(BaudRate)+"...");
+                Serial.flush();
+                // Serial.end();
+                delay(1000);
+                Serial.begin(BaudRate);
+                delay(500);
+                Serial.println();
+                Serial.println();
+                Serial.println("New Baudrate "+String(BaudRate));
+                Prn(0, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
+              }
             }
-
+          }else{
+            if (mqttClient.connect(MACchar)){
+              Prn(0, 1, String(MACchar));
+              mqttReconnect();
+              AfterMQTTconnect();
+              Prn(0, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
+              if(BaudRate!=115200){
+                MqttPubString("USB-BaudRate", String(BaudRate), true);
+                Serial.println("Baudrate change to "+String(BaudRate)+"...");
+                Serial.flush();
+                // Serial.end();
+                delay(1000);
+                Serial.begin(BaudRate);
+                delay(500);
+                Serial.println();
+                Serial.println();
+                Serial.println("New Baudrate "+String(BaudRate));
+                Prn(0, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
+              }
+            }
           }
         }
       #endif
@@ -3798,16 +3867,29 @@ bool mqttReconnect() {
   // // memcpy( charbuf, ETH.macAddress(), 6);
   // ETH.macAddress().toCharArray(charbuf, 18);
   // charbuf[6] = 0;
-  if (mqttClient.connect(MACchar)) {
-    if(EnableSerialDebug>0){
-      Prn(3, 0, "mqttReconnect-connected");
+  if(MQTT_LOGIN == true){
+    if (mqttClient.connect(MACchar,MQTT_USER.c_str(),MQTT_PASS.c_str())){
+      if(EnableSerialDebug>0){
+        Prn(3, 0, "mqttReconnect-connected");
+      }
+      reSubscribe();
     }
-    // IPAddress IPlocalAddr = ETH.localIP();                           // get
-    // String IPlocalAddrString = String(IPlocalAddr[0]) + "." + String(IPlocalAddr[1]) + "." + String(IPlocalAddr[2]) + "." + String(IPlocalAddr[3]);   // to string
-    // MqttPubStringQC(1, "IP", IPlocalAddrString, true);
+  }else{
+    if (mqttClient.connect(MACchar)) {
+      if(EnableSerialDebug>0){
+        Prn(3, 0, "mqttReconnect-connected");
+      }
+      // IPAddress IPlocalAddr = ETH.localIP();                           // get
+      // String IPlocalAddrString = String(IPlocalAddr[0]) + "." + String(IPlocalAddr[1]) + "." + String(IPlocalAddr[2]) + "." + String(IPlocalAddr[3]);   // to string
+      // MqttPubStringQC(1, "IP", IPlocalAddrString, true);
+      reSubscribe();
+    }
+  }
+  return mqttClient.connected();
+}
 
-    // resubscribe
-
+//------------------------------------------------------------------------------------
+void reSubscribe(){
     String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/Target";
     const char *cstr = topic.c_str();
     if(mqttClient.subscribe(cstr)==true){
@@ -3836,9 +3918,6 @@ bool mqttReconnect() {
         Prn(3, 1, " > subscribe "+String(cstr3));
       }
     }
-
-  }
-  return mqttClient.connected();
 }
 
 //------------------------------------------------------------------------------------
@@ -3964,11 +4043,20 @@ void MqttPubString(String TOPIC, String DATA, bool RETAIN){
    // charbuf[6] = 0;
   // if(EnableEthernet==1 && MQTT_ENABLE==1 && EthLinkStatus==1 && mqttClient.connected()==true){
   if(mqttClient.connected()==true){
-    if (mqttClient.connect(MACchar)) {
-      String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/"+TOPIC;
-      topic.toCharArray( mqttPath, 50 );
-      DATA.toCharArray( mqttTX, 50 );
-      mqttClient.publish(mqttPath, mqttTX, RETAIN);
+    if(MQTT_LOGIN == true){
+      if (mqttClient.connect(MACchar,MQTT_USER.c_str(),MQTT_PASS.c_str())){
+        String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/"+TOPIC;
+        topic.toCharArray( mqttPath, 50 );
+        DATA.toCharArray( mqttTX, 50 );
+        mqttClient.publish(mqttPath, mqttTX, RETAIN);
+      }
+    }else{
+      if (mqttClient.connect(MACchar)) {
+        String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/"+TOPIC;
+        topic.toCharArray( mqttPath, 50 );
+        DATA.toCharArray( mqttTX, 50 );
+        mqttClient.publish(mqttPath, mqttTX, RETAIN);
+      }
     }
   }
 }
@@ -4308,6 +4396,15 @@ void handleSet() {
   String pwmrampstepsERR= "";
   String pwmrampstepsSTYLE= "";
   String pwmrampstepsDisable= "";
+  String mqtt_loginSTYLE= "";
+  String mqtt_loginCHECKED= "";
+  String elevationSTYLE= "";
+  String elevationCHECKED= "";
+  String mqtt_userSTYLE= "";
+  String mqtt_userERR= "";
+  String mqtt_passSTYLE= "";
+  String mqtt_passERR= "";
+  String mqtt_loginDisable= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -4398,6 +4495,63 @@ void handleSet() {
         }
         // EEPROM.commit();
         MqttPubString("Name", String(RotName), true);
+      }
+    }
+
+    // 236-245 - MQTT_USER
+    if ( ajaxserver.arg("mqttuser").length()<1 || ajaxserver.arg("mqttuser").length()>10){
+      if(MQTT_LOGIN==true){
+        mqtt_userERR= " Out of range 1-10 characters";
+      }else{
+        mqtt_userERR= "";
+      }
+    }else{
+      String str = String(ajaxserver.arg("mqttuser"));
+      if(MQTT_USER == str){
+        mqtt_userERR="";
+      }else{
+        mqtt_userERR=" Must restart after change!";
+        MQTT_USER = String(ajaxserver.arg("mqttuser"));
+
+        int str_len = str.length();
+        char char_array[str_len];
+        str.toCharArray(char_array, str_len+1);
+        for (int i=0; i<9; i++){
+          if(i < str_len){
+            EEPROM.write(236+i, char_array[i]);
+          }else{
+            EEPROM.write(236+i, 0xff);
+          }
+        }
+        MqttPubString("MQTTuser", String(MQTT_USER), true);
+      }
+    }
+
+    // 246-265 - MQTT_PASS
+    if ( ajaxserver.arg("mqttpass").length()<1 || ajaxserver.arg("mqttpass").length()>20){
+      if(MQTT_LOGIN==true){
+        mqtt_passERR= " Out of range 1-20 characters";
+      }else{
+        mqtt_passERR= "";
+      }
+    }else{
+      String str = String(ajaxserver.arg("mqttpass"));
+      if(MQTT_PASS == str){
+        mqtt_passERR="";
+      }else{
+        mqtt_passERR=" Must restart after change!";
+        MQTT_PASS = String(ajaxserver.arg("mqttpass"));
+
+        int str_len = str.length();
+        char char_array[str_len];
+        str.toCharArray(char_array, str_len+1);
+        for (int i=0; i<19; i++){
+          if(i < str_len){
+            EEPROM.write(246+i, char_array[i]);
+          }else{
+            EEPROM.write(246+i, 0xff);
+          }
+        }
       }
     }
 
@@ -4762,6 +4916,27 @@ void handleSet() {
       }
     }
 
+    // 168 - MQTT_LOGIN
+    if(ajaxserver.arg("mqtt_login").toInt()==1 && MQTT_LOGIN==false){
+      MQTT_LOGIN = true;
+      EEPROM.writeBool(168, MQTT_LOGIN);
+      MqttPubString("MQTToginEnable", String(MQTT_LOGIN), true);
+    }else if(ajaxserver.arg("mqtt_login").toInt()!=1 && MQTT_LOGIN==true){
+      MQTT_LOGIN = false;
+      EEPROM.writeBool(168, MQTT_LOGIN);
+      MqttPubString("MQTToginEnable", String(MQTT_LOGIN), true);
+    }
+
+    // 167 - ELEVATION elevation
+    if(ajaxserver.arg("elevation").toInt()==1 && ELEVATION==false){
+      ELEVATION = true;
+      EEPROM.writeBool(167, ELEVATION);
+      MqttPubString("ElevationEnable", String(ELEVATION), true);
+    }else if(ajaxserver.arg("elevation").toInt()!=1 && ELEVATION==true){
+      ELEVATION = false;
+      EEPROM.writeBool(167, ELEVATION);
+      MqttPubString("ElevationEnable", String(ELEVATION), true);
+    }
 
     EEPROM.commit();
   } // else form valid
@@ -4847,6 +5022,26 @@ if(Endstop==true){
   edstophighzoneSTYLE=" style='color: orange;'";
   edstopsCHECKED= "";
   // edstopsSTYLE=" style='text-decoration: line-through; color: #555;'";
+}
+
+if(MQTT_LOGIN==true){
+  mqtt_loginCHECKED= "checked";
+  mqtt_loginSTYLE="";
+}else{
+  mqtt_loginCHECKED= "";
+  mqtt_loginSTYLE=" style='text-decoration: line-through; color: #555;'";
+}
+
+if(MQTT_LOGIN==true){
+  mqtt_loginCHECKED= "checked";
+  mqtt_loginDisable="";
+  mqtt_userSTYLE="";
+  mqtt_passSTYLE="";
+}else{
+  mqtt_loginCHECKED= "";
+  mqtt_loginDisable=" disabled";
+  mqtt_userSTYLE=" style='text-decoration: line-through; color: #555;'";
+  mqtt_passSTYLE=" style='text-decoration: line-through; color: #555;'";
 }
 
 baudSELECT0= "";
@@ -4941,6 +5136,12 @@ if(ACmotor==true){
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += antradiationangleERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[1-180&deg;]</span></span></td></tr>\n";
+
+    HtmlSrc +="<tr class='b'><td class='tdr'><label for='elevation'><span";
+    HtmlSrc += elevationSTYLE;
+    HtmlSrc +=">Use only for Elevation:</span></label></td><td><input type='checkbox' id='elevation' name='elevation' value='1' ${postData.elevation?'checked':''} ";
+    HtmlSrc += elevationCHECKED;
+    HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>NOT IMPLEMENTED YET!</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='source'>Azimuth source:</label></td><td><select name='source' id='source'><option value='0'";
   HtmlSrc += sourceSELECT0;
@@ -5075,6 +5276,29 @@ if(ACmotor==true){
   HtmlSrc +="<span style='color:red;'>";
   HtmlSrc += mqttportERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
+
+  HtmlSrc +="<tr><td class='tdr'><label for='mqtt_login'>Enable MQTT PASSWORD:</label></td><td><input type='checkbox' id='mqtt_login' name='mqtt_login' value='1' ${postData.mqtt_login?'checked':''} ";
+  HtmlSrc += mqtt_loginCHECKED;
+  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Enable login for<br>connect to MQTT broker<br>WARNING, does not support encryption!</span></span></td></tr>\n";
+    HtmlSrc +="<tr><td class='tdr'><label for='mqttuser'><span";
+    HtmlSrc += mqtt_userSTYLE;
+    HtmlSrc += ">MQTT Login:</label></td><td><input type='text' id='mqttuser' name='mqttuser' size='10' value='";
+    HtmlSrc += MQTT_USER;
+    HtmlSrc +="' ";
+    HtmlSrc += mqtt_loginDisable;
+    HtmlSrc +="><span style='color:red;'>";
+    HtmlSrc += mqtt_userERR;
+    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Name max 10 character, for connect to MQTT broker</span></span></td></tr>\n";
+
+    HtmlSrc +="<tr><td class='tdr'><label for='mqttpass'><span";
+    HtmlSrc += mqtt_passSTYLE;
+    HtmlSrc += ">MQTT Password:</label></td><td><input type='password' id='mqttpass' name='mqttpass' size='20' value='";
+    HtmlSrc += MQTT_PASS;
+    HtmlSrc +="' ";
+    HtmlSrc += mqtt_loginDisable;
+    HtmlSrc +="><span style='color:red;'>";
+    HtmlSrc += mqtt_passERR;
+    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Password max 20 character, for connect to MQTT broker</span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form>&nbsp; ";
   HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=1150,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";

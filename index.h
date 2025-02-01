@@ -89,7 +89,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 					<span style="color: #fff;" id="AntName2"> </span> | POE
 					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V |
 					 raw <span style="font-weight: bold;" id="AZValue">0</span>&deg; |
-					<a href="/set" onclick="window.open( this.href, this.href, 'width=700,height=1160,left=0,top=0,menubar=no,location=no,status=no' ); return false;"); return false;\">SETUP</a>
+					<a href="/set" onclick="window.open( this.href, this.href, 'width=700,height=1350,left=0,top=0,menubar=no,location=no,status=no' ); return false;"); return false;\">SETUP</a>
 
 				</span>
 				<br>
