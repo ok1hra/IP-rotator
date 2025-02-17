@@ -1593,7 +1593,7 @@ void Watchdog(){
       case  3: {StatusStr = "PwmDwn-CW"; break; }
     }
     MqttPubString("StatusHuman", StatusStr, false);
-    MqttPubString("Status", String(Status+4), false);
+    MqttPubString("Status", String(Status+0), false); // +4)
     StatusTmp=Status;
     LedStatus();
   }
@@ -1894,10 +1894,10 @@ void DetectEndstopZone(){
     if(Status==1 || Status==11 || Status==2){  // run status CW
       if(CcwRaw<CwRaw){ // standard az potentiometer
         if(AzimuthValue/1000<NoEndstopHighZone){
-          // MqttPubString("Debug +", String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
+          MqttPubString("Debug +", String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
           // run
         }else{
-          // MqttPubString("Debug +3", String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
+          MqttPubString("Debug +3", String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
           Status=3;
         }
       }else{ // reverse az potentiometer value

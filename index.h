@@ -138,17 +138,6 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  ihttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
-				Elevation = this.responseText;
-				// console.log ('Elevation ' + Elevation);
-	    }
-	  };
-	  ihttp.open("GET", "readElevation", true);
-	  ihttp.send();
-
-	  var ihttp = new XMLHttpRequest();
-	  ihttp.onreadystatechange = function() {
-	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				AzShift = this.responseText;
 				// console.log ('AzShift ' + AzShift);
 	    }
@@ -214,6 +203,17 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  };
 	  nhttp.open("GET", "readMAC", true);
 	  nhttp.send();
+
+	  var ohttp = new XMLHttpRequest();
+	  ohttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+	      // document.getElementById("StartValue").innerHTML = this.responseText;
+				Elevation = this.responseText;
+				// console.log ('Elevation ' + Elevation);
+	    }
+	  };
+	  ohttp.open("GET", "readElevation", true);
+	  ohttp.send();
 	}
 
 	function getData() {
