@@ -103,14 +103,15 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var Target  = 0;
 	var AzShift = 0;
 	var AzRange = 0;
-	// var Azimuth = 122;
+	var Azimuth = 0;
 	var AzimuthTmp = 0;
 	var AntRadiationAngle = 0;
 	var Status = 4;
 	var StatusTmp = 0;
 	var MapUrl = 0;
 	var OnlineTimeStamp = 0;
-
+	var Elevation = 0; 
+	
 	var Xcenter = BoxSize/2;
 	var Ycenter = BoxSize/2;
 

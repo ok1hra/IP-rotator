@@ -119,7 +119,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20250202";
+const char* REV = "20250218";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -1454,11 +1454,11 @@ void loop() {
   // CLI();
   CLI2();
   Telnet();
+  ajaxserver.handleClient();
   RunByStatus();
   Watchdog();
 
-  ajaxserver.handleClient();
-
+  
   #if defined(EnableOTA)
    ArduinoOTA.handle();
   #endif
@@ -1881,12 +1881,14 @@ void DetectEndstopZone(){
         if(AzimuthValue/1000>NoEndstopLowZone){
           // run
         }else{
+          // MqttPubString("Debug", "2|"+String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
           Status=-3;
         }
       }else{ // reverse az potentiometer value
         if(AzimuthValue/1000<NoEndstopHighZone){
           // run
         }else{
+          // MqttPubString("Debug", "4|"+String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
           Status=-3;
         }
       }
@@ -1894,16 +1896,16 @@ void DetectEndstopZone(){
     if(Status==1 || Status==11 || Status==2){  // run status CW
       if(CcwRaw<CwRaw){ // standard az potentiometer
         if(AzimuthValue/1000<NoEndstopHighZone){
-          MqttPubString("Debug +", String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
           // run
         }else{
-          MqttPubString("Debug +3", String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
+          // MqttPubString("Debug", "6|"+String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
           Status=3;
         }
       }else{ // reverse az potentiometer value
         if(AzimuthValue/1000>NoEndstopLowZone){
           // run
         }else{
+          // MqttPubString("Debug", "8|"+String(Endstop)+"|"+String(AzimuthValue/1000)+"<"+String(NoEndstopHighZone), false);
           Status=3;
         }
       }
@@ -1966,10 +1968,12 @@ void RunByStatus(){
       case -2: {
         if(PWMenable==true){
           if(abs(AzimuthTarget-Azimuth)<PwmDegree){
+            // MqttPubString("Debug", "RunByStatus-2onPWM|"+String(AzimuthTarget)+"-"+String(Azimuth)+"("+String(abs(AzimuthTarget-Azimuth))+")<"+String(PwmDegree), false);
             Status=-3;
           }
         }else{
           if(abs(AzimuthTarget-Azimuth)<2){
+            // MqttPubString("Debug", "RunByStatus-2offPWM|"+String(AzimuthTarget)+"-"+String(Azimuth)+"("+String(abs(AzimuthTarget-Azimuth))+")<2", false);
             Status=-3;
           }
         }
@@ -2071,10 +2075,12 @@ void RunByStatus(){
       case  2: {
         if(PWMenable==true){
           if(abs(AzimuthTarget-Azimuth)<PwmDegree){
+            // MqttPubString("Debug", "RunByStatus2onPWM|"+String(AzimuthTarget)+"-"+String(Azimuth)+"("+String(abs(AzimuthTarget-Azimuth))+")<"+String(PwmDegree), false);
             Status=3;
           }
         }else{
           if(abs(AzimuthTarget-Azimuth)<2){
+            // MqttPubString("Debug", "RunByStatus2offPWM|"+String(AzimuthTarget)+"-"+String(Azimuth)+"("+String(abs(AzimuthTarget-Azimuth))+")<2", false);
             Status=3;
           }
         }
@@ -4801,6 +4807,17 @@ void handleSet() {
       }
     }
 
+    // 231 - PWMenable = true;
+    if(ajaxserver.arg("pwmenable").toInt()==0 && PWMenable==true){
+      PWMenable = false;
+      EEPROM.writeBool(231, 0);
+      MqttPubString("PWMenable", "OFF", true);
+    }else if(ajaxserver.arg("pwmenable").toInt()==1 && PWMenable==false){
+      PWMenable = true;
+      EEPROM.writeBool(231, 1);
+      MqttPubString("PWMenable", "ON", true);
+    }
+        
     // motor
     // MqttPubString("Debug Motor", String(ajaxserver.arg("motor")), false);
     // MqttPubString("Debug Motor2", String(ajaxserver.hasArg("motor")), false);
@@ -4812,17 +4829,9 @@ void handleSet() {
       ACmotor = true;
       EEPROM.writeBool(30, 1);
       MqttPubString("Motor", "AC", true);
-    }
-
-    // 231 - PWMenable = true;
-    if(ajaxserver.arg("pwmenable").toInt()==0 && PWMenable==true){
       PWMenable = false;
       EEPROM.writeBool(231, 0);
       MqttPubString("PWMenable", "OFF", true);
-    }else if(ajaxserver.arg("pwmenable").toInt()==1 && PWMenable==false){
-      PWMenable = true;
-      EEPROM.writeBool(231, 1);
-      MqttPubString("PWMenable", "ON", true);
     }
 
     // 232 PwmDegree
@@ -5371,11 +5380,13 @@ void handleCal() {
 
   if ( ajaxserver.hasArg("cw")==1 ){
     Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
+    AzimuthTarget=MaxRotateDegree;
     // RunTimer();
   }
 
   if ( ajaxserver.hasArg("ccw")==1 ){
     Status=-1; //digitalWrite(BrakePin, HIGH); delay(24);
+    AzimuthTarget=0;
     // RunTimer();
   }
 
