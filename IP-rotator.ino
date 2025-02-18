@@ -3590,6 +3590,14 @@ void http(){
           webClient.print(F("."));
           webClient.print(mqtt_server_ip[3]);
           webClient.println(":1884/\",");
+          if(MQTT_LOGIN==true){
+            webClient.print(F("                  username: \""));
+            webClient.print(String(MQTT_USER));
+            webClient.println(F("\","));
+            webClient.print(F("                  password: \""));
+            webClient.print(String(MQTT_PASS));
+            webClient.println(F("\""));
+          }
           webClient.println(F("              },"));
           // TOPIC
           webClient.print(F("              defaultTopic: \""));
