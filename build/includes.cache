@@ -1,0 +1,227 @@
+[
+  {
+    "Sourcefile": null,
+    "Include": "",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/cores/esp32"
+  },
+  {
+    "Sourcefile": null,
+    "Include": "",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/variants/esp32-poe"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "WiFi.h",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "EEPROM.h",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/EEPROM/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "WebServer.h",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WebServer/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "ESPmDNS.h",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/ESPmDNS/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "ArduinoOTA.h",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/ArduinoOTA/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "Update.h",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/Update/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "AsyncTCP.h",
+    "Includepath": "/home/mjd/Arduino/libraries/AsyncTCP/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "ESPAsyncWebServer.h",
+    "Includepath": "/home/mjd/Arduino/libraries/ESPAsyncWebServer/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "FS.h",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/FS/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "AsyncElegantOTA.h",
+    "Includepath": "/home/mjd/Arduino/libraries/AsyncElegantOTA/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "PubSubClient.h",
+    "Includepath": "/home/mjd/Arduino/libraries/PubSubClient/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "Wire.h",
+    "Includepath": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/Wire/src"
+  },
+  {
+    "Sourcefile": "/media/nfs/home/mjd/Projects/IP-rotator/build/sketch/IP-rotator.ino.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/ETH.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/WiFi.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/WiFiAP.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/WiFiClient.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/WiFiGeneric.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/WiFiMulti.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/WiFiSTA.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/WiFiScan.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/WiFiServer.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WiFi/src/WiFiUdp.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/EEPROM/src/EEPROM.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WebServer/src/Parsing.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WebServer/src/WebServer.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/WebServer/src/detail/mimetable.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/ESPmDNS/src/ESPmDNS.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/ArduinoOTA/src/ArduinoOTA.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/Update/src/HttpsOTAUpdate.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/Update/src/Updater.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/Arduino/libraries/AsyncTCP/src/AsyncTCP.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/Arduino/libraries/ESPAsyncWebServer/src/AsyncEventSource.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/Arduino/libraries/ESPAsyncWebServer/src/AsyncWebSocket.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/Arduino/libraries/ESPAsyncWebServer/src/WebAuthentication.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/Arduino/libraries/ESPAsyncWebServer/src/WebHandlers.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/Arduino/libraries/ESPAsyncWebServer/src/WebRequest.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/Arduino/libraries/ESPAsyncWebServer/src/WebResponses.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/Arduino/libraries/ESPAsyncWebServer/src/WebServer.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/FS/src/FS.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/FS/src/vfs_api.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/Arduino/libraries/PubSubClient/src/PubSubClient.cpp",
+    "Include": "",
+    "Includepath": null
+  },
+  {
+    "Sourcefile": "/home/mjd/.arduino15/packages/esp32/hardware/esp32/2.0.0/libraries/Wire/src/Wire.cpp",
+    "Include": "",
+    "Includepath": null
+  }
+]

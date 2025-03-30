@@ -1,0 +1,11 @@
+{
+  "additionalFiles": "../../..,../../..,../../..,../../..,../..,../..,../..,../..",
+  "builtInToolsFolders": "",
+  "compiler.optimization_flags": "",
+  "customBuildProperties": "",
+  "fqbn": "esp32:esp32:esp32-poe:FlashFreq=80,UploadSpeed=115200,PartitionScheme=default",
+  "hardwareFolders": "/home/mjd/.arduino15/packages",
+  "otherLibrariesFolders": "/home/mjd/Arduino/libraries",
+  "runtime.ide.version": "10607",
+  "sketchLocation": "/media/nfs/home/mjd/Projects/IP-rotator"
+}
