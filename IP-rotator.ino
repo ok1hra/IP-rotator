@@ -119,7 +119,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20250218";
+const char* REV = "20250616";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -189,7 +189,7 @@ const char* password = "";
 const int AzimuthPin    = 39;  // analog
 float AzimuthValue      = 0.0;
 int Azimuth             = 0;
-int AzimuthTarget       = 0;
+int AzimuthTarget       = -1;
 int RxAzimuth           = 0;
 int Status              = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
 const int VoltagePin    = 35;  // analog
