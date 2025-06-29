@@ -119,7 +119,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20250616";
+const char* REV = "20250629";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -1912,7 +1912,13 @@ void DetectEndstopZone(){
     }
   }
 }
+//-------------------------------------------------------------------------------------------------------
 
+void EthTest(){
+  if(Status != 0 && eth_connected == false){
+    Status=0;
+  }   
+}
 //-------------------------------------------------------------------------------------------------------
 
 void RunByStatus(){
@@ -1920,6 +1926,7 @@ void RunByStatus(){
   static bool OneTimeSend = false;
   static int FromAzimuth = 0;
   DetectEndstopZone();
+  EthTest();
 
   // }else if( (Azimuth>=0 && Azimuth<=450) ){
     switch (Status) {
@@ -2282,6 +2289,9 @@ long RawTmp = 0;
 
   // ? H h
   if(incomingByte==63 || incomingByte==72 || incomingByte==104){
+    // if(eth_connected == false){
+    //   Serial.println("ETH  disconnected");
+    // } 
     Prn(OUT, 1, "http://"+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
     // Serial.print("MAC ");
     // Serial.println(MACString);
@@ -3752,7 +3762,7 @@ void EthEvent(WiFiEvent_t event)
       break;
     // case SYSTEM_EVENT_ETH_CONNECTED:
     case ARDUINO_EVENT_ETH_CONNECTED:
-      Serial.println("ETH  Connected");
+      Serial.println("ETH  link up");
       break;
     // case SYSTEM_EVENT_ETH_GOT_IP:
     case ARDUINO_EVENT_ETH_GOT_IP:
