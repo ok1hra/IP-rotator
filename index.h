@@ -121,7 +121,6 @@ const char MAIN_page[] PROGMEM = R"=====(
 	setInterval(function() { getData();}, 500); //mSeconds update rate
 	setInterval(function() { CheckOnline();}, 2000); //mSeconds update rate
 	getSet();
-	setTimeout(() => { map(); }, 1000);
 	Static();
 	StaticBot();
 	var AZtarget;
@@ -188,6 +187,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("AntName").innerHTML = this.responseText;
 				MapUrl = this.responseText;
+				map();
 				// console.log ('MapUrl ' + MapUrl);
 	    }
 	  };
