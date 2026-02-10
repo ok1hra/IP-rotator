@@ -121,7 +121,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	setInterval(function() { getData();}, 500); //mSeconds update rate
 	setInterval(function() { CheckOnline();}, 2000); //mSeconds update rate
 	getSet();
-	setTimeout(() => { map(); }, 1000);
+//	setTimeout(() => { map(); }, 1000);
 	Static();
 	StaticBot();
 	var AZtarget;
@@ -189,6 +189,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	      // document.getElementById("AntName").innerHTML = this.responseText;
 				MapUrl = this.responseText;
 				// console.log ('MapUrl ' + MapUrl);
+				map();
 	    }
 	  };
 	  mhttp.open("GET", "readMapUrl", true);
@@ -311,7 +312,38 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    };
 	}
 
+
 	function map(){
+		// If MapUrl is not ready yet, retry later
+		if (!MapUrl || MapUrl === "0") {
+			setTimeout(map, 1000);   // retry in 1 second
+			return;
+		}
+
+		var c = document.getElementById('Map');
+		if (c.getContext) {
+			var ctx = c.getContext('2d');
+			var img1 = new Image();
+
+			// Draw the map once the image is fully loaded
+			img1.onload = function () {
+			ctx.drawImage(img1, 0, 0, BoxSize, BoxSize);
+			};
+
+			// If loading fails (slow internet, temporary outage), retry later
+			img1.onerror = function () {
+			setTimeout(map, 2000); // retry in 2 seconds
+			};
+
+			// Cache-busting to avoid loading a broken or outdated cached image
+			img1.src =
+			String(MapUrl) +
+			(String(MapUrl).includes("?") ? "&" : "?") +
+			"t=" + Date.now();
+		}
+	}
+
+	function mapOLD(){
 		var ctx = document.getElementById('Map');
 		if (ctx.getContext) {
 				ctx = ctx.getContext('2d');
