@@ -108,7 +108,10 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var AntRadiationAngle = 0;
 	var Status = 4;
 	var StatusTmp = 0;
+	var MapSource = 0;
 	var MapUrl = 0;
+	var MapLocator = "JO60UC";
+	var MapZoomKm = 5000;
 	var OnlineTimeStamp = 0;
 	var Elevation = 0; 
 	
@@ -194,6 +197,33 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  };
 	  mhttp.open("GET", "readMapUrl", true);
 	  mhttp.send();
+
+	  var phttp = new XMLHttpRequest();
+	  phttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				MapSource = this.responseText;
+	    }
+	  };
+	  phttp.open("GET", "readMapSource", true);
+	  phttp.send();
+
+	  var qhttp = new XMLHttpRequest();
+	  qhttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				MapLocator = this.responseText;
+	    }
+	  };
+	  qhttp.open("GET", "readMapLocator", true);
+	  qhttp.send();
+
+	  var rhttp = new XMLHttpRequest();
+	  rhttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				MapZoomKm = this.responseText;
+	    }
+	  };
+	  rhttp.open("GET", "readMapZoomKm", true);
+	  rhttp.send();
 
 	  var nhttp = new XMLHttpRequest();
 	  nhttp.onreadystatechange = function() {

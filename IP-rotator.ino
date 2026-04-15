@@ -139,6 +139,9 @@ int StartAzimuth = 0;         // max CCW limit callibrate in real using
 unsigned int MaxRotateDegree = 0;
 unsigned int AntRadiationAngle = 10;
 String MapUrl = "" ;
+byte MapSource = 0;          // 0 = URL bitmap, 1 = locator-based map
+String MapLocator = "JO60UC";
+unsigned int MapZoomKm = 5000;
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -radius 500 -num_times 1 -output ./OK500.png
 bool Endstop =  false;
@@ -290,7 +293,7 @@ int i = 0;
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 267   /*
+#define EEPROM_SIZE 275   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -339,6 +342,9 @@ int i = 0;
 234-5 PwmRampSteps UShort
 236-245 - MQTT_USER
 246-265 - MQTT_PASS
+266 - MapSource (0 URL, 1 Locator)
+267-272 - MapLocator (6 chars Maidenhead)
+273-274 - MapZoomKm (1000-20000)
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -893,6 +899,44 @@ void setup() {
     }
   }
 
+  // 266 - MapSource
+  if(EEPROM.read(266)==0xff){
+    MapSource=0;
+  }else{
+    if(EEPROM.readByte(266)<2){
+      MapSource = EEPROM.readByte(266);
+    }else{
+      MapSource=0;
+    }
+  }
+
+  // 267-272 - MapLocator
+  if(EEPROM.read(267)==0xff){
+    MapLocator="JO60UC";
+  }else{
+    MapLocator = "";
+    for (int i=267; i<273; i++){
+      if(EEPROM.read(i)!=0xff){
+        MapLocator=MapLocator+char(EEPROM.read(i));
+      }
+    }
+    MapLocator.toUpperCase();
+    if(MapLocator.length()!=6){
+      MapLocator="JO60UC";
+    }
+  }
+
+  // 273-274 - MapZoomKm
+  if(EEPROM.read(273)==0xff){
+    MapZoomKm=5000;
+  }else{
+    if(EEPROM.readUShort(273)>=1000 && EEPROM.readUShort(273)<=20000){
+      MapZoomKm = EEPROM.readUShort(273);
+    }else{
+      MapZoomKm=5000;
+    }
+  }
+
   // 29  - Endstop
   if(EEPROM.read(29)==0xff){
     Endstop=false;
@@ -1432,6 +1476,9 @@ void setup() {
    ajaxserver.on("/readAnt", handleAnt);
    ajaxserver.on("/readAntName", handleAntName);
    ajaxserver.on("/readMapUrl", handleMapUrl);
+   ajaxserver.on("/readMapSource", handleMapSource);
+   ajaxserver.on("/readMapLocator", handleMapLocator);
+   ajaxserver.on("/readMapZoomKm", handleMapZoomKm);
    ajaxserver.on("/set", handleSet);
    ajaxserver.on("/cal", handleCal);
    ajaxserver.on("/readEndstop", handleEndstop);
@@ -4437,6 +4484,14 @@ void handleSet() {
   String mqtt_passSTYLE= "";
   String mqtt_passERR= "";
   String mqtt_loginDisable= "";
+  String mapsourceERR= "";
+  String maplocatorERR= "";
+  String mapzoomkmERR= "";
+  String mapSourceSELECT0= "";
+  String mapSourceSELECT1= "";
+  String mapUrlRowStyle= "";
+  String mapLocatorRowStyle= "";
+  String mapZoomRowStyle= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -4449,6 +4504,9 @@ void handleSet() {
     && ajaxserver.hasArg("edstophighzone") == false \
     && ajaxserver.hasArg("pwmdegree") == false \
     && ajaxserver.hasArg("pwmrampsteps") == false \    
+    && ajaxserver.hasArg("mapsource") == false \
+    && ajaxserver.hasArg("maplocator") == false \
+    && ajaxserver.hasArg("mapzoomkm") == false \
   ) {
     // MqttPubString("Debug", "Form not valid", false);
   }else{
@@ -4676,6 +4734,58 @@ void handleSet() {
           }
         }
         // EEPROM.commit();
+      }
+    }
+
+    // MapSource
+    if (ajaxserver.arg("mapsource").length()<1){
+      mapsourceERR= " Missing value";
+    }else{
+      int NewMapSource = ajaxserver.arg("mapsource").toInt();
+      if(NewMapSource<0 || NewMapSource>1){
+        mapsourceERR= " Invalid value";
+      }else{
+        mapsourceERR= "";
+        if(MapSource != byte(NewMapSource)){
+          MapSource = byte(NewMapSource);
+          EEPROM.writeByte(266, MapSource);
+        }
+      }
+    }
+
+    // MapLocator
+    String NewMapLocator = String(ajaxserver.arg("maplocator"));
+    NewMapLocator.trim();
+    NewMapLocator.toUpperCase();
+    if ( NewMapLocator.length()!=6
+      || NewMapLocator[0]<'A' || NewMapLocator[0]>'R'
+      || NewMapLocator[1]<'A' || NewMapLocator[1]>'R'
+      || NewMapLocator[2]<'0' || NewMapLocator[2]>'9'
+      || NewMapLocator[3]<'0' || NewMapLocator[3]>'9'
+      || NewMapLocator[4]<'A' || NewMapLocator[4]>'X'
+      || NewMapLocator[5]<'A' || NewMapLocator[5]>'X'
+    ){
+      maplocatorERR= " Use 6 chars, for example JO60UC";
+    }else{
+      maplocatorERR= "";
+      if(MapLocator != NewMapLocator){
+        MapLocator = NewMapLocator;
+        for (int i=0; i<6; i++){
+          EEPROM.write(267+i, MapLocator[i]);
+        }
+      }
+    }
+
+    // MapZoomKm
+    if ( ajaxserver.arg("mapzoomkm").length()<1 || ajaxserver.arg("mapzoomkm").toInt()<1000 || ajaxserver.arg("mapzoomkm").toInt()>20000){
+      mapzoomkmERR= " Out of range number 1000-20000";
+    }else{
+      if(MapZoomKm == ajaxserver.arg("mapzoomkm").toInt()){
+        mapzoomkmERR="";
+      }else{
+        mapzoomkmERR="";
+        MapZoomKm = ajaxserver.arg("mapzoomkm").toInt();
+        EEPROM.writeUShort(273, MapZoomKm);
       }
     }
 
@@ -5041,6 +5151,20 @@ switch (AZsource) {
     }
 }
 
+if(MapSource==0){
+  mapSourceSELECT0= " selected";
+  mapSourceSELECT1= "";
+  mapUrlRowStyle= "";
+  mapLocatorRowStyle= " style='display:none;'";
+  mapZoomRowStyle= " style='display:none;'";
+}else{
+  mapSourceSELECT0= "";
+  mapSourceSELECT1= " selected";
+  mapUrlRowStyle= " style='display:none;'";
+  mapLocatorRowStyle= "";
+  mapZoomRowStyle= "";
+}
+
 // if(AZsource==true){
 //   sourceSELECT0= "";
 //   sourceSELECT1= " selected";
@@ -5207,11 +5331,35 @@ if(ACmotor==true){
   HtmlSrc += MaxRotateDegree;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += maxrotatedegreeERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Range from CCW to CW endstop in degrees</span></span></td></tr>\n<tr><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Range from CCW to CW endstop in degrees</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='mapsource'>Map source:</label></td><td><select id='mapsource' name='mapsource' onchange='toggleMapSourceRows()'><option value='0'";
+  HtmlSrc += mapSourceSELECT0;
+  HtmlSrc +=">URL bitmap</option><option value='1'";
+  HtmlSrc += mapSourceSELECT1;
+  HtmlSrc +=">Locator + zoom</option></select><span style='color:red;'>";
+  HtmlSrc += mapsourceERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 180px;'>URL keeps current behavior. Locator mode will use offline vector map.</span></span></td></tr>\n";
+  HtmlSrc +="<tr id='mapUrlRow'";
+  HtmlSrc += mapUrlRowStyle;
+  HtmlSrc +="><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
   HtmlSrc += MapUrl;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += mapurlERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left'>DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA, or run own services.</span></span> <a href='https://remoteqth.com/xplanet/' target='_blank'>Available list</a></td></tr>\n";
+  HtmlSrc +="<tr id='mapLocatorRow'";
+  HtmlSrc += mapLocatorRowStyle;
+  HtmlSrc +="><td class='tdr'><label for='maplocator'>Map center locator:</label></td><td><input type='text' id='maplocator' name='maplocator' size='8' maxlength='6' value='";
+  HtmlSrc += MapLocator;
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += maplocatorERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 180px;'>Maidenhead locator in 6-char format, for example JO60UC</span></span></td></tr>\n";
+  HtmlSrc +="<tr id='mapZoomRow'";
+  HtmlSrc += mapZoomRowStyle;
+  HtmlSrc +="><td class='tdr'><label for='mapzoomkm'>Map zoom radius:</label></td><td><input type='text' id='mapzoomkm' name='mapzoomkm' size='6' value='";
+  HtmlSrc += MapZoomKm;
+  HtmlSrc +="'>&nbsp;km<span style='color:red;'>";
+  HtmlSrc += mapzoomkmERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 170px;'>Distance from map center to edge. Allowed range 1000-20000 km.</span></span></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
   HtmlSrc += AntRadiationAngle;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
@@ -5382,6 +5530,7 @@ if(ACmotor==true){
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
   // HtmlSrc +="<tr><td class='tdr'><a href='/'><button id='go'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></td></tr>";
   HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><span style='color: #666;'>After change, refresh all other page for apply changes.</span><br><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
+  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapZoomRow').style.display=(s==='1')?'table-row':'none';}toggleMapSourceRows();</script>";
   HtmlSrc +="</body></html>\n";
 
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
@@ -5638,6 +5787,15 @@ void handleAntName() {
 }
 void handleMapUrl() {
   ajaxserver.send(200, "text/plane", MapUrl );
+}
+void handleMapSource() {
+  ajaxserver.send(200, "text/plane", String(MapSource) );
+}
+void handleMapLocator() {
+  ajaxserver.send(200, "text/plane", MapLocator );
+}
+void handleMapZoomKm() {
+  ajaxserver.send(200, "text/plane", String(MapZoomKm) );
 }
 void handleEndstop() {
   ajaxserver.send(200, "text/plane", String(Endstop) );
