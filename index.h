@@ -93,7 +93,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 
 				</span>
 				<br>
-				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
+				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span>
 			</p>
 		</div>
 	</div>
@@ -134,6 +134,16 @@ const char MAIN_page[] PROGMEM = R"=====(
 			document.getElementById("OnlineStatus").innerHTML = " | <span style='color: red;'>&#8226;</span> Offline";
 		}else{
 			document.getElementById("OnlineStatus").innerHTML = " | <span style='color: white;'>&#8226;</span> Connected";
+		}
+	}
+
+	function updateMapModeInfo(){
+		var info = document.getElementById("MapModeInfo");
+		if(!info){ return; }
+		if(Number(MapSource)===1){
+			info.innerHTML = " | map: locator " + String(MapLocator).toUpperCase() + " / " + String(MapZoomKm) + " km";
+		}else{
+			info.innerHTML = " | map: url";
 		}
 	}
 
@@ -190,9 +200,10 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  mhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("AntName").innerHTML = this.responseText;
-				MapUrl = this.responseText;
-				// console.log ('MapUrl ' + MapUrl);
-				map();
+					MapUrl = this.responseText;
+					// console.log ('MapUrl ' + MapUrl);
+					updateMapModeInfo();
+					map();
 	    }
 	  };
 	  mhttp.open("GET", "readMapUrl", true);
@@ -202,6 +213,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  phttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 				MapSource = this.responseText;
+				updateMapModeInfo();
+				map();
 	    }
 	  };
 	  phttp.open("GET", "readMapSource", true);
@@ -211,6 +224,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  qhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 				MapLocator = this.responseText;
+				updateMapModeInfo();
+				if (Number(MapSource) === 1) { map(); }
 	    }
 	  };
 	  qhttp.open("GET", "readMapLocator", true);
@@ -220,6 +235,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  rhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 				MapZoomKm = this.responseText;
+				updateMapModeInfo();
+				if (Number(MapSource) === 1) { map(); }
 	    }
 	  };
 	  rhttp.open("GET", "readMapZoomKm", true);
@@ -342,8 +359,370 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    };
 	}
 
+	var EARTH_RADIUS_KM = 6371;
+
+	var LAND_OUTLINES = [
+		[[72,-168],[70,-150],[66,-140],[60,-135],[54,-130],[50,-126],[46,-124],[40,-122],[34,-118],[30,-114],[26,-110],[24,-104],[21,-98],[18,-94],[16,-90],[14,-86],[12,-82],[10,-78],[12,-74],[18,-70],[24,-66],[30,-64],[38,-62],[46,-60],[54,-62],[60,-70],[66,-88],[72,-110],[75,-130],[74,-150],[72,-168]],
+		[[12,-81],[8,-79],[2,-78],[-4,-77],[-10,-75],[-16,-72],[-22,-70],[-28,-70],[-34,-71],[-40,-72],[-47,-73],[-54,-68],[-55,-58],[-52,-50],[-46,-44],[-38,-41],[-28,-44],[-18,-48],[-8,-52],[0,-53],[6,-58],[10,-66],[12,-74],[12,-81]],
+		[[83,-74],[82,-52],[79,-35],[75,-25],[70,-22],[64,-28],[60,-40],[61,-52],[66,-60],[72,-66],[78,-70],[83,-74]],
+		[[72,-10],[70,0],[70,18],[72,36],[74,58],[76,82],[74,105],[72,126],[68,146],[63,160],[58,168],[52,160],[46,148],[40,136],[34,126],[28,118],[22,112],[16,108],[12,100],[16,90],[22,84],[28,74],[32,64],[36,56],[42,50],[46,42],[50,34],[54,24],[58,14],[62,8],[66,2],[70,-4],[72,-10]],
+		[[37,-17],[35,-8],[34,0],[34,8],[33,15],[31,22],[30,30],[26,35],[22,38],[18,41],[14,43],[10,45],[6,44],[2,42],[-2,40],[-6,36],[-10,34],[-14,32],[-18,30],[-22,28],[-26,26],[-30,24],[-33,20],[-34,14],[-34,8],[-32,2],[-28,-3],[-22,-8],[-16,-12],[-10,-14],[-4,-14],[2,-12],[8,-10],[14,-8],[20,-10],[26,-14],[32,-16],[37,-17]],
+		[[-10,113],[-16,114],[-22,114],[-28,115],[-34,117],[-38,124],[-39,132],[-39,140],[-38,148],[-34,152],[-28,153],[-22,150],[-16,146],[-12,140],[-10,132],[-10,124],[-10,113]],
+		[[-34,166],[-39,173],[-45,171],[-47,167],[-43,166],[-34,166]],
+		[[-70,-180],[-72,-150],[-73,-120],[-74,-90],[-73,-60],[-72,-30],[-71,0],[-72,30],[-73,60],[-74,90],[-73,120],[-72,150],[-70,180]]
+	];
+
+	var COUNTRY_BORDERS = [
+		[[49,-124],[49,-110],[49,-95]],
+		[[45,-83],[44,-76],[45,-71],[47,-67]],
+		[[32,-117],[31,-111],[29,-107],[29,-104],[26,-99],[25,-97]],
+		[[-17,-69],[-25,-69],[-33,-70],[-41,-71],[-50,-73]],
+		[[-10,-74],[-8,-70],[-11,-68]],
+		[[-22,-54],[-26,-55],[-30,-57]],
+		[[8,-73],[9,-70],[10,-66]],
+		[[2,-66],[4,-62],[2,-60]],
+		[[42,-9],[38,-8],[37,-7]],
+		[[43,-1],[42,1],[42,3]],
+		[[49,7],[48,8],[47,7]],
+		[[45,7],[44,7],[44,8]],
+		[[54,14],[52,15],[51,15],[50,14]],
+		[[51,23],[50,24],[49,24]],
+		[[69,20],[66,18],[63,14],[59,11]],
+		[[69,23],[66,24],[63,24],[60,23]],
+		[[50,38],[49,40],[48,39],[47,38]],
+		[[35,-2],[34,-1],[34,0],[34,1]],
+		[[35,8],[34,8],[33,8]],
+		[[32,10],[30,10],[28,10],[26,11],[24,12],[21,11],[19,9]],
+		[[22,25],[22,30],[22,35]],
+		[[12,34],[11,36],[10,38]],
+		[[14,3],[13,8],[13,12],[13,14]],
+		[[-6,12],[-7,13],[-8,16],[-10,23]],
+		[[37,35],[37,39],[36,41]],
+		[[37,45],[33,46],[30,47]],
+		[[17,43],[17,47],[17,51]],
+		[[51,52],[52,60],[53,72],[54,82]],
+		[[48,85],[46,86],[44,86]],
+		[[50,89],[51,100],[52,112],[50,118]],
+		[[43,87],[42,95],[44,105],[43,115],[42,119]],
+		[[34,74],[30,74],[26,70],[24,68]],
+		[[35,78],[33,80],[30,83],[28,87],[27,90]],
+		[[28,97],[25,98],[23,99],[22,100]],
+		[[38,126],[38,128],[38,129]],
+		[[23,106],[22,107],[21,108]],
+		[[20,98],[18,98],[16,98],[14,98]],
+		[[-8,141],[-8,146]],
+		[[58,6],[56,8],[55,11]],
+		[[58,12],[56,14],[55,16]],
+		[[55,8],[55,12],[55,16]],
+		[[46,5],[46,10],[46,15]],
+		[[48,14],[48,18],[48,22]],
+		[[45,14],[44,19],[44,22]],
+		[[49,16],[49,19],[49,22]],
+		[[47,17],[47,19],[47,22]],
+		[[46,22],[46,25],[46,28]],
+		[[48,22],[48,25],[48,28]],
+		[[45,26],[44,27],[43,28]],
+		[[42,19],[41,20],[40,22],[39,23]],
+		[[44,14],[43,16],[42,19],[41,22]],
+		[[47,13],[46,14],[45,15]],
+		[[50,24],[50,27],[50,30]],
+		[[48,28],[48,31],[48,34]],
+		[[52,31],[51,33],[50,35]],
+		[[52,23],[51,25],[50,27]],
+		[[49,30],[49,34],[49,38]],
+		[[51,34],[51,37],[51,40]],
+		[[45,33],[45,36],[45,39]],
+		[[44,40],[44,44],[44,47]],
+		[[42,42],[42,45],[42,48]],
+		[[47,20],[46,21],[45,22]],
+		[[43,12],[42,14],[41,16]],
+		[[39,20],[38,22],[37,24]],
+		[[41,44],[41,47],[41,50]],
+		[[55,20],[56,24],[57,28],[58,32]],
+		[[54,26],[54,30],[54,34]],
+		[[56,36],[56,40],[56,44]],
+		[[58,46],[58,50],[58,54]],
+		[[60,30],[61,36],[62,42]],
+		[[57,60],[56,66],[55,72]],
+		[[55,72],[54,78],[54,84]],
+		[[52,84],[51,90],[50,96]],
+		[[49,96],[49,102],[50,108]],
+		[[47,108],[47,114],[47,120]],
+		[[45,120],[44,124],[43,128]],
+		[[42,76],[40,80],[39,84]],
+		[[39,68],[37,72],[35,76]],
+		[[36,60],[35,64],[34,68]],
+		[[34,44],[33,48],[32,52]],
+		[[31,34],[30,38],[29,42]],
+		[[29,50],[28,54],[27,58]],
+		[[26,66],[25,70],[24,74]],
+		[[24,84],[23,88],[22,92]],
+		[[44,132],[44,136],[44,140]],
+		[[42,130],[41,134],[40,138]]
+	];
+
+	function degToRad(deg){
+		return deg * Math.PI / 180;
+	}
+
+	function normalizeLonDiffRad(lonDiff){
+		while(lonDiff > Math.PI){ lonDiff -= 2 * Math.PI; }
+		while(lonDiff < -Math.PI){ lonDiff += 2 * Math.PI; }
+		return lonDiff;
+	}
+
+	function maidenheadToLatLon(locator){
+		if(!locator){ return null; }
+		var loc = String(locator).trim().toUpperCase();
+		if(!/^[A-R]{2}[0-9]{2}[A-X]{2}$/.test(loc)){ return null; }
+		var lon = (loc.charCodeAt(0) - 65) * 20 - 180;
+		lon += (loc.charCodeAt(2) - 48) * 2;
+		lon += (loc.charCodeAt(4) - 65) * (5/60);
+		lon += 2.5/60;
+		var lat = (loc.charCodeAt(1) - 65) * 10 - 90;
+		lat += (loc.charCodeAt(3) - 48) * 1;
+		lat += (loc.charCodeAt(5) - 65) * (2.5/60);
+		lat += 1.25/60;
+		return {lat: lat, lon: lon};
+	}
+
+	function projectAzimuthal(latDeg, lonDeg, centerLatDeg, centerLonDeg, mapRadiusPx, zoomKm){
+		var phi1 = degToRad(centerLatDeg);
+		var lam1 = degToRad(centerLonDeg);
+		var phi = degToRad(latDeg);
+		var lam = degToRad(lonDeg);
+		var dLam = normalizeLonDiffRad(lam - lam1);
+
+		var cosc = Math.sin(phi1) * Math.sin(phi) + Math.cos(phi1) * Math.cos(phi) * Math.cos(dLam);
+		if(cosc > 1){ cosc = 1; }
+		if(cosc < -1){ cosc = -1; }
+		var c = Math.acos(cosc);
+		var distKm = EARTH_RADIUS_KM * c;
+		if(distKm > zoomKm){ return null; }
+
+		var theta = 0;
+		if(c > 1e-9){
+			theta = Math.atan2(
+				Math.sin(dLam) * Math.cos(phi),
+				Math.cos(phi1) * Math.sin(phi) - Math.sin(phi1) * Math.cos(phi) * Math.cos(dLam)
+			);
+		}
+
+		var r = (distKm / zoomKm) * mapRadiusPx;
+		return {
+			x: Xcenter + Math.sin(theta) * r,
+			y: Ycenter - Math.cos(theta) * r
+		};
+	}
+
+	function drawGeoLineCollection(ctx, lines, centerLat, centerLon, mapRadiusPx, zoomKm, strokeStyle, lineWidth){
+		ctx.strokeStyle = strokeStyle;
+		ctx.lineWidth = lineWidth;
+		for(var i=0; i<lines.length; i++){
+			var line = lines[i];
+			var opened = false;
+			var prev = null;
+			for(var j=0; j<line.length; j++){
+				var p = projectAzimuthal(line[j][0], line[j][1], centerLat, centerLon, mapRadiusPx, zoomKm);
+				if(!p){
+					if(opened){
+						ctx.stroke();
+						opened = false;
+					}
+					prev = null;
+					continue;
+				}
+				if(!opened){
+					ctx.beginPath();
+					ctx.moveTo(p.x, p.y);
+					opened = true;
+				}else{
+					// avoid connecting through clipped edge with unrealistically long segment
+					if(prev && Math.hypot(p.x - prev.x, p.y - prev.y) > mapRadiusPx * 0.8){
+						ctx.stroke();
+						ctx.beginPath();
+						ctx.moveTo(p.x, p.y);
+					}else{
+						ctx.lineTo(p.x, p.y);
+					}
+				}
+				prev = p;
+			}
+			if(opened){
+				ctx.stroke();
+			}
+		}
+	}
+
+	var locatorSvgImg = null;
+	var locatorSvgLastKey = "";
+	var locatorSvgLoadingKey = "";
+
+	function projectGeoSegments(lines, centerLat, centerLon, mapRadiusPx, zoomKm){
+		var allSegments = [];
+		for(var i=0; i<lines.length; i++){
+			var line = lines[i];
+			var segments = [];
+			var segment = [];
+			var prev = null;
+			for(var j=0; j<line.length; j++){
+				var p = projectAzimuthal(line[j][0], line[j][1], centerLat, centerLon, mapRadiusPx, zoomKm);
+				if(!p){
+					if(segment.length > 1){
+						segments.push(segment);
+					}
+					segment = [];
+					prev = null;
+					continue;
+				}
+				if(prev && Math.hypot(p.x - prev.x, p.y - prev.y) > mapRadiusPx * 0.8){
+					if(segment.length > 1){
+						segments.push(segment);
+					}
+					segment = [];
+				}
+				segment.push(p);
+				prev = p;
+			}
+			if(segment.length > 1){
+				segments.push(segment);
+			}
+			if(segments.length > 0){
+				allSegments.push(segments);
+			}
+		}
+		return allSegments;
+	}
+
+	function svgPathFromSegments(allSegments){
+		var d = "";
+		for(var i=0; i<allSegments.length; i++){
+			var segments = allSegments[i];
+			for(var j=0; j<segments.length; j++){
+				var segment = segments[j];
+				for(var k=0; k<segment.length; k++){
+					var p = segment[k];
+					var x = Math.round(p.x * 10) / 10;
+					var y = Math.round(p.y * 10) / 10;
+					if(k===0){
+						d += "M" + x + " " + y;
+					}else{
+						d += " L" + x + " " + y;
+					}
+				}
+			}
+		}
+		return d;
+	}
+
+	function buildLocatorSvg(centerLat, centerLon, mapRadiusPx, zoomKm){
+		var landSegments = projectGeoSegments(LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm);
+		var countrySegments = projectGeoSegments(COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm);
+		var landPath = svgPathFromSegments(landSegments);
+		var countryPath = svgPathFromSegments(countrySegments);
+		var circleR = Math.round(mapRadiusPx * 10) / 10;
+
+		var svg = "";
+		svg += "<svg xmlns='http://www.w3.org/2000/svg' width='" + BoxSize + "' height='" + BoxSize + "' viewBox='0 0 " + BoxSize + " " + BoxSize + "'>";
+		svg += "<rect width='100%' height='100%' fill='#000'/>";
+		svg += "<defs><clipPath id='mapclip'><circle cx='" + Xcenter + "' cy='" + Ycenter + "' r='" + circleR + "'/></clipPath></defs>";
+		svg += "<g clip-path='url(#mapclip)'>";
+		svg += "<rect width='100%' height='100%' fill='#0b1320'/>";
+		for(var ring = 1; ring <= 4; ring++){
+			var rr = Math.round((circleR * ring / 4) * 10) / 10;
+			svg += "<circle cx='" + Xcenter + "' cy='" + Ycenter + "' r='" + rr + "' fill='none' stroke='rgba(160,180,200,0.18)' stroke-width='1'/>";
+		}
+		if(landPath.length>0){
+			svg += "<path d='" + landPath + "' fill='none' stroke='rgba(182,228,182,0.95)' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/>";
+		}
+		if(countryPath.length>0){
+			svg += "<path d='" + countryPath + "' fill='none' stroke='rgba(235,235,235,0.70)' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'/>";
+		}
+		svg += "</g></svg>";
+		return svg;
+	}
+
+	function drawLocatorMapCanvas(centerLat, centerLon, mapRadiusPx, zoomKm){
+		var c = document.getElementById('Map');
+		if (!c.getContext) { return; }
+		var ctx = c.getContext('2d');
+
+		ctx.clearRect(0, 0, BoxSize, BoxSize);
+		ctx.fillStyle = "#000";
+		ctx.fillRect(0, 0, BoxSize, BoxSize);
+
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
+		ctx.clip();
+
+		ctx.fillStyle = "#0b1320";
+		ctx.fillRect(0, 0, BoxSize, BoxSize);
+
+		// subtle radial range rings for better readability in locator mode
+		ctx.strokeStyle = "rgba(160, 180, 200, 0.18)";
+		ctx.lineWidth = 1;
+		for(var ring = 1; ring <= 4; ring++){
+			ctx.beginPath();
+			ctx.arc(Xcenter, Ycenter, mapRadiusPx * ring / 4, 0, 2 * Math.PI);
+			ctx.stroke();
+		}
+
+		drawGeoLineCollection(ctx, LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm, "rgba(182, 228, 182, 0.95)", 1.8);
+		drawGeoLineCollection(ctx, COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm, "rgba(235, 235, 235, 0.70)", 1.0);
+		ctx.restore();
+	}
+
+	function drawLocatorMap(){
+		var mapRadiusPx = BoxSize / 2 * 0.9;
+		var center = maidenheadToLatLon(MapLocator);
+		if(!center){
+			center = maidenheadToLatLon("JO60UC");
+		}
+		var zoomKm = Number(MapZoomKm);
+		if(!(zoomKm >= 1000 && zoomKm <= 20000)){
+			zoomKm = 5000;
+		}
+
+		var key = String(MapLocator).toUpperCase() + "|" + String(zoomKm);
+		var c = document.getElementById('Map');
+		if (!c.getContext) { return; }
+		var ctx = c.getContext('2d');
+
+		if(locatorSvgImg && locatorSvgLastKey === key && locatorSvgImg.complete){
+			ctx.clearRect(0, 0, BoxSize, BoxSize);
+			ctx.drawImage(locatorSvgImg, 0, 0, BoxSize, BoxSize);
+			return;
+		}
+		if(locatorSvgLoadingKey === key){
+			return;
+		}
+
+		var svg = buildLocatorSvg(center.lat, center.lon, mapRadiusPx, zoomKm);
+		var img = new Image();
+		locatorSvgLastKey = key;
+		locatorSvgLoadingKey = key;
+		img.onload = function(){
+			locatorSvgImg = img;
+			locatorSvgLoadingKey = "";
+			ctx.clearRect(0, 0, BoxSize, BoxSize);
+			ctx.drawImage(img, 0, 0, BoxSize, BoxSize);
+		};
+		img.onerror = function(){
+			locatorSvgLoadingKey = "";
+			// fallback for environments with stricter data-uri SVG policy
+			drawLocatorMapCanvas(center.lat, center.lon, mapRadiusPx, zoomKm);
+		};
+		img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+	}
+
 
 	function map(){
+		if (Number(MapSource) === 1) {
+			drawLocatorMap();
+			return;
+		}
+
 		// If MapUrl is not ready yet, retry later
 		if (!MapUrl || MapUrl === "0") {
 			setTimeout(map, 1000);   // retry in 1 second
