@@ -93,7 +93,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 
 				</span>
 				<br>
-				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
+				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="NtpStatus" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
 			</p>
 		</div>
 	</div>
@@ -112,6 +112,12 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var MapUrl = 0;
 	var MapLocator = "JO60UC";
 	var MapZoomKm = 5000;
+	var MapTheme = 1;
+	var GraylineDarkness = 44;
+	var GraylineEpoch = 0;
+	var GraylineNtpOk = false;
+	var GraylineMinuteKey = "";
+	var AzimuthPulseStart = 0;
 	var OnlineTimeStamp = 0;
 	var Elevation = 0; 
 	
@@ -123,6 +129,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 	setInterval(function() { map();}, 600000); //mSeconds update rate
 	setInterval(function() { getData();}, 500); //mSeconds update rate
 	setInterval(function() { CheckOnline();}, 2000); //mSeconds update rate
+	setInterval(function() { getGraylineInfo();}, 30000); // update UTC/NTP status for grayline
+	setInterval(function() { if (AzimuthPulseStart > 0) { AZ(Azimuth); } }, 40); // short pulse animation after azimuth change
 	getSet();
 //	setTimeout(() => { map(); }, 1000);
 	Static();
@@ -149,6 +157,39 @@ const char MAIN_page[] PROGMEM = R"=====(
 		}else{
 			info.innerHTML = " | map: url";
 		}
+	}
+
+	function updateNtpStatus(){
+		var info = document.getElementById("NtpStatus");
+		if(!info){ return; }
+		if(Number(MapSource)!==1){
+			info.innerHTML = "";
+			return;
+		}
+		if(GraylineNtpOk){
+			info.innerHTML = "";
+		}else{
+			info.innerHTML = " | NTP no answer";
+		}
+	}
+
+	function getGraylineInfo() {
+	  var ghttp = new XMLHttpRequest();
+	  ghttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				var parts = String(this.responseText).split("|");
+				var oldMinuteKey = GraylineMinuteKey;
+				GraylineNtpOk = (parts[0] === "1");
+				GraylineEpoch = GraylineNtpOk ? Number(parts[1] || 0) : 0;
+				GraylineMinuteKey = GraylineNtpOk ? String(Math.floor(GraylineEpoch / 60)) : "";
+				updateNtpStatus();
+				if (Number(MapSource) === 1 && oldMinuteKey !== GraylineMinuteKey) {
+					map();
+				}
+	    }
+	  };
+	  ghttp.open("GET", "readGraylineInfo", true);
+	  ghttp.send();
 	}
 
 	function getSet() {
@@ -218,6 +259,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    if (this.readyState == 4 && this.status == 200) {
 				MapSource = this.responseText;
 				updateMapModeInfo();
+				updateNtpStatus();
+				if (Number(MapSource) === 1) { getGraylineInfo(); }
 				map();
 	    }
 	  };
@@ -246,6 +289,26 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  rhttp.open("GET", "readMapZoomKm", true);
 	  rhttp.send();
 
+	  var thttp = new XMLHttpRequest();
+	  thttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				MapTheme = Number(this.responseText);
+				if (Number(MapSource) === 1) { map(); }
+	    }
+	  };
+	  thttp.open("GET", "readMapTheme", true);
+	  thttp.send();
+
+	  var shttp = new XMLHttpRequest();
+	  shttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				GraylineDarkness = Number(this.responseText);
+				if (Number(MapSource) === 1) { map(); }
+	    }
+	  };
+	  shttp.open("GET", "readGraylineDarkness", true);
+	  shttp.send();
+
 	  var nhttp = new XMLHttpRequest();
 	  nhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
@@ -267,6 +330,8 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  };
 	  ohttp.open("GET", "readElevation", true);
 	  ohttp.send();
+
+		getGraylineInfo();
 	}
 
 	function getData() {
@@ -291,6 +356,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 				Azimuth = this.responseText;
 				// if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>1 ){	// || Status != 4
 				if( Number(AzimuthTmp) != Number(Azimuth) ){
+					AzimuthPulseStart = new Date().getTime();
 					AZ(Azimuth);
 					Static();
 					StaticBot();
@@ -364,7 +430,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	}
 
 	var EARTH_RADIUS_KM = 6371;
-	var LocatorLandFillMode = true; // true = fill-like light land, false = outline only
+	var LocatorLandFillMode = false; // true = fill-like light land, false = outline only
 
 var LAND_OUTLINES = [];
 	var COUNTRY_BORDERS = [];
@@ -417,6 +483,79 @@ var LAND_OUTLINES = [];
 		lat += (loc.charCodeAt(5) - 65) * (2.5/60);
 		lat += 1.25/60;
 		return {lat: lat, lon: lon};
+	}
+
+	function getMapThemeStyle(){
+		if(Number(MapTheme)===1){
+			return {
+				mapBg: "#081018",
+				ring: "rgba(120, 164, 130, 0.18)",
+				landFill: "rgba(113,145,118,0.78)",
+				landStroke: "rgba(184,215,168,0.92)",
+				grayline: "0,10,6"
+			};
+		}
+		if(Number(MapTheme)===2){
+			return {
+				mapBg: "#15161b",
+				ring: "rgba(156, 166, 188, 0.18)",
+				landFill: "rgba(198,191,173,0.78)",
+				landStroke: "rgba(241,233,214,0.94)",
+				grayline: "10,9,14"
+			};
+		}
+		if(Number(MapTheme)===3){
+			return {
+				mapBg: "#140d06",
+				ring: "rgba(205, 140, 64, 0.18)",
+				landFill: "rgba(163,117,67,0.78)",
+				landStroke: "rgba(255,210,145,0.94)",
+				grayline: "20,10,0"
+			};
+		}
+		if(Number(MapTheme)===4){
+			return {
+				mapBg: "#071109",
+				ring: "rgba(88, 182, 104, 0.18)",
+				landFill: "rgba(68,136,82,0.78)",
+				landStroke: "rgba(169,255,176,0.94)",
+				grayline: "0,12,0"
+			};
+		}
+		if(Number(MapTheme)===5){
+			return {
+				mapBg: "#1a0906",
+				ring: "rgba(255, 86, 38, 0.22)",
+				landFill: "rgba(211,76,32,0.80)",
+				landStroke: "rgba(255,194,92,0.96)",
+				grayline: "20,4,0"
+			};
+		}
+		if(Number(MapTheme)===6){
+			return {
+				mapBg: "#06111b",
+				ring: "rgba(90, 208, 255, 0.22)",
+				landFill: "rgba(48,123,187,0.78)",
+				landStroke: "rgba(191,248,255,0.96)",
+				grayline: "0,6,14"
+			};
+		}
+		if(Number(MapTheme)===7){
+			return {
+				mapBg: "#120819",
+				ring: "rgba(255, 80, 182, 0.20)",
+				landFill: "rgba(123,54,178,0.80)",
+				landStroke: "rgba(255,146,228,0.96)",
+				grayline: "8,0,16"
+			};
+		}
+		return {
+			mapBg: "#0b1320",
+			ring: "rgba(160, 180, 200, 0.18)",
+			landFill: "rgba(208,232,200,0.78)",
+			landStroke: "rgba(238,249,231,0.95)",
+			grayline: "0,0,0"
+		};
 	}
 
 	function projectAzimuthal(latDeg, lonDeg, centerLatDeg, centerLonDeg, mapRadiusPx, zoomKm){
@@ -490,6 +629,9 @@ var LAND_OUTLINES = [];
 	var locatorSvgImg = null;
 	var locatorSvgLastKey = "";
 	var locatorSvgLoadingKey = "";
+	var locatorFillCacheCanvas = null;
+	var locatorFillCacheKey = "";
+	var LAND_META = null;
 
 	function projectGeoSegments(lines, centerLat, centerLon, mapRadiusPx, zoomKm){
 		var allSegments = [];
@@ -548,44 +690,140 @@ var LAND_OUTLINES = [];
 		return d;
 	}
 
-	function isSegmentSafeClosed(segment, mapRadiusPx){
-		if(!segment || segment.length < 4){
-			return false;
+	function projectAzimuthalRaw(latDeg, lonDeg, centerLatDeg, centerLonDeg, mapRadiusPx, zoomKm){
+		var phi1 = degToRad(centerLatDeg);
+		var lam1 = degToRad(centerLonDeg);
+		var phi = degToRad(latDeg);
+		var lam = degToRad(lonDeg);
+		var dLam = normalizeLonDiffRad(lam - lam1);
+
+		var cosc = Math.sin(phi1) * Math.sin(phi) + Math.cos(phi1) * Math.cos(phi) * Math.cos(dLam);
+		if(cosc > 1){ cosc = 1; }
+		if(cosc < -1){ cosc = -1; }
+		var c = Math.acos(cosc);
+		var distKm = EARTH_RADIUS_KM * c;
+
+		var theta = 0;
+		if(c > 1e-9){
+			theta = Math.atan2(
+				Math.sin(dLam) * Math.cos(phi),
+				Math.cos(phi1) * Math.sin(phi) - Math.sin(phi1) * Math.cos(phi) * Math.cos(dLam)
+			);
 		}
-		var first = segment[0];
-		var last = segment[segment.length - 1];
-		var closureThreshold = Math.max(8, mapRadiusPx * 0.06);
-		return Math.hypot(last.x - first.x, last.y - first.y) <= closureThreshold;
+		var r = (distKm / zoomKm) * mapRadiusPx;
+		return {
+			x: Xcenter + Math.sin(theta) * r,
+			y: Ycenter - Math.cos(theta) * r
+		};
 	}
 
-	function pointToMapEdge(p, mapRadiusPx){
-		var dx = p.x - Xcenter;
-		var dy = p.y - Ycenter;
-		var d = Math.hypot(dx, dy);
-		if(d < 1e-6){
-			return {x: Xcenter + mapRadiusPx, y: Ycenter};
+	function buildCircleClipPolygon(mapRadiusPx, segments){
+		var poly = [];
+		var n = segments || 96;
+		for(var i=0; i<n; i++){
+			var a = (2 * Math.PI * i) / n;
+			poly.push({
+				x: Xcenter + Math.cos(a) * mapRadiusPx,
+				y: Ycenter - Math.sin(a) * mapRadiusPx
+			});
 		}
-		var scale = mapRadiusPx / d;
-		return {x: Xcenter + dx * scale, y: Ycenter + dy * scale};
+		return poly;
 	}
 
-	function angleFromCenter(p){
-		return Math.atan2(p.y - Ycenter, p.x - Xcenter);
+	function cross2(ax, ay, bx, by){
+		return ax * by - ay * bx;
 	}
 
-	function normalizeAngleDelta(a){
-		while(a > Math.PI){ a -= 2 * Math.PI; }
-		while(a < -Math.PI){ a += 2 * Math.PI; }
-		return a;
+	function polygonSignedArea(poly){
+		var s = 0;
+		for(var i=0; i<poly.length; i++){
+			var p = poly[i];
+			var q = poly[(i + 1) % poly.length];
+			s += p.x * q.y - q.x * p.y;
+		}
+		return s * 0.5;
 	}
 
-	function svgClosedPathFromSegments(allSegments, mapRadiusPx){
+	function isInsideClipEdge(p, a, b, clipOrientation){
+		var eps = 1e-7;
+		var side = cross2(b.x - a.x, b.y - a.y, p.x - a.x, p.y - a.y);
+		return (clipOrientation * side) >= -eps;
+	}
+
+	function lineIntersectionWithClipEdge(p1, p2, a, b){
+		var dx = p2.x - p1.x;
+		var dy = p2.y - p1.y;
+		var ex = b.x - a.x;
+		var ey = b.y - a.y;
+		var denom = cross2(dx, dy, ex, ey);
+		if(Math.abs(denom) < 1e-12){
+			return {x: p2.x, y: p2.y};
+		}
+		var t = cross2(a.x - p1.x, a.y - p1.y, ex, ey) / denom;
+		return {
+			x: p1.x + t * dx,
+			y: p1.y + t * dy
+		};
+	}
+
+	function clipPolygonWithConvex(subject, clipPoly){
+		var output = subject.slice();
+		var clipOrientation = polygonSignedArea(clipPoly) >= 0 ? 1 : -1;
+		for(var i=0; i<clipPoly.length; i++){
+			var a = clipPoly[i];
+			var b = clipPoly[(i + 1) % clipPoly.length];
+			var input = output.slice();
+			output = [];
+			if(input.length === 0){
+				break;
+			}
+			var s = input[input.length - 1];
+			for(var j=0; j<input.length; j++){
+				var e = input[j];
+				var eInside = isInsideClipEdge(e, a, b, clipOrientation);
+				var sInside = isInsideClipEdge(s, a, b, clipOrientation);
+
+				if(eInside){
+					if(!sInside){
+						output.push(lineIntersectionWithClipEdge(s, e, a, b));
+					}
+					output.push(e);
+				}else if(sInside){
+					output.push(lineIntersectionWithClipEdge(s, e, a, b));
+				}
+				s = e;
+			}
+		}
+		return output;
+	}
+
+	function buildClippedLandPolygons(centerLat, centerLon, mapRadiusPx, zoomKm){
+		var clipPoly = buildCircleClipPolygon(mapRadiusPx, 96);
+		var out = [];
+		for(var i=0; i<LAND_OUTLINES.length; i++){
+			var line = LAND_OUTLINES[i];
+			if(!line || line.length < 3){
+				continue;
+			}
+			var poly = [];
+			for(var j=0; j<line.length; j++){
+				poly.push(projectAzimuthalRaw(line[j][0] / 100, line[j][1] / 100, centerLat, centerLon, mapRadiusPx, zoomKm));
+			}
+			var clipped = clipPolygonWithConvex(poly, clipPoly);
+			if(clipped.length >= 3){
+				out.push(clipped);
+			}
+		}
+		return out;
+	}
+
+	function svgClosedPathFromSegments(allSegments){
 		var d = "";
 		for(var i=0; i<allSegments.length; i++){
 			var segments = allSegments[i];
 			for(var j=0; j<segments.length; j++){
 				var segment = segments[j];
-				if(!isSegmentSafeClosed(segment, mapRadiusPx)){
+				if(!segment || segment.length < 3){
 					continue;
 				}
 				for(var k=0; k<segment.length; k++){
@@ -605,9 +843,10 @@ var LAND_OUTLINES = [];
 	}
 
 	function buildLocatorSvg(centerLat, centerLon, mapRadiusPx, zoomKm){
+		var theme = getMapThemeStyle();
 		var landSegments = projectGeoSegments(LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm);
 		var landPath = svgPathFromSegments(landSegments);
-		var landFillPath = svgClosedPathFromSegments(landSegments, mapRadiusPx);
+		var landFillPath = svgClosedPathFromSegments(landSegments);
 		var circleR = Math.round(mapRadiusPx * 10) / 10;
 
 		var svg = "";
@@ -615,21 +854,254 @@ var LAND_OUTLINES = [];
 		svg += "<rect width='100%' height='100%' fill='#000'/>";
 		svg += "<defs><clipPath id='mapclip'><circle cx='" + Xcenter + "' cy='" + Ycenter + "' r='" + circleR + "'/></clipPath></defs>";
 		svg += "<g clip-path='url(#mapclip)'>";
-		svg += "<rect width='100%' height='100%' fill='#0b1320'/>";
+		svg += "<rect width='100%' height='100%' fill='" + theme.mapBg + "'/>";
 		for(var ring = 1; ring <= 4; ring++){
 			var rr = Math.round((circleR * ring / 4) * 10) / 10;
-			svg += "<circle cx='" + Xcenter + "' cy='" + Ycenter + "' r='" + rr + "' fill='none' stroke='rgba(160,180,200,0.18)' stroke-width='1'/>";
+			svg += "<circle cx='" + Xcenter + "' cy='" + Ycenter + "' r='" + rr + "' fill='none' stroke='" + theme.ring + "' stroke-width='1'/>";
 		}
 		if(LocatorLandFillMode && landFillPath.length>0){
-			svg += "<path d='" + landFillPath + "' fill='rgba(208,232,200,0.78)' stroke='none' fill-rule='evenodd'/>";
+			svg += "<path d='" + landFillPath + "' fill='" + theme.landFill + "' stroke='none' fill-rule='evenodd'/>";
 		}else if(landPath.length>0){
-			svg += "<path d='" + landPath + "' fill='none' stroke='rgba(238,249,231,0.95)' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/>";
+			svg += "<path d='" + landPath + "' fill='none' stroke='" + theme.landStroke + "' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/>";
 		}
 		svg += "</g></svg>";
 		return svg;
 	}
 
+	function ensureLandMeta(){
+		if(LAND_META){ return; }
+		LAND_META = [];
+		for(var i=0; i<LAND_OUTLINES.length; i++){
+			var line = LAND_OUTLINES[i];
+			if(!line || line.length < 3){
+				continue;
+			}
+			var latMin = 999999;
+			var latMax = -999999;
+			for(var j=0; j<line.length; j++){
+				var lat = line[j][0];
+				if(lat < latMin){ latMin = lat; }
+				if(lat > latMax){ latMax = lat; }
+			}
+			LAND_META.push({
+				ring: line,
+				latMin: latMin,
+				latMax: latMax
+			});
+		}
+	}
+
+	function normalizeLonAroundRef(lonDeg, refLonDeg){
+		var lon = lonDeg;
+		while(lon - refLonDeg > 180){ lon -= 360; }
+		while(lon - refLonDeg < -180){ lon += 360; }
+		return lon;
+	}
+
+	function pointInRingLatLon(latDeg, lonDeg, ring){
+		var inside = false;
+		for(var i=0, j=ring.length - 1; i<ring.length; j=i++){
+			var yi = ring[i][0] / 100;
+			var yj = ring[j][0] / 100;
+			var xi = normalizeLonAroundRef(ring[i][1] / 100, lonDeg);
+			var xj = normalizeLonAroundRef(ring[j][1] / 100, lonDeg);
+			var intersects = ((yi > latDeg) !== (yj > latDeg)) &&
+				(lonDeg < ((xj - xi) * (latDeg - yi) / ((yj - yi) || 1e-12) + xi));
+			if(intersects){
+				inside = !inside;
+			}
+		}
+		return inside;
+	}
+
+	function isLandLatLon(latDeg, lonDeg){
+		ensureLandMeta();
+		var inside = false;
+		var latScaled = Math.round(latDeg * 100);
+		for(var i=0; i<LAND_META.length; i++){
+			var meta = LAND_META[i];
+			if(latScaled < meta.latMin || latScaled > meta.latMax){
+				continue;
+			}
+			if(pointInRingLatLon(latDeg, lonDeg, meta.ring)){
+				inside = !inside;
+			}
+		}
+		return inside;
+	}
+
+	function inverseProjectAzimuthal(x, y, centerLatDeg, centerLonDeg, mapRadiusPx, zoomKm){
+		var dx = x - Xcenter;
+		var dy = Ycenter - y;
+		var rho = Math.hypot(dx, dy);
+		if(rho > mapRadiusPx){
+			return null;
+		}
+		if(rho < 1e-9){
+			return {lat: centerLatDeg, lon: centerLonDeg};
+		}
+
+		var phi1 = degToRad(centerLatDeg);
+		var lam1 = degToRad(centerLonDeg);
+		var c = (rho / mapRadiusPx) * (zoomKm / EARTH_RADIUS_KM);
+		var sinC = Math.sin(c);
+		var cosC = Math.cos(c);
+
+		var phi = Math.asin(cosC * Math.sin(phi1) + (dy * sinC * Math.cos(phi1) / rho));
+		var lam = lam1 + Math.atan2(
+			dx * sinC,
+			rho * Math.cos(phi1) * cosC - dy * Math.sin(phi1) * sinC
+		);
+
+		var lat = phi * 180 / Math.PI;
+		var lon = lam * 180 / Math.PI;
+		while(lon > 180){ lon -= 360; }
+		while(lon < -180){ lon += 360; }
+		return {lat: lat, lon: lon};
+	}
+
+	function normalizeDegrees(angle){
+		var a = angle;
+		while(a > 180){ a -= 360; }
+		while(a < -180){ a += 360; }
+		return a;
+	}
+
+	function julianDayFromUnix(epochSec){
+		return (epochSec / 86400) + 2440587.5;
+	}
+
+	function getSubsolarPoint(epochSec){
+		var jd = julianDayFromUnix(epochSec);
+		var n = jd - 2451545.0;
+		var L = (280.460 + 0.9856474 * n) % 360;
+		if(L < 0){ L += 360; }
+		var g = (357.528 + 0.9856003 * n) % 360;
+		if(g < 0){ g += 360; }
+		var gRad = degToRad(g);
+		var lambda = L + 1.915 * Math.sin(gRad) + 0.020 * Math.sin(2 * gRad);
+		var lambdaRad = degToRad(lambda);
+		var epsilon = 23.439 - 0.0000004 * n;
+		var epsilonRad = degToRad(epsilon);
+		var declRad = Math.asin(Math.sin(epsilonRad) * Math.sin(lambdaRad));
+		var raRad = Math.atan2(Math.cos(epsilonRad) * Math.sin(lambdaRad), Math.cos(lambdaRad));
+		var raDeg = raRad * 180 / Math.PI;
+		var gmst = (280.46061837 + 360.98564736629 * (jd - 2451545.0)) % 360;
+		if(gmst < 0){ gmst += 360; }
+		return {
+			lat: declRad * 180 / Math.PI,
+			lon: normalizeDegrees(raDeg - gmst)
+		};
+	}
+
+	function solarAltitudeDeg(latDeg, lonDeg, subsolar){
+		var latRad = degToRad(latDeg);
+		var subLatRad = degToRad(subsolar.lat);
+		var dLonRad = degToRad(normalizeDegrees(lonDeg - subsolar.lon));
+		var sinAlt = Math.sin(latRad) * Math.sin(subLatRad) +
+			Math.cos(latRad) * Math.cos(subLatRad) * Math.cos(dLonRad);
+		if(sinAlt > 1){ sinAlt = 1; }
+		if(sinAlt < -1){ sinAlt = -1; }
+		return Math.asin(sinAlt) * 180 / Math.PI;
+	}
+
+	var graylineCacheCanvas = null;
+	var graylineCacheKey = "";
+
+	function drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm){
+		if(!GraylineNtpOk || GraylineEpoch <= 0){
+			return;
+		}
+		var theme = getMapThemeStyle();
+		if(!graylineCacheCanvas){
+			graylineCacheCanvas = document.createElement('canvas');
+			graylineCacheCanvas.width = BoxSize;
+			graylineCacheCanvas.height = BoxSize;
+		}
+		var minuteEpoch = Math.floor(GraylineEpoch / 60) * 60;
+		var cacheKey = String(centerLat) + "|" + String(centerLon) + "|" + String(zoomKm) + "|" + String(minuteEpoch);
+		if(graylineCacheKey !== cacheKey){
+			var gctx = graylineCacheCanvas.getContext('2d');
+			gctx.clearRect(0, 0, BoxSize, BoxSize);
+			var subsolar = getSubsolarPoint(minuteEpoch);
+			var step = 3;
+			var maxAlpha = Math.max(0, Math.min(100, Number(GraylineDarkness))) / 100;
+			for(var py=0; py<BoxSize; py+=step){
+				for(var px=0; px<BoxSize; px+=step){
+					var sample = inverseProjectAzimuthal(px + step * 0.5, py + step * 0.5, centerLat, centerLon, mapRadiusPx, zoomKm);
+					if(!sample){
+						continue;
+					}
+					var altDeg = solarAltitudeDeg(sample.lat, sample.lon, subsolar);
+					if(altDeg >= 2){
+						continue;
+					}
+					var alpha = 0;
+					if(altDeg <= -10){
+						alpha = maxAlpha;
+					}else{
+						alpha = maxAlpha * ((2 - altDeg) / 12);
+					}
+					gctx.fillStyle = "rgba(" + theme.grayline + "," + alpha.toFixed(3) + ")";
+					gctx.fillRect(px, py, step, step);
+				}
+			}
+			graylineCacheKey = cacheKey;
+		}
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
+		ctx.clip();
+		ctx.filter = "blur(3px)";
+		ctx.drawImage(graylineCacheCanvas, 0, 0);
+		ctx.filter = "none";
+		ctx.restore();
+	}
+
+	function drawOutsideCircleMask(ctx, mapRadiusPx){
+		ctx.beginPath();
+		ctx.rect(0, 0, BoxSize, BoxSize);
+		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI, true);
+		ctx.fillStyle = "#000";
+		ctx.fill("evenodd");
+	}
+
+	function drawProjectedLandFill(ctx, centerLat, centerLon, mapRadiusPx, zoomKm){
+		var theme = getMapThemeStyle();
+		var step = 2;
+		if(!locatorFillCacheCanvas){
+			locatorFillCacheCanvas = document.createElement('canvas');
+			locatorFillCacheCanvas.width = BoxSize;
+			locatorFillCacheCanvas.height = BoxSize;
+		}
+		var fillKey = String(centerLat) + "|" + String(centerLon) + "|" + String(mapRadiusPx) + "|" + String(zoomKm) + "|" + String(step);
+		if(locatorFillCacheKey === fillKey){
+			ctx.drawImage(locatorFillCacheCanvas, 0, 0);
+			return;
+		}
+
+		var fillCtx = locatorFillCacheCanvas.getContext('2d');
+		fillCtx.clearRect(0, 0, BoxSize, BoxSize);
+		fillCtx.fillStyle = theme.landFill;
+
+		for(var py=0; py<BoxSize; py+=step){
+			for(var px=0; px<BoxSize; px+=step){
+				var sample = inverseProjectAzimuthal(px + step * 0.5, py + step * 0.5, centerLat, centerLon, mapRadiusPx, zoomKm);
+				if(!sample){
+					continue;
+				}
+				if(isLandLatLon(sample.lat, sample.lon)){
+					fillCtx.fillRect(px, py, step, step);
+				}
+			}
+		}
+
+		locatorFillCacheKey = fillKey;
+		ctx.drawImage(locatorFillCacheCanvas, 0, 0);
+	}
+
 	function drawLocatorMapCanvas(centerLat, centerLon, mapRadiusPx, zoomKm){
+		var theme = getMapThemeStyle();
 		var c = document.getElementById('Map');
 		if (!c.getContext) { return; }
 		var ctx = c.getContext('2d');
@@ -638,76 +1110,41 @@ var LAND_OUTLINES = [];
 		ctx.fillStyle = "#000";
 		ctx.fillRect(0, 0, BoxSize, BoxSize);
 
-		ctx.save();
-		ctx.beginPath();
-		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
-		ctx.clip();
-
-		ctx.fillStyle = "#0b1320";
-		ctx.fillRect(0, 0, BoxSize, BoxSize);
-
-		// subtle radial range rings for better readability in locator mode
-		ctx.strokeStyle = "rgba(160, 180, 200, 0.18)";
-		ctx.lineWidth = 1;
-		for(var ring = 1; ring <= 4; ring++){
-			ctx.beginPath();
-			ctx.arc(Xcenter, Ycenter, mapRadiusPx * ring / 4, 0, 2 * Math.PI);
-			ctx.stroke();
-		}
-
 		if(LocatorLandFillMode){
-			var landSegments = projectGeoSegments(LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm);
-			ctx.fillStyle = "rgba(208,232,200,0.78)";
-			for(var i=0; i<landSegments.length; i++){
-				var segments = landSegments[i];
-				for(var j=0; j<segments.length; j++){
-					var seg = segments[j];
-					if(!seg || seg.length < 3){
-						continue;
-					}
-					var closed = isSegmentSafeClosed(seg, mapRadiusPx);
-					if(closed){
-						ctx.beginPath();
-						ctx.moveTo(seg[0].x, seg[0].y);
-						for(var k=1; k<seg.length; k++){
-							ctx.lineTo(seg[k].x, seg[k].y);
-						}
-						ctx.closePath();
-						ctx.fill("evenodd");
-						continue;
-					}
+			ctx.beginPath();
+			ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
+			ctx.fillStyle = theme.mapBg;
+			ctx.fill();
 
-					// Open segment clipped by the map edge: close it along the circle arc.
-					var first = seg[0];
-					var last = seg[seg.length - 1];
-					var dFirst = Math.hypot(first.x - Xcenter, first.y - Ycenter);
-					var dLast = Math.hypot(last.x - Xcenter, last.y - Ycenter);
-					var edgeThreshold = mapRadiusPx * 0.82;
-					if(dFirst < edgeThreshold || dLast < edgeThreshold){
-						continue;
-					}
+			drawProjectedLandFill(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawOutsideCircleMask(ctx, mapRadiusPx);
 
-					var firstEdge = pointToMapEdge(first, mapRadiusPx);
-					var lastEdge = pointToMapEdge(last, mapRadiusPx);
-					var aStart = angleFromCenter(firstEdge);
-					var aEnd = angleFromCenter(lastEdge);
-					var delta = normalizeAngleDelta(aStart - aEnd);
-
-					ctx.beginPath();
-					ctx.moveTo(first.x, first.y);
-					for(var m=1; m<seg.length; m++){
-						ctx.lineTo(seg[m].x, seg[m].y);
-					}
-					ctx.lineTo(lastEdge.x, lastEdge.y);
-					ctx.arc(Xcenter, Ycenter, mapRadiusPx, aEnd, aStart, delta < 0);
-					ctx.closePath();
-					ctx.fill("evenodd");
-				}
+			ctx.strokeStyle = theme.ring;
+			ctx.lineWidth = 1;
+			for(var ring = 1; ring <= 4; ring++){
+				ctx.beginPath();
+				ctx.arc(Xcenter, Ycenter, mapRadiusPx * ring / 4, 0, 2 * Math.PI);
+				ctx.stroke();
 			}
 		}else{
-			drawGeoLineCollection(ctx, LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm, "rgba(238, 249, 231, 0.95)", 1.2);
+			ctx.save();
+			ctx.beginPath();
+			ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
+			ctx.clip();
+			ctx.fillStyle = theme.mapBg;
+			ctx.fillRect(0, 0, BoxSize, BoxSize);
+			ctx.strokeStyle = theme.ring;
+			ctx.lineWidth = 1;
+			for(var ring = 1; ring <= 4; ring++){
+				ctx.beginPath();
+				ctx.arc(Xcenter, Ycenter, mapRadiusPx * ring / 4, 0, 2 * Math.PI);
+				ctx.stroke();
+			}
+			drawGeoLineCollection(ctx, LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm, theme.landStroke, 1.2);
+			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			ctx.restore();
 		}
-		ctx.restore();
 	}
 
 	function drawLocatorMap(){
@@ -734,6 +1171,7 @@ var LAND_OUTLINES = [];
 		if(locatorSvgImg && locatorSvgLastKey === key && locatorSvgImg.complete){
 			ctx.clearRect(0, 0, BoxSize, BoxSize);
 			ctx.drawImage(locatorSvgImg, 0, 0, BoxSize, BoxSize);
+			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			return;
 		}
 		if(locatorSvgLoadingKey === key){
@@ -749,6 +1187,7 @@ var LAND_OUTLINES = [];
 			locatorSvgLoadingKey = "";
 			ctx.clearRect(0, 0, BoxSize, BoxSize);
 			ctx.drawImage(img, 0, 0, BoxSize, BoxSize);
+			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 		};
 		img.onerror = function(){
 			locatorSvgLoadingKey = "";
@@ -894,6 +1333,16 @@ var LAND_OUTLINES = [];
 			if(ShowAzimuth > 359){
 				ShowAzimuth = Number(ShowAzimuth) - 360;
 			}
+			var pulseMs = 240;
+			var pulseGain = 0;
+			if(AzimuthPulseStart > 0){
+				var pulseAge = new Date().getTime() - AzimuthPulseStart;
+				if(pulseAge < pulseMs){
+					pulseGain = 1 - pulseAge / pulseMs;
+				}else{
+					AzimuthPulseStart = 0;
+				}
+			}
 			if (Number(Azimuth) < 0 || Number(Azimuth) > Number(AzRange) ) {
 				az.font = "bold 30px Arial";
 				az.fillStyle = '#c0c0c0';
@@ -912,7 +1361,13 @@ var LAND_OUTLINES = [];
 				}else{
 					az.fillStyle = "green";
 				}
+				var pulseFont = 100 + Math.round(pulseGain * 10);
+				az.font = "bold " + String(pulseFont) + "px Arial";
+				az.shadowColor = "rgba(255,255,255," + String((0.12 + pulseGain * 0.28).toFixed(2)) + ")";
+				az.shadowBlur = 4 + pulseGain * 16;
 				az.fillText(ShowAzimuth+String.fromCharCode(176), Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
+				az.shadowBlur = 0;
+				az.shadowColor = "transparent";
 			}
 		az.beginPath();
 			az.moveTo(BoxSize/2, BoxSize/2);

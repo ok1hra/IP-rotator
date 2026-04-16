@@ -139,9 +139,12 @@ int StartAzimuth = 0;         // max CCW limit callibrate in real using
 unsigned int MaxRotateDegree = 0;
 unsigned int AntRadiationAngle = 10;
 String MapUrl = "" ;
-byte MapSource = 0;          // 0 = URL bitmap, 1 = locator-based map
+byte MapSource = 1;          // 0 = URL bitmap, 1 = locator-based map
 String MapLocator = "JO60UC";
-unsigned int MapZoomKm = 5000;
+unsigned int MapZoomKm = 20000;
+String GraylineNtpServer = "pool.ntp.org";
+byte GraylineDarkness = 73;
+byte MapTheme = 1;
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -radius 500 -num_times 1 -output ./OK500.png
 bool Endstop =  false;
@@ -293,7 +296,7 @@ int i = 0;
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 275   /*
+#define EEPROM_SIZE 327   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -345,6 +348,9 @@ int i = 0;
 266 - MapSource (0 URL, 1 Locator)
 267-272 - MapLocator (6 chars Maidenhead)
 273-274 - MapZoomKm (1000-20000)
+275-324 - GraylineNtpServer
+325 - GraylineDarkness (0-100)
+326 - MapTheme (0-4)
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -544,11 +550,25 @@ const long mapping[MappingRow][2] = { // ms > m/s
 
 // ntp
 #include "time.h"
-const char* ntpServer = "pool.ntp.org";
 // const char* ntpServer = "tik.cesnet.cz";
 // const char* ntpServer = "time.google.com";
 const long  gmtOffset_sec = 0;
 const int   daylightOffset_sec = 0;
+
+void ApplyGraylineNtpConfig(){
+  configTime(gmtOffset_sec, daylightOffset_sec, GraylineNtpServer.c_str());
+}
+
+bool GraylineUtcAvailable(time_t* nowOut = nullptr){
+  time_t now = time(nullptr);
+  if(now < 1700000000){
+    return false;
+  }
+  if(nowOut != nullptr){
+    *nowOut = now;
+  }
+  return true;
+}
 
 #define MAX_SRV_CLIENTS 1
 int SerialServerIPport;
@@ -902,12 +922,12 @@ void setup() {
 
   // 266 - MapSource
   if(EEPROM.read(266)==0xff){
-    MapSource=0;
+    MapSource=1;
   }else{
     if(EEPROM.readByte(266)<2){
       MapSource = EEPROM.readByte(266);
     }else{
-      MapSource=0;
+      MapSource=1;
     }
   }
 
@@ -929,12 +949,50 @@ void setup() {
 
   // 273-274 - MapZoomKm
   if(EEPROM.read(273)==0xff){
-    MapZoomKm=5000;
+    MapZoomKm=20000;
   }else{
     if(EEPROM.readUShort(273)>=1000 && EEPROM.readUShort(273)<=20000){
       MapZoomKm = EEPROM.readUShort(273);
     }else{
-      MapZoomKm=5000;
+      MapZoomKm=20000;
+    }
+  }
+
+  // 275-324 - GraylineNtpServer
+  if(EEPROM.read(275)==0xff){
+    GraylineNtpServer = "pool.ntp.org";
+  }else{
+    GraylineNtpServer = "";
+    for (int i=275; i<325; i++){
+      if(EEPROM.read(i)!=0xff){
+        GraylineNtpServer = GraylineNtpServer + char(EEPROM.read(i));
+      }
+    }
+    GraylineNtpServer.trim();
+    if(GraylineNtpServer.length()<1 || GraylineNtpServer.length()>50){
+      GraylineNtpServer = "pool.ntp.org";
+    }
+  }
+
+  // 325 - GraylineDarkness
+  if(EEPROM.read(325)==0xff){
+    GraylineDarkness = 73;
+  }else{
+    if(EEPROM.readByte(325) <= 100){
+      GraylineDarkness = EEPROM.readByte(325);
+    }else{
+      GraylineDarkness = 73;
+    }
+  }
+
+  // 326 - MapTheme
+  if(EEPROM.read(326)==0xff){
+    MapTheme = 1;
+  }else{
+    if(EEPROM.readByte(326) <= 4){
+      MapTheme = EEPROM.readByte(326);
+    }else{
+      MapTheme = 1;
     }
   }
 
@@ -1458,8 +1516,8 @@ void setup() {
   esp_task_wdt_add(NULL); //add current thread to WDT watch
   WdtTimer=millis();
 
-  //init and get the time
-   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  // init and get UTC for grayline and other time-dependent features
+   ApplyGraylineNtpConfig();
    RainCountDayOfMonth=UtcTime(2);
 
    // ajax
@@ -1480,6 +1538,9 @@ void setup() {
    ajaxserver.on("/readMapSource", handleMapSource);
    ajaxserver.on("/readMapLocator", handleMapLocator);
    ajaxserver.on("/readMapZoomKm", handleMapZoomKm);
+   ajaxserver.on("/readMapTheme", handleMapTheme);
+   ajaxserver.on("/readGraylineDarkness", handleGraylineDarkness);
+   ajaxserver.on("/readGraylineInfo", handleGraylineInfo);
    ajaxserver.on("/map50.js", handleMap50js);
    ajaxserver.on("/set", handleSet);
    ajaxserver.on("/cal", handleCal);
@@ -4489,11 +4550,25 @@ void handleSet() {
   String mapsourceERR= "";
   String maplocatorERR= "";
   String mapzoomkmERR= "";
+  String graylinentpERR= "";
+  String graylinedarknessERR= "";
+  String mapthemeERR= "";
   String mapSourceSELECT0= "";
   String mapSourceSELECT1= "";
   String mapUrlRowStyle= "";
   String mapLocatorRowStyle= "";
   String mapZoomRowStyle= "";
+  String mapThemeRowStyle= "";
+  String graylineNtpRowStyle= "";
+  String graylineDarknessRowStyle= "";
+  String mapThemeSELECT0= "";
+  String mapThemeSELECT1= "";
+  String mapThemeSELECT2= "";
+  String mapThemeSELECT3= "";
+  String mapThemeSELECT4= "";
+  String mapThemeSELECT5= "";
+  String mapThemeSELECT6= "";
+  String mapThemeSELECT7= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -4509,6 +4584,9 @@ void handleSet() {
     && ajaxserver.hasArg("mapsource") == false \
     && ajaxserver.hasArg("maplocator") == false \
     && ajaxserver.hasArg("mapzoomkm") == false \
+    && ajaxserver.hasArg("maptheme") == false \
+    && ajaxserver.hasArg("graylinentp") == false \
+    && ajaxserver.hasArg("graylinedarkness") == false \
   ) {
     // MqttPubString("Debug", "Form not valid", false);
   }else{
@@ -4788,6 +4866,56 @@ void handleSet() {
         mapzoomkmERR="";
         MapZoomKm = ajaxserver.arg("mapzoomkm").toInt();
         EEPROM.writeUShort(273, MapZoomKm);
+      }
+    }
+
+    // MapTheme
+    if (ajaxserver.arg("maptheme").length()<1){
+      mapthemeERR = " Missing value";
+    }else{
+      int NewMapTheme = ajaxserver.arg("maptheme").toInt();
+      if(NewMapTheme < 0 || NewMapTheme > 4){
+        mapthemeERR = " Invalid value";
+      }else{
+        mapthemeERR = "";
+        if(MapTheme != byte(NewMapTheme)){
+          MapTheme = byte(NewMapTheme);
+          EEPROM.writeByte(326, MapTheme);
+        }
+      }
+    }
+
+    // GraylineNtpServer
+    String NewGraylineNtpServer = String(ajaxserver.arg("graylinentp"));
+    NewGraylineNtpServer.trim();
+    if (NewGraylineNtpServer.length()<1 || NewGraylineNtpServer.length()>50){
+      graylinentpERR = " Out of range 1-50 characters";
+    }else{
+      graylinentpERR = "";
+      if(GraylineNtpServer != NewGraylineNtpServer){
+        GraylineNtpServer = NewGraylineNtpServer;
+        int str_len = GraylineNtpServer.length();
+        char char_array[str_len];
+        GraylineNtpServer.toCharArray(char_array, str_len+1);
+        for (int i=0; i<50; i++){
+          if(i < str_len){
+            EEPROM.write(275+i, char_array[i]);
+          }else{
+            EEPROM.write(275+i, 0xff);
+          }
+        }
+        ApplyGraylineNtpConfig();
+      }
+    }
+
+    // GraylineDarkness
+    if (ajaxserver.arg("graylinedarkness").length()<1 || ajaxserver.arg("graylinedarkness").toInt()<0 || ajaxserver.arg("graylinedarkness").toInt()>100){
+      graylinedarknessERR = " Out of range number 0-100";
+    }else{
+      graylinedarknessERR = "";
+      if(GraylineDarkness != byte(ajaxserver.arg("graylinedarkness").toInt())){
+        GraylineDarkness = byte(ajaxserver.arg("graylinedarkness").toInt());
+        EEPROM.writeByte(325, GraylineDarkness);
       }
     }
 
@@ -5159,12 +5287,92 @@ if(MapSource==0){
   mapUrlRowStyle= "";
   mapLocatorRowStyle= " style='display:none;'";
   mapZoomRowStyle= " style='display:none;'";
+  mapThemeRowStyle= " style='display:none;'";
+  graylineNtpRowStyle= " style='display:none;'";
+  graylineDarknessRowStyle= " style='display:none;'";
 }else{
   mapSourceSELECT0= "";
   mapSourceSELECT1= " selected";
   mapUrlRowStyle= " style='display:none;'";
   mapLocatorRowStyle= "";
   mapZoomRowStyle= "";
+  mapThemeRowStyle= "";
+  graylineNtpRowStyle= "";
+  graylineDarknessRowStyle= "";
+}
+
+if(MapTheme==0){
+  mapThemeSELECT0 = " selected";
+  mapThemeSELECT1 = "";
+  mapThemeSELECT2 = "";
+  mapThemeSELECT3 = "";
+  mapThemeSELECT4 = "";
+  mapThemeSELECT5 = "";
+  mapThemeSELECT6 = "";
+  mapThemeSELECT7 = "";
+}else if(MapTheme==1){
+  mapThemeSELECT0 = "";
+  mapThemeSELECT1 = " selected";
+  mapThemeSELECT2 = "";
+  mapThemeSELECT3 = "";
+  mapThemeSELECT4 = "";
+  mapThemeSELECT5 = "";
+  mapThemeSELECT6 = "";
+  mapThemeSELECT7 = "";
+}else if(MapTheme==2){
+  mapThemeSELECT0 = "";
+  mapThemeSELECT1 = "";
+  mapThemeSELECT2 = " selected";
+  mapThemeSELECT3 = "";
+  mapThemeSELECT4 = "";
+  mapThemeSELECT5 = "";
+  mapThemeSELECT6 = "";
+  mapThemeSELECT7 = "";
+}else if(MapTheme==3){
+  mapThemeSELECT0 = "";
+  mapThemeSELECT1 = "";
+  mapThemeSELECT2 = "";
+  mapThemeSELECT3 = " selected";
+  mapThemeSELECT4 = "";
+  mapThemeSELECT5 = "";
+  mapThemeSELECT6 = "";
+  mapThemeSELECT7 = "";
+}else if(MapTheme==4){
+  mapThemeSELECT0 = "";
+  mapThemeSELECT1 = "";
+  mapThemeSELECT2 = "";
+  mapThemeSELECT3 = "";
+  mapThemeSELECT4 = " selected";
+  mapThemeSELECT5 = "";
+  mapThemeSELECT6 = "";
+  mapThemeSELECT7 = "";
+}else if(MapTheme==5){
+  mapThemeSELECT0 = "";
+  mapThemeSELECT1 = "";
+  mapThemeSELECT2 = "";
+  mapThemeSELECT3 = "";
+  mapThemeSELECT4 = "";
+  mapThemeSELECT5 = " selected";
+  mapThemeSELECT6 = "";
+  mapThemeSELECT7 = "";
+}else if(MapTheme==6){
+  mapThemeSELECT0 = "";
+  mapThemeSELECT1 = "";
+  mapThemeSELECT2 = "";
+  mapThemeSELECT3 = "";
+  mapThemeSELECT4 = "";
+  mapThemeSELECT5 = "";
+  mapThemeSELECT6 = " selected";
+  mapThemeSELECT7 = "";
+}else{
+  mapThemeSELECT0 = "";
+  mapThemeSELECT1 = "";
+  mapThemeSELECT2 = "";
+  mapThemeSELECT3 = "";
+  mapThemeSELECT4 = "";
+  mapThemeSELECT5 = "";
+  mapThemeSELECT6 = "";
+  mapThemeSELECT7 = " selected";
 }
 
 // if(AZsource==true){
@@ -5338,9 +5546,9 @@ if(ACmotor==true){
   HtmlSrc += mapSourceSELECT0;
   HtmlSrc +=">URL bitmap</option><option value='1'";
   HtmlSrc += mapSourceSELECT1;
-  HtmlSrc +=">Offline vector map</option></select><span style='color:red;'>";
+  HtmlSrc +=">Vector map</option></select><span style='color:red;'>";
   HtmlSrc += mapsourceERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 180px;'>URL keeps current behavior. Locator mode will use offline vector map.</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 220px;'>Vector map uses stored continent outlines, locator center, zoom radius, grayline and UTC time from the selected NTP server.</span></span></td></tr>\n";
   HtmlSrc +="<tr id='mapUrlRow'";
   HtmlSrc += mapUrlRowStyle;
   HtmlSrc +="><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
@@ -5362,6 +5570,41 @@ if(ACmotor==true){
   HtmlSrc +="'>&nbsp;km<span style='color:red;'>";
   HtmlSrc += mapzoomkmERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 170px;'>Distance from map center to edge. Allowed range 1000-20000 km.</span></span></td></tr>\n";
+  HtmlSrc +="<tr id='mapThemeRow'";
+  HtmlSrc += mapThemeRowStyle;
+  HtmlSrc +="><td class='tdr'><label for='maptheme'>Vector map theme:</label></td><td><select id='maptheme' name='maptheme'><option value='0'";
+  HtmlSrc += mapThemeSELECT0;
+  HtmlSrc +=">Calm marine</option><option value='1'";
+  HtmlSrc += mapThemeSELECT1;
+  HtmlSrc +=">Night radar</option><option value='2'";
+  HtmlSrc += mapThemeSELECT2;
+  HtmlSrc +=">Warm atlas</option><option value='3'";
+  HtmlSrc += mapThemeSELECT3;
+  HtmlSrc +=">Amber terminal</option><option value='4'";
+  HtmlSrc += mapThemeSELECT4;
+  HtmlSrc +=">Night vision</option><option value='5'";
+  HtmlSrc += mapThemeSELECT5;
+  HtmlSrc +=">Neon magma</option><option value='6'";
+  HtmlSrc += mapThemeSELECT6;
+  HtmlSrc +=">Ice laser</option><option value='7'";
+  HtmlSrc += mapThemeSELECT7;
+  HtmlSrc +=">Synthwave</option></select><span style='color:red;'>";
+  HtmlSrc += mapthemeERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 360px;'>Calm marine is relaxed for long watching. Night radar is technical with clearer contrast. Warm atlas is softer indoors. Amber terminal feels like classic radio gear. Night vision is vivid green instrumentation. Neon magma is hot and high-energy. Ice laser is cold, sharp and very contrasty. Synthwave is bold and theatrical.</span></span></td></tr>\n";
+  HtmlSrc +="<tr id='graylineNtpRow'";
+  HtmlSrc += graylineNtpRowStyle;
+  HtmlSrc +="><td class='tdr'><label for='graylinentp'>NTP server for grayline:</label></td><td><input type='text' id='graylinentp' name='graylinentp' size='24' value='";
+  HtmlSrc += GraylineNtpServer;
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += graylinentpERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 210px;'>Used to get UTC date and time for the grayline overlay. Default pool.ntp.org.</span></span></td></tr>\n";
+  HtmlSrc +="<tr id='graylineDarknessRow'";
+  HtmlSrc += graylineDarknessRowStyle;
+  HtmlSrc +="><td class='tdr'><label for='graylinedarkness'>Grayline darkness:</label></td><td><input type='text' id='graylinedarkness' name='graylinedarkness' size='4' value='";
+  HtmlSrc += GraylineDarkness;
+  HtmlSrc +="'>&nbsp;%<span style='color:red;'>";
+  HtmlSrc += graylinedarknessERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 190px;'>0 means invisible overlay, 100 means darkest night mask.</span></span></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
   HtmlSrc += AntRadiationAngle;
   HtmlSrc +="'>&deg; <span style='color:red;'>";
@@ -5532,7 +5775,7 @@ if(ACmotor==true){
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
   // HtmlSrc +="<tr><td class='tdr'><a href='/'><button id='go'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></td></tr>";
   HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><span style='color: #666;'>After change, refresh all other page for apply changes.</span><br><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
-  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapZoomRow').style.display=(s==='1')?'table-row':'none';}toggleMapSourceRows();</script>";
+  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapZoomRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapThemeRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineNtpRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineDarknessRow').style.display=(s==='1')?'table-row':'none';}toggleMapSourceRows();</script>";
   HtmlSrc +="</body></html>\n";
 
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
@@ -5798,6 +6041,20 @@ void handleMapLocator() {
 }
 void handleMapZoomKm() {
   ajaxserver.send(200, "text/plane", String(MapZoomKm) );
+}
+void handleMapTheme() {
+  ajaxserver.send(200, "text/plane", String(MapTheme) );
+}
+void handleGraylineDarkness() {
+  ajaxserver.send(200, "text/plane", String(GraylineDarkness) );
+}
+void handleGraylineInfo() {
+  time_t now;
+  if(MapSource==1 && GraylineUtcAvailable(&now)){
+    ajaxserver.send(200, "text/plane", String("1|") + String((unsigned long)now));
+  }else{
+    ajaxserver.send(200, "text/plane", "0|0");
+  }
 }
 void handleMap50js() {
   ajaxserver.send_P(200, "application/javascript", MAP50_JS);
