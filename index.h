@@ -14,13 +14,14 @@ const char MAIN_page[] PROGMEM = R"=====(
 		body {
 			width: 600px;
 			margin: 0 auto;
+			min-height: 710px;
 		}
 		.mouse{
 			margin: auto;
 			position: absolute;
 			left: 0;
 			top: 0;
-			z-index: 2;
+			z-index: 5;
 		}
 		.form1{
 			margin: auto;
@@ -42,33 +43,68 @@ const char MAIN_page[] PROGMEM = R"=====(
 			position: absolute;
 			left: 0;
 			top: 0;
-			z-index: 1;
+			z-index: 4;
 		}
 		.middle{
 			position: absolute;
 			left: 0;
 			top: 0;
-			z-index: 0;
+			z-index: 3;
 		}
 		.bot{
 			position: absolute;
 			left: 0;
 			top: 0;
-			z-index: -1;
+			z-index: 2;
 		}
 		.underbot{
 			position: absolute;
 			left: 0;
 			top: 0;
-			z-index: -2;
+			z-index: 1;
 		}
 		.second{
 			border: 0px solid #222222;
 			position: absolute;
 			left: 0;
-			top: 600px;
+			top: 620px;
 			width: 600px;
-			z-index: 0;
+			z-index: 6;
+		}
+		.zoomctl{
+			position: absolute;
+			right: 16px;
+			top: 572px;
+			z-index: 6;
+			width: 184px;
+			padding: 3px 8px 5px 8px;
+			border-radius: 9px;
+			background: rgba(6, 8, 11, 0.58);
+			border: 1px solid rgba(160, 170, 175, 0.12);
+			box-sizing: border-box;
+			display: none;
+		}
+		.zoomlabel{
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			font-size: 11px;
+			line-height: 1.1;
+			color: rgba(188, 196, 202, 0.72);
+			margin-bottom: 3px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+		}
+		.zoomvalue{
+			color: rgba(233, 238, 240, 0.82);
+			font-size: 12px;
+			letter-spacing: 0.04em;
+		}
+		.zoomslider{
+			width: 100%;
+			margin: 0;
+			accent-color: #8f969a;
+			opacity: 0.72;
 		}
 		a:hover {color: #fff;}
     a { color: #ccc; text-decoration: underline;}
@@ -83,6 +119,13 @@ const char MAIN_page[] PROGMEM = R"=====(
 		<canvas class="middle" id="Static" width="600" height="600"></canvas>
 		<canvas class="bot" id="Map" width="600" height="600"></canvas>
 		<canvas class="underbot" id="DirLine" width="600" height="600"></canvas>
+		<div class="zoomctl" id="MapZoomControl">
+			<div class="zoomlabel">
+				<span>Map zoom</span>
+				<span class="zoomvalue" id="MapZoomValue">20000 km</span>
+			</div>
+			<input class="zoomslider" type="range" id="MapZoomSlider" min="1000" max="20000" step="250" value="20000">
+		</div>
 		<div class="second">
 			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
 				<span style="color: #000; background: #666; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
@@ -120,6 +163,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var AzimuthPulseStart = 0;
 	var OnlineTimeStamp = 0;
 	var Elevation = 0; 
+	var MapZoomSaveTimer = 0;
 	
 	var Xcenter = BoxSize/2;
 	var Ycenter = BoxSize/2;
@@ -148,15 +192,40 @@ const char MAIN_page[] PROGMEM = R"=====(
 	function updateMapModeInfo(){
 		var info = document.getElementById("MapModeInfo");
 		if(!info){ return; }
-		if(Number(MapSource)===-1){
-			info.innerHTML = "";
+		info.innerHTML = "";
+	}
+
+	function updateMapZoomControl(){
+		var wrap = document.getElementById("MapZoomControl");
+		var slider = document.getElementById("MapZoomSlider");
+		var value = document.getElementById("MapZoomValue");
+		if(!wrap || !slider || !value){ return; }
+		if(Number(MapSource) === 1){
+			wrap.style.display = "block";
+			slider.value = Number(MapZoomKm);
+			value.innerHTML = String(MapZoomKm) + " km";
+		}else{
+			wrap.style.display = "none";
+		}
+	}
+
+	function persistMapZoom(){
+		if(Number(MapSource) !== 1){
 			return;
 		}
-		if(Number(MapSource)===1){
-			info.innerHTML = " | map: locator " + String(MapLocator).toUpperCase() + " / " + String(MapZoomKm) + " km";
-		}else{
-			info.innerHTML = " | map: url";
+		var http = new XMLHttpRequest();
+		http.open("GET", "setMapZoomKm?value=" + encodeURIComponent(String(MapZoomKm)), true);
+		http.send();
+	}
+
+	function scheduleMapZoomSave(){
+		if(MapZoomSaveTimer){
+			clearTimeout(MapZoomSaveTimer);
 		}
+		MapZoomSaveTimer = setTimeout(function(){
+			MapZoomSaveTimer = 0;
+			persistMapZoom();
+		}, 350);
 	}
 
 	function updateNtpStatus(){
@@ -259,6 +328,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    if (this.readyState == 4 && this.status == 200) {
 				MapSource = this.responseText;
 				updateMapModeInfo();
+				updateMapZoomControl();
 				updateNtpStatus();
 				if (Number(MapSource) === 1) { getGraylineInfo(); }
 				map();
@@ -283,6 +353,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    if (this.readyState == 4 && this.status == 200) {
 				MapZoomKm = this.responseText;
 				updateMapModeInfo();
+				updateMapZoomControl();
 				if (Number(MapSource) === 1) { map(); }
 	    }
 	  };
@@ -332,6 +403,28 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  ohttp.send();
 
 		getGraylineInfo();
+
+		var zoomSlider = document.getElementById("MapZoomSlider");
+		if(zoomSlider){
+			zoomSlider.addEventListener("input", function(){
+				MapZoomKm = Number(this.value);
+				updateMapModeInfo();
+				updateMapZoomControl();
+				if (Number(MapSource) === 1) {
+					map();
+					scheduleMapZoomSave();
+				}
+			});
+			zoomSlider.addEventListener("change", function(){
+				MapZoomKm = Number(this.value);
+				updateMapModeInfo();
+				updateMapZoomControl();
+				if (Number(MapSource) === 1) {
+					map();
+					persistMapZoom();
+				}
+			});
+		}
 	}
 
 	function getData() {

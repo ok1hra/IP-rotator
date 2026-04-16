@@ -1538,6 +1538,7 @@ void setup() {
    ajaxserver.on("/readMapSource", handleMapSource);
    ajaxserver.on("/readMapLocator", handleMapLocator);
    ajaxserver.on("/readMapZoomKm", handleMapZoomKm);
+   ajaxserver.on("/setMapZoomKm", handleSetMapZoomKm);
    ajaxserver.on("/readMapTheme", handleMapTheme);
    ajaxserver.on("/readGraylineDarkness", handleGraylineDarkness);
    ajaxserver.on("/readGraylineInfo", handleGraylineInfo);
@@ -5548,7 +5549,7 @@ if(ACmotor==true){
   HtmlSrc += mapSourceSELECT1;
   HtmlSrc +=">Vector map</option></select><span style='color:red;'>";
   HtmlSrc += mapsourceERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 220px;'>Vector map uses stored continent outlines, locator center, zoom radius, grayline and UTC time from the selected NTP server.</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 240px;'>Vector map uses stored continent outlines, locator center and grayline with UTC time from the selected NTP server. Zoom is changed live with the bar below the map.</span></span></td></tr>\n";
   HtmlSrc +="<tr id='mapUrlRow'";
   HtmlSrc += mapUrlRowStyle;
   HtmlSrc +="><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
@@ -5563,13 +5564,9 @@ if(ACmotor==true){
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += maplocatorERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 180px;'>Maidenhead locator in 6-char format, for example JO60UC</span></span></td></tr>\n";
-  HtmlSrc +="<tr id='mapZoomRow'";
-  HtmlSrc += mapZoomRowStyle;
-  HtmlSrc +="><td class='tdr'><label for='mapzoomkm'>Map zoom radius:</label></td><td><input type='text' id='mapzoomkm' name='mapzoomkm' size='6' value='";
+  HtmlSrc +="<input type='hidden' id='mapzoomkm' name='mapzoomkm' value='";
   HtmlSrc += MapZoomKm;
-  HtmlSrc +="'>&nbsp;km<span style='color:red;'>";
-  HtmlSrc += mapzoomkmERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 170px;'>Distance from map center to edge. Allowed range 1000-20000 km.</span></span></td></tr>\n";
+  HtmlSrc +="'>\n";
   HtmlSrc +="<tr id='mapThemeRow'";
   HtmlSrc += mapThemeRowStyle;
   HtmlSrc +="><td class='tdr'><label for='maptheme'>Vector map theme:</label></td><td><select id='maptheme' name='maptheme'><option value='0'";
@@ -5775,7 +5772,7 @@ if(ACmotor==true){
   // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
   // HtmlSrc +="<tr><td class='tdr'><a href='/'><button id='go'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></td></tr>";
   HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><span style='color: #666;'>After change, refresh all other page for apply changes.</span><br><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
-  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapZoomRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapThemeRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineNtpRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineDarknessRow').style.display=(s==='1')?'table-row':'none';}toggleMapSourceRows();</script>";
+  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapThemeRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineNtpRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineDarknessRow').style.display=(s==='1')?'table-row':'none';}toggleMapSourceRows();</script>";
   HtmlSrc +="</body></html>\n";
 
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
@@ -6041,6 +6038,23 @@ void handleMapLocator() {
 }
 void handleMapZoomKm() {
   ajaxserver.send(200, "text/plane", String(MapZoomKm) );
+}
+void handleSetMapZoomKm() {
+  if(!ajaxserver.hasArg("value")){
+    ajaxserver.send(400, "text/plane", "Missing value");
+    return;
+  }
+  int NewMapZoomKm = ajaxserver.arg("value").toInt();
+  if(NewMapZoomKm < 1000 || NewMapZoomKm > 20000){
+    ajaxserver.send(400, "text/plane", "Out of range");
+    return;
+  }
+  if(MapZoomKm != unsigned(NewMapZoomKm)){
+    MapZoomKm = unsigned(NewMapZoomKm);
+    EEPROM.writeUShort(273, MapZoomKm);
+    EEPROM.commit();
+  }
+  ajaxserver.send(200, "text/plane", String(MapZoomKm));
 }
 void handleMapTheme() {
   ajaxserver.send(200, "text/plane", String(MapTheme) );
