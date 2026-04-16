@@ -119,7 +119,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260110";
+const char* REV = "20260416";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -359,6 +359,7 @@ unsigned long WatchdogTimer=0;
 #include <WebServer.h>
 #include "index.h"  //Web page header file
 #include "index-cal.h"  //Web page header file
+#include "map50.h"  //Offline map dataset for locator mode
 WebServer ajaxserver(HTTP_SERVER_PORT+8);
 
 WiFiServer server(HTTP_SERVER_PORT);
@@ -1479,6 +1480,7 @@ void setup() {
    ajaxserver.on("/readMapSource", handleMapSource);
    ajaxserver.on("/readMapLocator", handleMapLocator);
    ajaxserver.on("/readMapZoomKm", handleMapZoomKm);
+   ajaxserver.on("/map50.js", handleMap50js);
    ajaxserver.on("/set", handleSet);
    ajaxserver.on("/cal", handleCal);
    ajaxserver.on("/readEndstop", handleEndstop);
@@ -5336,7 +5338,7 @@ if(ACmotor==true){
   HtmlSrc += mapSourceSELECT0;
   HtmlSrc +=">URL bitmap</option><option value='1'";
   HtmlSrc += mapSourceSELECT1;
-  HtmlSrc +=">Locator + zoom</option></select><span style='color:red;'>";
+  HtmlSrc +=">Offline vector map</option></select><span style='color:red;'>";
   HtmlSrc += mapsourceERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 180px;'>URL keeps current behavior. Locator mode will use offline vector map.</span></span></td></tr>\n";
   HtmlSrc +="<tr id='mapUrlRow'";
@@ -5796,6 +5798,9 @@ void handleMapLocator() {
 }
 void handleMapZoomKm() {
   ajaxserver.send(200, "text/plane", String(MapZoomKm) );
+}
+void handleMap50js() {
+  ajaxserver.send_P(200, "application/javascript", MAP50_JS);
 }
 void handleEndstop() {
   ajaxserver.send(200, "text/plane", String(Endstop) );

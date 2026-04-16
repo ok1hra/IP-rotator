@@ -93,7 +93,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 
 				</span>
 				<br>
-				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span>
+				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
 			</p>
 		</div>
 	</div>
@@ -108,7 +108,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var AntRadiationAngle = 0;
 	var Status = 4;
 	var StatusTmp = 0;
-	var MapSource = 0;
+	var MapSource = -1;
 	var MapUrl = 0;
 	var MapLocator = "JO60UC";
 	var MapZoomKm = 5000;
@@ -140,6 +140,10 @@ const char MAIN_page[] PROGMEM = R"=====(
 	function updateMapModeInfo(){
 		var info = document.getElementById("MapModeInfo");
 		if(!info){ return; }
+		if(Number(MapSource)===-1){
+			info.innerHTML = "";
+			return;
+		}
 		if(Number(MapSource)===1){
 			info.innerHTML = " | map: locator " + String(MapLocator).toUpperCase() + " / " + String(MapZoomKm) + " km";
 		}else{
@@ -360,106 +364,35 @@ const char MAIN_page[] PROGMEM = R"=====(
 	}
 
 	var EARTH_RADIUS_KM = 6371;
+	var LocatorLandFillMode = true; // true = fill-like light land, false = outline only
 
-	var LAND_OUTLINES = [
-		[[72,-168],[70,-150],[66,-140],[60,-135],[54,-130],[50,-126],[46,-124],[40,-122],[34,-118],[30,-114],[26,-110],[24,-104],[21,-98],[18,-94],[16,-90],[14,-86],[12,-82],[10,-78],[12,-74],[18,-70],[24,-66],[30,-64],[38,-62],[46,-60],[54,-62],[60,-70],[66,-88],[72,-110],[75,-130],[74,-150],[72,-168]],
-		[[12,-81],[8,-79],[2,-78],[-4,-77],[-10,-75],[-16,-72],[-22,-70],[-28,-70],[-34,-71],[-40,-72],[-47,-73],[-54,-68],[-55,-58],[-52,-50],[-46,-44],[-38,-41],[-28,-44],[-18,-48],[-8,-52],[0,-53],[6,-58],[10,-66],[12,-74],[12,-81]],
-		[[83,-74],[82,-52],[79,-35],[75,-25],[70,-22],[64,-28],[60,-40],[61,-52],[66,-60],[72,-66],[78,-70],[83,-74]],
-		[[72,-10],[70,0],[70,18],[72,36],[74,58],[76,82],[74,105],[72,126],[68,146],[63,160],[58,168],[52,160],[46,148],[40,136],[34,126],[28,118],[22,112],[16,108],[12,100],[16,90],[22,84],[28,74],[32,64],[36,56],[42,50],[46,42],[50,34],[54,24],[58,14],[62,8],[66,2],[70,-4],[72,-10]],
-		[[37,-17],[35,-8],[34,0],[34,8],[33,15],[31,22],[30,30],[26,35],[22,38],[18,41],[14,43],[10,45],[6,44],[2,42],[-2,40],[-6,36],[-10,34],[-14,32],[-18,30],[-22,28],[-26,26],[-30,24],[-33,20],[-34,14],[-34,8],[-32,2],[-28,-3],[-22,-8],[-16,-12],[-10,-14],[-4,-14],[2,-12],[8,-10],[14,-8],[20,-10],[26,-14],[32,-16],[37,-17]],
-		[[-10,113],[-16,114],[-22,114],[-28,115],[-34,117],[-38,124],[-39,132],[-39,140],[-38,148],[-34,152],[-28,153],[-22,150],[-16,146],[-12,140],[-10,132],[-10,124],[-10,113]],
-		[[-34,166],[-39,173],[-45,171],[-47,167],[-43,166],[-34,166]],
-		[[-70,-180],[-72,-150],[-73,-120],[-74,-90],[-73,-60],[-72,-30],[-71,0],[-72,30],[-73,60],[-74,90],[-73,120],[-72,150],[-70,180]]
-	];
+var LAND_OUTLINES = [];
+	var COUNTRY_BORDERS = [];
+	var MapDatasetReady = false;
+	var MapDatasetLoading = false;
 
-	var COUNTRY_BORDERS = [
-		[[49,-124],[49,-110],[49,-95]],
-		[[45,-83],[44,-76],[45,-71],[47,-67]],
-		[[32,-117],[31,-111],[29,-107],[29,-104],[26,-99],[25,-97]],
-		[[-17,-69],[-25,-69],[-33,-70],[-41,-71],[-50,-73]],
-		[[-10,-74],[-8,-70],[-11,-68]],
-		[[-22,-54],[-26,-55],[-30,-57]],
-		[[8,-73],[9,-70],[10,-66]],
-		[[2,-66],[4,-62],[2,-60]],
-		[[42,-9],[38,-8],[37,-7]],
-		[[43,-1],[42,1],[42,3]],
-		[[49,7],[48,8],[47,7]],
-		[[45,7],[44,7],[44,8]],
-		[[54,14],[52,15],[51,15],[50,14]],
-		[[51,23],[50,24],[49,24]],
-		[[69,20],[66,18],[63,14],[59,11]],
-		[[69,23],[66,24],[63,24],[60,23]],
-		[[50,38],[49,40],[48,39],[47,38]],
-		[[35,-2],[34,-1],[34,0],[34,1]],
-		[[35,8],[34,8],[33,8]],
-		[[32,10],[30,10],[28,10],[26,11],[24,12],[21,11],[19,9]],
-		[[22,25],[22,30],[22,35]],
-		[[12,34],[11,36],[10,38]],
-		[[14,3],[13,8],[13,12],[13,14]],
-		[[-6,12],[-7,13],[-8,16],[-10,23]],
-		[[37,35],[37,39],[36,41]],
-		[[37,45],[33,46],[30,47]],
-		[[17,43],[17,47],[17,51]],
-		[[51,52],[52,60],[53,72],[54,82]],
-		[[48,85],[46,86],[44,86]],
-		[[50,89],[51,100],[52,112],[50,118]],
-		[[43,87],[42,95],[44,105],[43,115],[42,119]],
-		[[34,74],[30,74],[26,70],[24,68]],
-		[[35,78],[33,80],[30,83],[28,87],[27,90]],
-		[[28,97],[25,98],[23,99],[22,100]],
-		[[38,126],[38,128],[38,129]],
-		[[23,106],[22,107],[21,108]],
-		[[20,98],[18,98],[16,98],[14,98]],
-		[[-8,141],[-8,146]],
-		[[58,6],[56,8],[55,11]],
-		[[58,12],[56,14],[55,16]],
-		[[55,8],[55,12],[55,16]],
-		[[46,5],[46,10],[46,15]],
-		[[48,14],[48,18],[48,22]],
-		[[45,14],[44,19],[44,22]],
-		[[49,16],[49,19],[49,22]],
-		[[47,17],[47,19],[47,22]],
-		[[46,22],[46,25],[46,28]],
-		[[48,22],[48,25],[48,28]],
-		[[45,26],[44,27],[43,28]],
-		[[42,19],[41,20],[40,22],[39,23]],
-		[[44,14],[43,16],[42,19],[41,22]],
-		[[47,13],[46,14],[45,15]],
-		[[50,24],[50,27],[50,30]],
-		[[48,28],[48,31],[48,34]],
-		[[52,31],[51,33],[50,35]],
-		[[52,23],[51,25],[50,27]],
-		[[49,30],[49,34],[49,38]],
-		[[51,34],[51,37],[51,40]],
-		[[45,33],[45,36],[45,39]],
-		[[44,40],[44,44],[44,47]],
-		[[42,42],[42,45],[42,48]],
-		[[47,20],[46,21],[45,22]],
-		[[43,12],[42,14],[41,16]],
-		[[39,20],[38,22],[37,24]],
-		[[41,44],[41,47],[41,50]],
-		[[55,20],[56,24],[57,28],[58,32]],
-		[[54,26],[54,30],[54,34]],
-		[[56,36],[56,40],[56,44]],
-		[[58,46],[58,50],[58,54]],
-		[[60,30],[61,36],[62,42]],
-		[[57,60],[56,66],[55,72]],
-		[[55,72],[54,78],[54,84]],
-		[[52,84],[51,90],[50,96]],
-		[[49,96],[49,102],[50,108]],
-		[[47,108],[47,114],[47,120]],
-		[[45,120],[44,124],[43,128]],
-		[[42,76],[40,80],[39,84]],
-		[[39,68],[37,72],[35,76]],
-		[[36,60],[35,64],[34,68]],
-		[[34,44],[33,48],[32,52]],
-		[[31,34],[30,38],[29,42]],
-		[[29,50],[28,54],[27,58]],
-		[[26,66],[25,70],[24,74]],
-		[[24,84],[23,88],[22,92]],
-		[[44,132],[44,136],[44,140]],
-		[[42,130],[41,134],[40,138]]
-	];
+	function ensureMapDataset(onReady){
+		if(MapDatasetReady){
+			onReady();
+			return;
+		}
+		if(MapDatasetLoading){
+			return;
+		}
+		MapDatasetLoading = true;
+		var script = document.createElement('script');
+		script.src = '/map50.js';
+		script.onload = function(){
+			MapDatasetLoading = false;
+			MapDatasetReady = true;
+			onReady();
+		};
+		script.onerror = function(){
+			MapDatasetLoading = false;
+		};
+		document.head.appendChild(script);
+	}
+
 
 	function degToRad(deg){
 		return deg * Math.PI / 180;
@@ -523,7 +456,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 			var opened = false;
 			var prev = null;
 			for(var j=0; j<line.length; j++){
-				var p = projectAzimuthal(line[j][0], line[j][1], centerLat, centerLon, mapRadiusPx, zoomKm);
+				var p = projectAzimuthal(line[j][0] / 100, line[j][1] / 100, centerLat, centerLon, mapRadiusPx, zoomKm);
 				if(!p){
 					if(opened){
 						ctx.stroke();
@@ -566,7 +499,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 			var segment = [];
 			var prev = null;
 			for(var j=0; j<line.length; j++){
-				var p = projectAzimuthal(line[j][0], line[j][1], centerLat, centerLon, mapRadiusPx, zoomKm);
+				var p = projectAzimuthal(line[j][0] / 100, line[j][1] / 100, centerLat, centerLon, mapRadiusPx, zoomKm);
 				if(!p){
 					if(segment.length > 1){
 						segments.push(segment);
@@ -615,11 +548,66 @@ const char MAIN_page[] PROGMEM = R"=====(
 		return d;
 	}
 
+	function isSegmentSafeClosed(segment, mapRadiusPx){
+		if(!segment || segment.length < 4){
+			return false;
+		}
+		var first = segment[0];
+		var last = segment[segment.length - 1];
+		var closureThreshold = Math.max(8, mapRadiusPx * 0.06);
+		return Math.hypot(last.x - first.x, last.y - first.y) <= closureThreshold;
+	}
+
+	function pointToMapEdge(p, mapRadiusPx){
+		var dx = p.x - Xcenter;
+		var dy = p.y - Ycenter;
+		var d = Math.hypot(dx, dy);
+		if(d < 1e-6){
+			return {x: Xcenter + mapRadiusPx, y: Ycenter};
+		}
+		var scale = mapRadiusPx / d;
+		return {x: Xcenter + dx * scale, y: Ycenter + dy * scale};
+	}
+
+	function angleFromCenter(p){
+		return Math.atan2(p.y - Ycenter, p.x - Xcenter);
+	}
+
+	function normalizeAngleDelta(a){
+		while(a > Math.PI){ a -= 2 * Math.PI; }
+		while(a < -Math.PI){ a += 2 * Math.PI; }
+		return a;
+	}
+
+	function svgClosedPathFromSegments(allSegments, mapRadiusPx){
+		var d = "";
+		for(var i=0; i<allSegments.length; i++){
+			var segments = allSegments[i];
+			for(var j=0; j<segments.length; j++){
+				var segment = segments[j];
+				if(!isSegmentSafeClosed(segment, mapRadiusPx)){
+					continue;
+				}
+				for(var k=0; k<segment.length; k++){
+					var p = segment[k];
+					var x = Math.round(p.x * 10) / 10;
+					var y = Math.round(p.y * 10) / 10;
+					if(k===0){
+						d += "M" + x + " " + y;
+					}else{
+						d += " L" + x + " " + y;
+					}
+				}
+				d += " Z";
+			}
+		}
+		return d;
+	}
+
 	function buildLocatorSvg(centerLat, centerLon, mapRadiusPx, zoomKm){
 		var landSegments = projectGeoSegments(LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm);
-		var countrySegments = projectGeoSegments(COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm);
 		var landPath = svgPathFromSegments(landSegments);
-		var countryPath = svgPathFromSegments(countrySegments);
+		var landFillPath = svgClosedPathFromSegments(landSegments, mapRadiusPx);
 		var circleR = Math.round(mapRadiusPx * 10) / 10;
 
 		var svg = "";
@@ -632,11 +620,10 @@ const char MAIN_page[] PROGMEM = R"=====(
 			var rr = Math.round((circleR * ring / 4) * 10) / 10;
 			svg += "<circle cx='" + Xcenter + "' cy='" + Ycenter + "' r='" + rr + "' fill='none' stroke='rgba(160,180,200,0.18)' stroke-width='1'/>";
 		}
-		if(landPath.length>0){
-			svg += "<path d='" + landPath + "' fill='none' stroke='rgba(182,228,182,0.95)' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/>";
-		}
-		if(countryPath.length>0){
-			svg += "<path d='" + countryPath + "' fill='none' stroke='rgba(235,235,235,0.70)' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'/>";
+		if(LocatorLandFillMode && landFillPath.length>0){
+			svg += "<path d='" + landFillPath + "' fill='rgba(208,232,200,0.78)' stroke='none' fill-rule='evenodd'/>";
+		}else if(landPath.length>0){
+			svg += "<path d='" + landPath + "' fill='none' stroke='rgba(238,249,231,0.95)' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/>";
 		}
 		svg += "</g></svg>";
 		return svg;
@@ -668,8 +655,58 @@ const char MAIN_page[] PROGMEM = R"=====(
 			ctx.stroke();
 		}
 
-		drawGeoLineCollection(ctx, LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm, "rgba(182, 228, 182, 0.95)", 1.8);
-		drawGeoLineCollection(ctx, COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm, "rgba(235, 235, 235, 0.70)", 1.0);
+		if(LocatorLandFillMode){
+			var landSegments = projectGeoSegments(LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm);
+			ctx.fillStyle = "rgba(208,232,200,0.78)";
+			for(var i=0; i<landSegments.length; i++){
+				var segments = landSegments[i];
+				for(var j=0; j<segments.length; j++){
+					var seg = segments[j];
+					if(!seg || seg.length < 3){
+						continue;
+					}
+					var closed = isSegmentSafeClosed(seg, mapRadiusPx);
+					if(closed){
+						ctx.beginPath();
+						ctx.moveTo(seg[0].x, seg[0].y);
+						for(var k=1; k<seg.length; k++){
+							ctx.lineTo(seg[k].x, seg[k].y);
+						}
+						ctx.closePath();
+						ctx.fill("evenodd");
+						continue;
+					}
+
+					// Open segment clipped by the map edge: close it along the circle arc.
+					var first = seg[0];
+					var last = seg[seg.length - 1];
+					var dFirst = Math.hypot(first.x - Xcenter, first.y - Ycenter);
+					var dLast = Math.hypot(last.x - Xcenter, last.y - Ycenter);
+					var edgeThreshold = mapRadiusPx * 0.82;
+					if(dFirst < edgeThreshold || dLast < edgeThreshold){
+						continue;
+					}
+
+					var firstEdge = pointToMapEdge(first, mapRadiusPx);
+					var lastEdge = pointToMapEdge(last, mapRadiusPx);
+					var aStart = angleFromCenter(firstEdge);
+					var aEnd = angleFromCenter(lastEdge);
+					var delta = normalizeAngleDelta(aStart - aEnd);
+
+					ctx.beginPath();
+					ctx.moveTo(first.x, first.y);
+					for(var m=1; m<seg.length; m++){
+						ctx.lineTo(seg[m].x, seg[m].y);
+					}
+					ctx.lineTo(lastEdge.x, lastEdge.y);
+					ctx.arc(Xcenter, Ycenter, mapRadiusPx, aEnd, aStart, delta < 0);
+					ctx.closePath();
+					ctx.fill("evenodd");
+				}
+			}
+		}else{
+			drawGeoLineCollection(ctx, LAND_OUTLINES, centerLat, centerLon, mapRadiusPx, zoomKm, "rgba(238, 249, 231, 0.95)", 1.2);
+		}
 		ctx.restore();
 	}
 
@@ -688,6 +725,11 @@ const char MAIN_page[] PROGMEM = R"=====(
 		var c = document.getElementById('Map');
 		if (!c.getContext) { return; }
 		var ctx = c.getContext('2d');
+
+		if(LocatorLandFillMode){
+			drawLocatorMapCanvas(center.lat, center.lon, mapRadiusPx, zoomKm);
+			return;
+		}
 
 		if(locatorSvgImg && locatorSvgLastKey === key && locatorSvgImg.complete){
 			ctx.clearRect(0, 0, BoxSize, BoxSize);
@@ -718,8 +760,18 @@ const char MAIN_page[] PROGMEM = R"=====(
 
 
 	function map(){
+		if (Number(MapSource) === -1) {
+			return;
+		}
 		if (Number(MapSource) === 1) {
-			drawLocatorMap();
+			var m = document.getElementById('Map');
+			if (m && m.getContext) {
+				var mctx = m.getContext('2d');
+				mctx.clearRect(0, 0, BoxSize, BoxSize);
+				mctx.fillStyle = "#000";
+				mctx.fillRect(0, 0, BoxSize, BoxSize);
+			}
+			ensureMapDataset(drawLocatorMap);
 			return;
 		}
 
@@ -734,10 +786,13 @@ const char MAIN_page[] PROGMEM = R"=====(
 			var ctx = c.getContext('2d');
 			var img1 = new Image();
 
-			// Draw the map once the image is fully loaded
-			img1.onload = function () {
-			ctx.drawImage(img1, 0, 0, BoxSize, BoxSize);
-			};
+				// Draw the map once the image is fully loaded
+				img1.onload = function () {
+				if (Number(MapSource) !== 0) {
+					return;
+				}
+				ctx.drawImage(img1, 0, 0, BoxSize, BoxSize);
+				};
 
 			// If loading fails (slow internet, temporary outage), retry later
 			img1.onerror = function () {
