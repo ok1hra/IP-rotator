@@ -1008,11 +1008,38 @@ var LAND_OUTLINES = [];
 	var graylineCacheCanvas = null;
 	var graylineCacheKey = "";
 
+	function drawSubsolarPoint(ctx, subsolar, centerLat, centerLon, mapRadiusPx, zoomKm){
+		if(!subsolar){
+			return;
+		}
+		var p = projectAzimuthal(subsolar.lat, subsolar.lon, centerLat, centerLon, mapRadiusPx, zoomKm);
+		if(!p){
+			return;
+		}
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
+		ctx.clip();
+		ctx.shadowColor = "rgba(255, 220, 90, 0.80)";
+		ctx.shadowBlur = 12;
+		ctx.fillStyle = "#ffd84d";
+		ctx.beginPath();
+		ctx.arc(p.x, p.y, 4.5, 0, 2 * Math.PI);
+		ctx.fill();
+		ctx.shadowBlur = 0;
+		ctx.fillStyle = "rgba(255, 248, 210, 0.95)";
+		ctx.beginPath();
+		ctx.arc(p.x, p.y, 1.8, 0, 2 * Math.PI);
+		ctx.fill();
+		ctx.restore();
+	}
+
 	function drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm){
 		if(!GraylineNtpOk || GraylineEpoch <= 0){
 			return;
 		}
 		var theme = getMapThemeStyle();
+		var subsolar = getSubsolarPoint(Math.floor(GraylineEpoch / 60) * 60);
 		if(!graylineCacheCanvas){
 			graylineCacheCanvas = document.createElement('canvas');
 			graylineCacheCanvas.width = BoxSize;
@@ -1023,7 +1050,6 @@ var LAND_OUTLINES = [];
 		if(graylineCacheKey !== cacheKey){
 			var gctx = graylineCacheCanvas.getContext('2d');
 			gctx.clearRect(0, 0, BoxSize, BoxSize);
-			var subsolar = getSubsolarPoint(minuteEpoch);
 			var step = 3;
 			var maxAlpha = Math.max(0, Math.min(100, Number(GraylineDarkness))) / 100;
 			for(var py=0; py<BoxSize; py+=step){
@@ -1056,6 +1082,7 @@ var LAND_OUTLINES = [];
 		ctx.drawImage(graylineCacheCanvas, 0, 0);
 		ctx.filter = "none";
 		ctx.restore();
+		drawSubsolarPoint(ctx, subsolar, centerLat, centerLon, mapRadiusPx, zoomKm);
 	}
 
 	function drawOutsideCircleMask(ctx, mapRadiusPx){
