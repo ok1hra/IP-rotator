@@ -3797,7 +3797,7 @@ void http(){
             if(ELEVATION==false){
               webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Azimuth Map Control</button></a>"));
             }else{
-              webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Elevation Map Control</button></a>"));
+              webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=570,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Elevation Map Control</button></a>"));
             }
           #endif
           // END STATUS

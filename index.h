@@ -10,6 +10,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 		html, body {
 			font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;
 			background-color: #000;
+			overflow: hidden;
 		}
 		body {
 			width: 600px;
@@ -195,12 +196,27 @@ const char MAIN_page[] PROGMEM = R"=====(
 		info.innerHTML = "";
 	}
 
+	function isElevationVectorMode(){
+		return Number(MapSource) === 1 && Number(Elevation) === 1;
+	}
+
+	function updatePageLayout(){
+		var statusWrap = document.querySelector(".second");
+		if(isElevationVectorMode()){
+			document.body.style.minHeight = "560px";
+			if(statusWrap){ statusWrap.style.top = "452px"; }
+		}else{
+			document.body.style.minHeight = "710px";
+			if(statusWrap){ statusWrap.style.top = "620px"; }
+		}
+	}
+
 	function updateMapZoomControl(){
 		var wrap = document.getElementById("MapZoomControl");
 		var slider = document.getElementById("MapZoomSlider");
 		var value = document.getElementById("MapZoomValue");
 		if(!wrap || !slider || !value){ return; }
-		if(Number(MapSource) === 1){
+		if(Number(MapSource) === 1 && Number(Elevation) !== 1){
 			wrap.style.display = "block";
 			slider.value = Number(MapZoomKm);
 			value.innerHTML = String(MapZoomKm) + " km";
@@ -210,7 +226,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	}
 
 	function persistMapZoom(){
-		if(Number(MapSource) !== 1){
+		if(Number(MapSource) !== 1 || Number(Elevation) === 1){
 			return;
 		}
 		var http = new XMLHttpRequest();
@@ -231,7 +247,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	function updateNtpStatus(){
 		var info = document.getElementById("NtpStatus");
 		if(!info){ return; }
-		if(Number(MapSource)!==1){
+		if(Number(MapSource)!==1 || Number(Elevation)===1){
 			info.innerHTML = "";
 			return;
 		}
@@ -328,6 +344,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	    if (this.readyState == 4 && this.status == 200) {
 				MapSource = this.responseText;
 				updateMapModeInfo();
+				updatePageLayout();
 				updateMapZoomControl();
 				updateNtpStatus();
 				if (Number(MapSource) === 1) { getGraylineInfo(); }
@@ -397,6 +414,13 @@ const char MAIN_page[] PROGMEM = R"=====(
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				Elevation = this.responseText;
 				// console.log ('Elevation ' + Elevation);
+				updatePageLayout();
+				updateMapZoomControl();
+				updateNtpStatus();
+				AZ(Azimuth);
+				Static();
+				StaticBot();
+				map();
 	    }
 	  };
 	  ohttp.open("GET", "readElevation", true);
@@ -410,7 +434,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 				MapZoomKm = Number(this.value);
 				updateMapModeInfo();
 				updateMapZoomControl();
-				if (Number(MapSource) === 1) {
+				if (Number(MapSource) === 1 && Number(Elevation) !== 1) {
 					map();
 					scheduleMapZoomSave();
 				}
@@ -419,7 +443,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 				MapZoomKm = Number(this.value);
 				updateMapModeInfo();
 				updateMapZoomControl();
-				if (Number(MapSource) === 1) {
+				if (Number(MapSource) === 1 && Number(Elevation) !== 1) {
 					map();
 					persistMapZoom();
 				}
@@ -1220,6 +1244,67 @@ var LAND_OUTLINES = [];
 		ctx.drawImage(locatorFillCacheCanvas, 0, 0);
 	}
 
+	function drawElevationSkyMap(){
+		var c = document.getElementById('Map');
+		if (!c.getContext) { return; }
+		var ctx = c.getContext('2d');
+		var mapRadiusPx = BoxSize / 2 * 0.9;
+
+		ctx.clearRect(0, 0, BoxSize, BoxSize);
+		ctx.fillStyle = "#000";
+		ctx.fillRect(0, 0, BoxSize, BoxSize);
+
+		ctx.save();
+		ctx.beginPath();
+		ctx.moveTo(Xcenter - mapRadiusPx, Ycenter);
+		ctx.arc(Xcenter, Ycenter, mapRadiusPx, Math.PI, 2 * Math.PI);
+		ctx.closePath();
+		ctx.clip();
+
+		var sky = ctx.createLinearGradient(0, Ycenter - mapRadiusPx, 0, Ycenter);
+		sky.addColorStop(0.00, "#000208");
+		sky.addColorStop(0.18, "#040916");
+		sky.addColorStop(0.40, "#0b1020");
+		sky.addColorStop(0.62, "#260914");
+		sky.addColorStop(0.80, "#5f110b");
+		sky.addColorStop(0.93, "#d13b00");
+		sky.addColorStop(1.00, "#240601");
+		ctx.fillStyle = sky;
+		ctx.fillRect(0, Ycenter - mapRadiusPx, BoxSize, mapRadiusPx);
+
+		var glow = ctx.createRadialGradient(Xcenter, Ycenter + mapRadiusPx * 0.01, mapRadiusPx * 0.01, Xcenter, Ycenter + mapRadiusPx * 0.01, mapRadiusPx * 0.84);
+		glow.addColorStop(0.00, "rgba(255,220,84,0.14)");
+		glow.addColorStop(0.16, "rgba(255,140,24,0.22)");
+		glow.addColorStop(0.34, "rgba(228,68,10,0.22)");
+		glow.addColorStop(0.60, "rgba(104,10,16,0.18)");
+		glow.addColorStop(1.00, "rgba(0,0,0,0)");
+		ctx.fillStyle = glow;
+		ctx.fillRect(Xcenter - mapRadiusPx, Ycenter - mapRadiusPx, mapRadiusPx * 2, mapRadiusPx * 1.02);
+
+		var band = ctx.createLinearGradient(0, Ycenter - mapRadiusPx * 0.14, 0, Ycenter);
+		band.addColorStop(0.00, "rgba(255,136,30,0.00)");
+		band.addColorStop(0.42, "rgba(255,86,10,0.10)");
+		band.addColorStop(0.76, "rgba(232,44,0,0.28)");
+		band.addColorStop(1.00, "rgba(255,170,26,0.30)");
+		ctx.fillStyle = band;
+		ctx.fillRect(0, Ycenter - mapRadiusPx * 0.14, BoxSize, mapRadiusPx * 0.14);
+
+		var texture = ctx.createLinearGradient(0, Ycenter - mapRadiusPx * 0.70, 0, Ycenter - mapRadiusPx * 0.08);
+		texture.addColorStop(0.00, "rgba(255,110,18,0.00)");
+		texture.addColorStop(0.55, "rgba(232,58,0,0.12)");
+		texture.addColorStop(1.00, "rgba(168,18,0,0.18)");
+		ctx.fillStyle = texture;
+		for(var y = Ycenter - mapRadiusPx * 0.72; y < Ycenter - mapRadiusPx * 0.08; y += 16){
+			var phase = ((y - (Ycenter - mapRadiusPx * 0.72)) / 16) % 2;
+			for(var x = -20; x < BoxSize + 20; x += 46){
+				var ox = phase ? 12 : 0;
+				ctx.fillRect(x + ox, y, 28, 5);
+			}
+		}
+
+		ctx.restore();
+	}
+
 	function drawLocatorMapCanvas(centerLat, centerLon, mapRadiusPx, zoomKm){
 		var theme = getMapThemeStyle();
 		var c = document.getElementById('Map');
@@ -1268,6 +1353,10 @@ var LAND_OUTLINES = [];
 	}
 
 	function drawLocatorMap(){
+		if(isElevationVectorMode()){
+			drawElevationSkyMap();
+			return;
+		}
 		var mapRadiusPx = BoxSize / 2 * 0.9;
 		var center = maidenheadToLatLon(MapLocator);
 		if(!center){
@@ -1323,6 +1412,10 @@ var LAND_OUTLINES = [];
 			return;
 		}
 		if (Number(MapSource) === 1) {
+			if (Number(Elevation) === 1) {
+				drawElevationSkyMap();
+				return;
+			}
 			var m = document.getElementById('Map');
 			if (m && m.getContext) {
 				var mctx = m.getContext('2d');
@@ -1610,6 +1703,10 @@ var LAND_OUTLINES = [];
 	function StaticBot(){
 	  var con = document.getElementById("DirLine");
 	  var dirline = con.getContext("2d");
+		dirline.clearRect(0, 0, BoxSize, BoxSize);
+		if(Elevation!=0){
+			return;
+		}
 
 	  // direction line under map
 	  dirline.beginPath();
