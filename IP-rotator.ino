@@ -119,7 +119,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260416";
+const char* REV = "20260417";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -143,7 +143,7 @@ byte MapSource = 1;          // 0 = URL bitmap, 1 = locator-based map
 String MapLocator = "JO60UC";
 unsigned int MapZoomKm = 20000;
 String GraylineNtpServer = "pool.ntp.org";
-byte GraylineDarkness = 73;
+byte GraylineDarkness = 80;
 byte MapTheme = 1;
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -radius 500 -num_times 1 -output ./OK500.png
@@ -976,12 +976,12 @@ void setup() {
 
   // 325 - GraylineDarkness
   if(EEPROM.read(325)==0xff){
-    GraylineDarkness = 73;
+    GraylineDarkness = 80;
   }else{
     if(EEPROM.readByte(325) <= 100){
       GraylineDarkness = EEPROM.readByte(325);
     }else{
-      GraylineDarkness = 73;
+      GraylineDarkness = 80;
     }
   }
 
@@ -1542,6 +1542,7 @@ void setup() {
    ajaxserver.on("/readMapTheme", handleMapTheme);
    ajaxserver.on("/readGraylineDarkness", handleGraylineDarkness);
    ajaxserver.on("/readGraylineInfo", handleGraylineInfo);
+   ajaxserver.on("/readRev", handleRev);
    ajaxserver.on("/map50.js", handleMap50js);
    ajaxserver.on("/set", handleSet);
    ajaxserver.on("/cal", handleCal);
@@ -6033,6 +6034,9 @@ void handleGraylineInfo() {
   }else{
     ajaxserver.send(200, "text/plane", "0|0");
   }
+}
+void handleRev() {
+  ajaxserver.send(200, "text/plane", String(REV));
 }
 void handleMap50js() {
   ajaxserver.send_P(200, "application/javascript", MAP50_JS);

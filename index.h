@@ -137,7 +137,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 
 				</span>
 				<br>
-				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="NtpStatus" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
+				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="NtpStatus" style="color: #666; font-size: 73%"></span><span id="ReleaseStatus" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
 			</p>
 		</div>
 	</div>
@@ -157,7 +157,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var MapLocator = "JO60UC";
 	var MapZoomKm = 5000;
 	var MapTheme = 1;
-	var GraylineDarkness = 44;
+	var GraylineDarkness = 80;
 	var GraylineEpoch = 0;
 	var GraylineNtpOk = false;
 	var GraylineMinuteKey = "";
@@ -165,6 +165,9 @@ const char MAIN_page[] PROGMEM = R"=====(
 	var OnlineTimeStamp = 0;
 	var Elevation = 0; 
 	var MapZoomSaveTimer = 0;
+	var FirmwareRev = "";
+	var LatestReleaseTag = "";
+	var ReleaseCheckDone = false;
 	
 	var Xcenter = BoxSize/2;
 	var Ycenter = BoxSize/2;
@@ -175,6 +178,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 	setInterval(function() { getData();}, 500); //mSeconds update rate
 	setInterval(function() { CheckOnline();}, 2000); //mSeconds update rate
 	setInterval(function() { getGraylineInfo();}, 30000); // update UTC/NTP status for grayline
+	setInterval(function() { checkLatestRelease();}, 21600000); // 6h release check
 	setInterval(function() { if (AzimuthPulseStart > 0) { AZ(Azimuth); } }, 40); // short pulse animation after azimuth change
 	getSet();
 //	setTimeout(() => { map(); }, 1000);
@@ -256,6 +260,53 @@ const char MAIN_page[] PROGMEM = R"=====(
 		}else{
 			info.innerHTML = " | NTP no answer";
 		}
+	}
+
+	function normalizeVersionDigits(versionText){
+		var digits = String(versionText || "").replace(/[^0-9]/g, "");
+		return digits.length ? digits : "";
+	}
+
+	function updateReleaseStatus(){
+		var info = document.getElementById("ReleaseStatus");
+		if(!info){ return; }
+		if(!FirmwareRev || !LatestReleaseTag){
+			info.innerHTML = "";
+			return;
+		}
+		var currentDigits = normalizeVersionDigits(FirmwareRev);
+		var latestDigits = normalizeVersionDigits(LatestReleaseTag);
+		if(!currentDigits || !latestDigits){
+			info.innerHTML = "";
+			return;
+		}
+		if(Number(latestDigits) > Number(currentDigits)){
+			info.innerHTML = " | <a href='https://github.com/ok1hra/IP-rotator/releases/latest' target='_blank' style='color:#ffd36a;'>New FW " + LatestReleaseTag + "</a>";
+		}else{
+			info.innerHTML = " | FW up to date";
+		}
+	}
+
+	function checkLatestRelease(){
+		if(!FirmwareRev){
+			return;
+		}
+		var rhttp = new XMLHttpRequest();
+		rhttp.onreadystatechange = function() {
+			if (this.readyState == 4) {
+				if (this.status == 200) {
+					try{
+						var data = JSON.parse(this.responseText);
+						LatestReleaseTag = String(data.tag_name || "");
+						ReleaseCheckDone = true;
+						updateReleaseStatus();
+					}catch(e){
+					}
+				}
+			}
+		};
+		rhttp.open("GET", "https://api.github.com/repos/ok1hra/IP-rotator/releases/latest", true);
+		rhttp.send();
 	}
 
 	function getGraylineInfo() {
@@ -425,6 +476,19 @@ const char MAIN_page[] PROGMEM = R"=====(
 	  };
 	  ohttp.open("GET", "readElevation", true);
 	  ohttp.send();
+
+	  var revhttp = new XMLHttpRequest();
+	  revhttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				FirmwareRev = String(this.responseText || "").trim();
+				updateReleaseStatus();
+				if(!ReleaseCheckDone){
+					checkLatestRelease();
+				}
+	    }
+	  };
+	  revhttp.open("GET", "readRev", true);
+	  revhttp.send();
 
 		getGraylineInfo();
 
