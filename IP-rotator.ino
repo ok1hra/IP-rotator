@@ -4568,8 +4568,6 @@ void handleSet() {
   String mapThemeSELECT3= "";
   String mapThemeSELECT4= "";
   String mapThemeSELECT5= "";
-  String mapThemeSELECT6= "";
-  String mapThemeSELECT7= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -4875,7 +4873,7 @@ void handleSet() {
       mapthemeERR = " Missing value";
     }else{
       int NewMapTheme = ajaxserver.arg("maptheme").toInt();
-      if(NewMapTheme < 0 || NewMapTheme > 4){
+      if(NewMapTheme < 0 || NewMapTheme > 5){
         mapthemeERR = " Invalid value";
       }else{
         mapthemeERR = "";
@@ -5309,8 +5307,6 @@ if(MapTheme==0){
   mapThemeSELECT3 = "";
   mapThemeSELECT4 = "";
   mapThemeSELECT5 = "";
-  mapThemeSELECT6 = "";
-  mapThemeSELECT7 = "";
 }else if(MapTheme==1){
   mapThemeSELECT0 = "";
   mapThemeSELECT1 = " selected";
@@ -5318,8 +5314,6 @@ if(MapTheme==0){
   mapThemeSELECT3 = "";
   mapThemeSELECT4 = "";
   mapThemeSELECT5 = "";
-  mapThemeSELECT6 = "";
-  mapThemeSELECT7 = "";
 }else if(MapTheme==2){
   mapThemeSELECT0 = "";
   mapThemeSELECT1 = "";
@@ -5327,8 +5321,6 @@ if(MapTheme==0){
   mapThemeSELECT3 = "";
   mapThemeSELECT4 = "";
   mapThemeSELECT5 = "";
-  mapThemeSELECT6 = "";
-  mapThemeSELECT7 = "";
 }else if(MapTheme==3){
   mapThemeSELECT0 = "";
   mapThemeSELECT1 = "";
@@ -5336,8 +5328,6 @@ if(MapTheme==0){
   mapThemeSELECT3 = " selected";
   mapThemeSELECT4 = "";
   mapThemeSELECT5 = "";
-  mapThemeSELECT6 = "";
-  mapThemeSELECT7 = "";
 }else if(MapTheme==4){
   mapThemeSELECT0 = "";
   mapThemeSELECT1 = "";
@@ -5345,35 +5335,13 @@ if(MapTheme==0){
   mapThemeSELECT3 = "";
   mapThemeSELECT4 = " selected";
   mapThemeSELECT5 = "";
-  mapThemeSELECT6 = "";
-  mapThemeSELECT7 = "";
-}else if(MapTheme==5){
-  mapThemeSELECT0 = "";
-  mapThemeSELECT1 = "";
-  mapThemeSELECT2 = "";
-  mapThemeSELECT3 = "";
-  mapThemeSELECT4 = "";
-  mapThemeSELECT5 = " selected";
-  mapThemeSELECT6 = "";
-  mapThemeSELECT7 = "";
-}else if(MapTheme==6){
-  mapThemeSELECT0 = "";
-  mapThemeSELECT1 = "";
-  mapThemeSELECT2 = "";
-  mapThemeSELECT3 = "";
-  mapThemeSELECT4 = "";
-  mapThemeSELECT5 = "";
-  mapThemeSELECT6 = " selected";
-  mapThemeSELECT7 = "";
 }else{
   mapThemeSELECT0 = "";
   mapThemeSELECT1 = "";
   mapThemeSELECT2 = "";
   mapThemeSELECT3 = "";
   mapThemeSELECT4 = "";
-  mapThemeSELECT5 = "";
-  mapThemeSELECT6 = "";
-  mapThemeSELECT7 = " selected";
+  mapThemeSELECT5 = " selected";
 }
 
 // if(AZsource==true){
@@ -5581,13 +5549,9 @@ if(ACmotor==true){
   HtmlSrc += mapThemeSELECT4;
   HtmlSrc +=">Night vision</option><option value='5'";
   HtmlSrc += mapThemeSELECT5;
-  HtmlSrc +=">Neon magma</option><option value='6'";
-  HtmlSrc += mapThemeSELECT6;
-  HtmlSrc +=">Ice laser</option><option value='7'";
-  HtmlSrc += mapThemeSELECT7;
-  HtmlSrc +=">Synthwave</option></select><span style='color:red;'>";
+  HtmlSrc +=">Sky blue</option></select><span style='color:red;'>";
   HtmlSrc += mapthemeERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 360px;'>Calm marine is relaxed for long watching. Night radar is technical with clearer contrast. Warm atlas is softer indoors. Amber terminal feels like classic radio gear. Night vision is vivid green instrumentation. Neon magma is hot and high-energy. Ice laser is cold, sharp and very contrasty. Synthwave is bold and theatrical.</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 360px;'>Calm marine is relaxed for long watching. Night radar is technical with clearer contrast. Warm atlas is softer indoors. Amber terminal feels like classic radio gear. Night vision is vivid green instrumentation. Sky blue is brighter, airy and map-like.</span></span></td></tr>\n";
   HtmlSrc +="<tr id='graylineNtpRow'";
   HtmlSrc += graylineNtpRowStyle;
   HtmlSrc +="><td class='tdr'><label for='graylinentp'>NTP server for grayline:</label></td><td><input type='text' id='graylinentp' name='graylinentp' size='24' value='";
@@ -6064,7 +6028,7 @@ void handleGraylineDarkness() {
 }
 void handleGraylineInfo() {
   time_t now;
-  if(MapSource==1 && GraylineUtcAvailable(&now)){
+  if(GraylineUtcAvailable(&now)){
     ajaxserver.send(200, "text/plane", String("1|") + String((unsigned long)now));
   }else{
     ajaxserver.send(200, "text/plane", "0|0");

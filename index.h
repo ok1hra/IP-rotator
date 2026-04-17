@@ -268,7 +268,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 				GraylineEpoch = GraylineNtpOk ? Number(parts[1] || 0) : 0;
 				GraylineMinuteKey = GraylineNtpOk ? String(Math.floor(GraylineEpoch / 60)) : "";
 				updateNtpStatus();
-				if (Number(MapSource) === 1 && oldMinuteKey !== GraylineMinuteKey) {
+				if (oldMinuteKey !== GraylineMinuteKey) {
 					map();
 				}
 	    }
@@ -641,29 +641,11 @@ var LAND_OUTLINES = [];
 		}
 		if(Number(MapTheme)===5){
 			return {
-				mapBg: "#1a0906",
-				ring: "rgba(255, 86, 38, 0.22)",
-				landFill: "rgba(211,76,32,0.80)",
-				landStroke: "rgba(255,194,92,0.96)",
-				grayline: "20,4,0"
-			};
-		}
-		if(Number(MapTheme)===6){
-			return {
-				mapBg: "#06111b",
-				ring: "rgba(90, 208, 255, 0.22)",
-				landFill: "rgba(48,123,187,0.78)",
-				landStroke: "rgba(191,248,255,0.96)",
-				grayline: "0,6,14"
-			};
-		}
-		if(Number(MapTheme)===7){
-			return {
-				mapBg: "#120819",
-				ring: "rgba(255, 80, 182, 0.20)",
-				landFill: "rgba(123,54,178,0.80)",
-				landStroke: "rgba(255,146,228,0.96)",
-				grayline: "8,0,16"
+				mapBg: "#000030",
+				ring: "rgba(214, 226, 255, 0.22)",
+				landFill: "rgba(220,234,216,0.82)",
+				landStroke: "rgba(248,255,245,0.98)",
+				grayline: "4,10,20"
 			};
 		}
 		return {
@@ -1088,6 +1070,12 @@ var LAND_OUTLINES = [];
 		return (epochSec / 86400) + 2440587.5;
 	}
 
+	function normalize360(angle){
+		var a = angle % 360;
+		if(a < 0){ a += 360; }
+		return a;
+	}
+
 	function getSubsolarPoint(epochSec){
 		var jd = julianDayFromUnix(epochSec);
 		var n = jd - 2451545.0;
@@ -1111,6 +1099,62 @@ var LAND_OUTLINES = [];
 		};
 	}
 
+	function getSublunarPoint(epochSec){
+		var d = julianDayFromUnix(epochSec) - 2451543.5;
+		var N = normalize360(125.1228 - 0.0529538083 * d);
+		var i = 5.1454;
+		var w = normalize360(318.0634 + 0.1643573223 * d);
+		var a = 60.2666;
+		var e = 0.054900;
+		var M = normalize360(115.3654 + 13.0649929509 * d);
+
+		var MRad = degToRad(M);
+		var E = M + (180 / Math.PI) * e * Math.sin(MRad) * (1 + e * Math.cos(MRad));
+		var ERad = degToRad(E);
+		var xv = a * (Math.cos(ERad) - e);
+		var yv = a * (Math.sqrt(1 - e * e) * Math.sin(ERad));
+		var r = Math.hypot(xv, yv);
+		var Ls = normalize360(280.460 + 0.9856474 * d);
+		var Ms = normalize360(357.528 + 0.9856003 * d);
+		var Lm = normalize360(N + w + M);
+		var Dm = normalize360(Lm - Ls);
+		var Ev = 1.2739 * Math.sin(degToRad(2 * Dm - M));
+		var Ae = 0.1858 * Math.sin(degToRad(Ms));
+		var A3 = 0.37 * Math.sin(degToRad(Ms));
+		var MmP = M + Ev - Ae - A3;
+		var Ec = 6.2886 * Math.sin(degToRad(MmP));
+		var A4 = 0.214 * Math.sin(degToRad(2 * MmP));
+		var lP = Lm + Ev + Ec - Ae + A4;
+		var V = 0.6583 * Math.sin(degToRad(2 * (lP - Ls)));
+		var lPP = lP + V;
+		var NP = N - 0.16 * Math.sin(degToRad(Ms));
+		var NRad = degToRad(NP);
+		var iRad = degToRad(i);
+		var wrv = degToRad(lPP - NP);
+		var rr = (a * (1 - e * e)) / (1 + e * Math.cos(degToRad(MmP + Ec)));
+
+		var xh = rr * (Math.cos(NRad) * Math.cos(wrv) - Math.sin(NRad) * Math.sin(wrv) * Math.cos(iRad));
+		var yh = rr * (Math.sin(NRad) * Math.cos(wrv) + Math.cos(NRad) * Math.sin(wrv) * Math.cos(iRad));
+		var zh = rr * (Math.sin(wrv) * Math.sin(iRad));
+
+		var lonecl = Math.atan2(yh, xh);
+		var latecl = Math.atan2(zh, Math.hypot(xh, yh));
+		var ecl = degToRad(23.4393 - 3.563e-7 * d);
+
+		var xe = Math.cos(lonecl) * Math.cos(latecl);
+		var ye = Math.sin(lonecl) * Math.cos(latecl) * Math.cos(ecl) - Math.sin(latecl) * Math.sin(ecl);
+		var ze = Math.sin(lonecl) * Math.cos(latecl) * Math.sin(ecl) + Math.sin(latecl) * Math.cos(ecl);
+
+		var raDeg = normalize360(Math.atan2(ye, xe) * 180 / Math.PI);
+		var decDeg = Math.atan2(ze, Math.hypot(xe, ye)) * 180 / Math.PI;
+		var jd = julianDayFromUnix(epochSec);
+		var gmst = normalize360(280.46061837 + 360.98564736629 * (jd - 2451545.0));
+		return {
+			lat: decDeg,
+			lon: normalizeDegrees(raDeg - gmst)
+		};
+	}
+
 	function solarAltitudeDeg(latDeg, lonDeg, subsolar){
 		var latRad = degToRad(latDeg);
 		var subLatRad = degToRad(subsolar.lat);
@@ -1125,11 +1169,11 @@ var LAND_OUTLINES = [];
 	var graylineCacheCanvas = null;
 	var graylineCacheKey = "";
 
-	function drawSubsolarPoint(ctx, subsolar, centerLat, centerLon, mapRadiusPx, zoomKm){
-		if(!subsolar){
+	function drawCelestialPoint(ctx, body, centerLat, centerLon, mapRadiusPx, zoomKm, baseColor, coreColor, sizePx, glowColor){
+		if(!body){
 			return;
 		}
-		var p = projectAzimuthal(subsolar.lat, subsolar.lon, centerLat, centerLon, mapRadiusPx, zoomKm);
+		var p = projectAzimuthal(body.lat, body.lon, centerLat, centerLon, mapRadiusPx, zoomKm);
 		if(!p){
 			return;
 		}
@@ -1137,18 +1181,26 @@ var LAND_OUTLINES = [];
 		ctx.beginPath();
 		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
 		ctx.clip();
-		ctx.shadowColor = "rgba(255, 220, 90, 0.80)";
+		ctx.shadowColor = glowColor;
 		ctx.shadowBlur = 12;
-		ctx.fillStyle = "#ffd84d";
+		ctx.fillStyle = baseColor;
 		ctx.beginPath();
-		ctx.arc(p.x, p.y, 4.5, 0, 2 * Math.PI);
+		ctx.arc(p.x, p.y, sizePx, 0, 2 * Math.PI);
 		ctx.fill();
 		ctx.shadowBlur = 0;
-		ctx.fillStyle = "rgba(255, 248, 210, 0.95)";
+		ctx.fillStyle = coreColor;
 		ctx.beginPath();
-		ctx.arc(p.x, p.y, 1.8, 0, 2 * Math.PI);
+		ctx.arc(p.x, p.y, Math.max(1.4, sizePx * 0.38), 0, 2 * Math.PI);
 		ctx.fill();
 		ctx.restore();
+	}
+
+	function drawSubsolarPoint(ctx, subsolar, centerLat, centerLon, mapRadiusPx, zoomKm){
+		drawCelestialPoint(ctx, subsolar, centerLat, centerLon, mapRadiusPx, zoomKm, "#ffd84d", "rgba(255, 248, 210, 0.98)", 5.2, "rgba(255, 220, 90, 0.88)");
+	}
+
+	function drawMoonPoint(ctx, sublunar, centerLat, centerLon, mapRadiusPx, zoomKm){
+		drawCelestialPoint(ctx, sublunar, centerLat, centerLon, mapRadiusPx, zoomKm, "#a8adb3", "rgba(248, 250, 255, 0.92)", 3.8, "rgba(196, 206, 224, 0.55)");
 	}
 
 	function drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm){
@@ -1176,14 +1228,14 @@ var LAND_OUTLINES = [];
 						continue;
 					}
 					var altDeg = solarAltitudeDeg(sample.lat, sample.lon, subsolar);
-					if(altDeg >= 2){
+					if(altDeg >= 1){
 						continue;
 					}
 					var alpha = 0;
-					if(altDeg <= -10){
+					if(altDeg <= -5){
 						alpha = maxAlpha;
 					}else{
-						alpha = maxAlpha * ((2 - altDeg) / 12);
+						alpha = maxAlpha * ((1 - altDeg) / 6);
 					}
 					gctx.fillStyle = "rgba(" + theme.grayline + "," + alpha.toFixed(3) + ")";
 					gctx.fillRect(px, py, step, step);
@@ -1195,11 +1247,28 @@ var LAND_OUTLINES = [];
 		ctx.beginPath();
 		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
 		ctx.clip();
-		ctx.filter = "blur(3px)";
+		ctx.filter = "blur(0px)";
 		ctx.drawImage(graylineCacheCanvas, 0, 0);
 		ctx.filter = "none";
 		ctx.restore();
 		drawSubsolarPoint(ctx, subsolar, centerLat, centerLon, mapRadiusPx, zoomKm);
+		drawMoonPoint(ctx, getSublunarPoint(minuteEpoch), centerLat, centerLon, mapRadiusPx, zoomKm);
+	}
+
+	function drawBitmapSunOverlay(ctx){
+		if(!GraylineNtpOk || GraylineEpoch <= 0){
+			return;
+		}
+		var center = maidenheadToLatLon(MapLocator);
+		if(!center){
+			center = maidenheadToLatLon("JO60UC");
+		}
+		if(!center){
+			return;
+		}
+		var minuteEpoch = Math.floor(GraylineEpoch / 60) * 60;
+		drawCelestialPoint(ctx, getSubsolarPoint(minuteEpoch), center.lat, center.lon, BoxSize / 2 * 0.9, 20000, "#ffd84d", "rgba(255, 248, 210, 0.98)", 6.0, "rgba(255, 220, 90, 0.95)");
+		drawCelestialPoint(ctx, getSublunarPoint(minuteEpoch), center.lat, center.lon, BoxSize / 2 * 0.9, 20000, "#a8adb3", "rgba(248, 250, 255, 0.96)", 4.5, "rgba(196, 206, 224, 0.65)");
 	}
 
 	function drawOutsideCircleMask(ctx, mapRadiusPx){
@@ -1444,6 +1513,7 @@ var LAND_OUTLINES = [];
 					return;
 				}
 				ctx.drawImage(img1, 0, 0, BoxSize, BoxSize);
+				drawBitmapSunOverlay(ctx);
 				};
 
 			// If loading fails (slow internet, temporary outage), retry later
