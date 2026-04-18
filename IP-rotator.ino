@@ -1067,6 +1067,7 @@ void setup() {
    ajaxserver.on("/readMapSource", handleMapSource);
    ajaxserver.on("/readMapLocator", handleMapLocator);
    ajaxserver.on("/readMapZoomKm", handleMapZoomKm);
+   ajaxserver.on("/setMapLocator", handleSetMapLocator);
    ajaxserver.on("/setMapZoomKm", handleSetMapZoomKm);
    ajaxserver.on("/readMapTheme", handleMapTheme);
    ajaxserver.on("/readGraylineDarkness", handleGraylineDarkness);
@@ -4707,6 +4708,33 @@ void handleMapLocator() {
 }
 void handleMapZoomKm() {
   ajaxserver.send(200, "text/plane", String(MapZoomKm) );
+}
+void handleSetMapLocator() {
+  if(!ajaxserver.hasArg("value")){
+    ajaxserver.send(400, "text/plane", "Missing value");
+    return;
+  }
+  String NewMapLocator = String(ajaxserver.arg("value"));
+  NewMapLocator.trim();
+  NewMapLocator.toUpperCase();
+  if ( NewMapLocator.length()!=6
+    || NewMapLocator[0]<'A' || NewMapLocator[0]>'R'
+    || NewMapLocator[1]<'A' || NewMapLocator[1]>'R'
+    || NewMapLocator[2]<'0' || NewMapLocator[2]>'9'
+    || NewMapLocator[3]<'0' || NewMapLocator[3]>'9'
+    || NewMapLocator[4]<'A' || NewMapLocator[4]>'X'
+    || NewMapLocator[5]<'A' || NewMapLocator[5]>'X'){
+    ajaxserver.send(400, "text/plane", "Invalid locator");
+    return;
+  }
+  if(MapLocator != NewMapLocator){
+    MapLocator = NewMapLocator;
+    for (int i=0; i<6; i++){
+      EEPROM.write(267+i, MapLocator[i]);
+    }
+    EEPROM.commit();
+  }
+  ajaxserver.send(200, "text/plane", MapLocator);
 }
 void handleSetMapZoomKm() {
   if(!ajaxserver.hasArg("value")){

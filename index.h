@@ -107,6 +107,26 @@ const char MAIN_page[] PROGMEM = R"=====(
 			accent-color: #8f969a;
 			opacity: 0.72;
 		}
+		.maphint{
+			position: absolute;
+			left: 0;
+			top: 0;
+			z-index: 7;
+			display: none;
+			min-width: 96px;
+			padding: 6px 8px;
+			border-radius: 8px;
+			background: rgba(6, 8, 11, 0.82);
+			border: 1px solid rgba(180, 188, 194, 0.22);
+			box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+			color: rgba(240, 244, 247, 0.95);
+			font-size: 12px;
+			line-height: 1.25;
+			letter-spacing: 0.02em;
+			pointer-events: none;
+			box-sizing: border-box;
+			white-space: nowrap;
+		}
 		a:hover {color: #fff;}
     a { color: #ccc; text-decoration: underline;}
 	</style>
@@ -127,6 +147,7 @@ const char MAIN_page[] PROGMEM = R"=====(
 			</div>
 			<input class="zoomslider" type="range" id="MapZoomSlider" min="1000" max="20000" step="250" value="20000">
 		</div>
+		<div class="maphint" id="MapHint"></div>
 		<div class="second">
 			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
 				<span style="color: #000; background: #666; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
@@ -238,6 +259,34 @@ const char MAIN_page[] PROGMEM = R"=====(
 		http.send();
 	}
 
+	function persistMapLocator(newLocator, onDone){
+		if(Number(MapSource) !== 1 || Number(Elevation) === 1){
+			if(onDone){ onDone(false); }
+			return;
+		}
+		var locator = String(newLocator || "").trim().toUpperCase();
+		if(!/^[A-R]{2}[0-9]{2}[A-X]{2}$/.test(locator)){
+			if(onDone){ onDone(false); }
+			return;
+		}
+		var http = new XMLHttpRequest();
+		http.onreadystatechange = function() {
+			if (this.readyState !== 4) {
+				return;
+			}
+			if (this.status === 200) {
+				MapLocator = String(this.responseText || locator).trim().toUpperCase();
+				updateMapModeInfo();
+				map();
+				if(onDone){ onDone(true, MapLocator); }
+			}else{
+				if(onDone){ onDone(false); }
+			}
+		};
+		http.open("GET", "setMapLocator?value=" + encodeURIComponent(locator), true);
+		http.send();
+	}
+
 	function scheduleMapZoomSave(){
 		if(MapZoomSaveTimer){
 			clearTimeout(MapZoomSaveTimer);
@@ -246,6 +295,41 @@ const char MAIN_page[] PROGMEM = R"=====(
 			MapZoomSaveTimer = 0;
 			persistMapZoom();
 		}, 350);
+	}
+
+	function clampMapZoomKm(value){
+		var zoomKm = Number(value);
+		if(!isFinite(zoomKm)){
+			zoomKm = 20000;
+		}
+		if(zoomKm < 1000){
+			zoomKm = 1000;
+		}
+		if(zoomKm > 20000){
+			zoomKm = 20000;
+		}
+		return zoomKm;
+	}
+
+	function applyMapZoom(nextZoomKm, persistNow){
+		if (Number(MapSource) !== 1 || Number(Elevation) === 1) {
+			return false;
+		}
+		var zoomKm = clampMapZoomKm(nextZoomKm);
+		var changed = zoomKm !== Number(MapZoomKm);
+		MapZoomKm = zoomKm;
+		updateMapModeInfo();
+		updateMapZoomControl();
+		if (!changed) {
+			return false;
+		}
+		map();
+		if (persistNow) {
+			persistMapZoom();
+		} else {
+			scheduleMapZoomSave();
+		}
+		return true;
 	}
 
 	function updateNtpStatus(){
@@ -495,22 +579,10 @@ const char MAIN_page[] PROGMEM = R"=====(
 		var zoomSlider = document.getElementById("MapZoomSlider");
 		if(zoomSlider){
 			zoomSlider.addEventListener("input", function(){
-				MapZoomKm = Number(this.value);
-				updateMapModeInfo();
-				updateMapZoomControl();
-				if (Number(MapSource) === 1 && Number(Elevation) !== 1) {
-					map();
-					scheduleMapZoomSave();
-				}
+				applyMapZoom(this.value, false);
 			});
 			zoomSlider.addEventListener("change", function(){
-				MapZoomKm = Number(this.value);
-				updateMapModeInfo();
-				updateMapZoomControl();
-				if (Number(MapSource) === 1 && Number(Elevation) !== 1) {
-					map();
-					persistMapZoom();
-				}
+				applyMapZoom(this.value, true);
 			});
 		}
 	}
@@ -571,19 +643,172 @@ const char MAIN_page[] PROGMEM = R"=====(
 
 	var mouse = document.getElementById("Mouse");
 	var ctx = mouse.getContext("2d");
+	var mapHint = document.getElementById("MapHint");
+
+	function getControlRadiusPx() {
+		return BoxSize / 2 * 0.95;
+	}
+
+	function getMapRadiusPx() {
+		return BoxSize / 2 * 0.9;
+	}
+
+	function getHoverDistanceZoomKm() {
+		if (Number(MapSource) === 1) {
+			return Number(MapZoomKm);
+		}
+		return 20000;
+	}
+
+	function getHoverLatLon(mousePos) {
+		if (Number(MapSource) !== 1) {
+			return null;
+		}
+		var center = maidenheadToLatLon(MapLocator);
+		if (!center) {
+			center = maidenheadToLatLon("JO60UC");
+		}
+		return inverseProjectAzimuthal(
+			Number(mousePos.x),
+			Number(mousePos.y),
+			center.lat,
+			center.lon,
+			getMapRadiusPx(),
+			Number(MapZoomKm)
+		);
+	}
+
+	function isInsideControlMap(mousePos) {
+		var dx = Number(mousePos.x) - BoxSize / 2;
+		var dy = Number(mousePos.y) - BoxSize / 2;
+		var distance = Math.hypot(dx, dy);
+		var controlRadius = getControlRadiusPx();
+		if (distance > controlRadius) {
+			return false;
+		}
+		if (Number(Elevation) !== 0 && Number(mousePos.y) > BoxSize / 2) {
+			return false;
+		}
+		return true;
+	}
+
+	function getAzimuthForMousePos(mousePos) {
+		var target = Math.atan2(BoxSize/2 - Number(mousePos.y), Number(mousePos.x) - BoxSize/2) * 180 / Math.PI;
+		target = target - 90;
+		if(target < 0){
+			target = Math.abs(target);
+		}else{
+			target = 360 - target;
+		}
+		return Math.round(target);
+	}
+
+	function showMapHint(mousePos) {
+		if (!mapHint || Number(Elevation) !== 0 || !isInsideControlMap(mousePos)) {
+			hideMapHint();
+			return;
+		}
+		var dx = Number(mousePos.x) - BoxSize / 2;
+		var dy = Number(mousePos.y) - BoxSize / 2;
+		var distancePx = Math.hypot(dx, dy);
+		var distanceKm = Math.round((Math.min(distancePx, getMapRadiusPx()) / getMapRadiusPx()) * getHoverDistanceZoomKm());
+		var hintHtml = "Azimuth: <b>" + String(getAzimuthForMousePos(mousePos)) + "&deg;</b><br>Distance: <b>" + String(distanceKm) + " km</b>";
+		var hoverLatLon = getHoverLatLon(mousePos);
+		if (hoverLatLon) {
+			var locatorPrecision = Number(MapZoomKm) <= 2500 ? 6 : 4;
+			hintHtml += "<br>Maidenhead: <b>" + latLonToMaidenhead(hoverLatLon.lat, hoverLatLon.lon, locatorPrecision) + "</b>";
+		}
+		mapHint.innerHTML = hintHtml;
+		mapHint.style.display = "block";
+		var hintWidth = mapHint.offsetWidth;
+		var hintHeight = mapHint.offsetHeight;
+		var left = Number(mousePos.x) + 14;
+		var top = Number(mousePos.y) - hintHeight - 12;
+		if (left + hintWidth > BoxSize - 8) {
+			left = Number(mousePos.x) - hintWidth - 14;
+		}
+		if (left < 8) {
+			left = 8;
+		}
+		if (top < 8) {
+			top = Number(mousePos.y) + 14;
+		}
+		if (top + hintHeight > BoxSize - 8) {
+			top = BoxSize - hintHeight - 8;
+		}
+		mapHint.style.left = String(left) + "px";
+		mapHint.style.top = String(top) + "px";
+	}
+
+	function handleMapRecenter(mousePos) {
+		if (Number(MapSource) !== 1 || Number(Elevation) === 1 || !isInsideControlMap(mousePos)) {
+			return;
+		}
+		var hoverLatLon = getHoverLatLon(mousePos);
+		if (!hoverLatLon) {
+			return;
+		}
+		var newLocator = latLonToMaidenhead(hoverLatLon.lat, hoverLatLon.lon, 6);
+		if (!newLocator || newLocator === String(MapLocator).toUpperCase()) {
+			return;
+		}
+		var confirmText = "Set new map center to " + newLocator + "?";
+		if (!window.confirm(confirmText)) {
+			return;
+		}
+		persistMapLocator(newLocator, function(ok){
+			if(!ok){
+				window.alert("Failed to save new map center.");
+			}
+		});
+	}
+
+	function hideMapHint() {
+		if (!mapHint) {
+			return;
+		}
+		mapHint.style.display = "none";
+	}
 
 	//report the mouse position on click
+	mouse.addEventListener("mousemove", function (evt) {
+	    var mousePos = getMousePos(mouse, evt);
+	    showMapHint(mousePos);
+	}, false);
+
+	mouse.addEventListener("mouseleave", function () {
+	    hideMapHint();
+	}, false);
+
+	mouse.addEventListener("wheel", function (evt) {
+	    var mousePos = getMousePos(mouse, evt);
+	    if (Number(MapSource) !== 1 || Number(Elevation) === 1 || !isInsideControlMap(mousePos)) {
+	    	return;
+	    }
+	    var step = 250;
+	    if (evt.deltaY === 0) {
+	    	return;
+	    }
+	    evt.preventDefault();
+	    var nextZoomKm = Number(MapZoomKm) + (evt.deltaY < 0 ? -step : step);
+	    if (applyMapZoom(nextZoomKm, false)) {
+	    	showMapHint(mousePos);
+	    }
+	}, { passive: false });
+
+	mouse.addEventListener("contextmenu", function (evt) {
+	    evt.preventDefault();
+	    var mousePos = getMousePos(mouse, evt);
+	    handleMapRecenter(mousePos);
+	}, false);
+
 	mouse.addEventListener("click", function (evt) {
 	    var mousePos = getMousePos(mouse, evt);
+	    if (!isInsideControlMap(mousePos)) {
+	    	return;
+	    }
 	    // alert(mousePos.x + ',' + mousePos.y);
-			AZtarget = Math.atan2(BoxSize/2 - Number(mousePos.y), Number(mousePos.x) - BoxSize/2) * 180 / Math.PI;
-			AZtarget = AZtarget - 90;
-			if(AZtarget<0){
-				AZtarget = Math.abs(AZtarget);
-			}else{
-				AZtarget = 360 - AZtarget;
-			}
-			AZtarget = Math.round(AZtarget);
+			AZtarget = getAzimuthForMousePos(mousePos);
 			// alert( AZtarget + '°');
 
 			var http = new XMLHttpRequest();
@@ -664,6 +889,36 @@ var LAND_OUTLINES = [];
 		lat += (loc.charCodeAt(5) - 65) * (2.5/60);
 		lat += 1.25/60;
 		return {lat: lat, lon: lon};
+	}
+
+	function latLonToMaidenhead(latDeg, lonDeg, precision){
+		var lon = Number(lonDeg);
+		var lat = Number(latDeg);
+		if(!isFinite(lat) || !isFinite(lon)){ return ""; }
+		while(lon < -180){ lon += 360; }
+		while(lon >= 180){ lon -= 360; }
+		if(lat > 89.999999){ lat = 89.999999; }
+		if(lat < -89.999999){ lat = -89.999999; }
+		var lonAdj = lon + 180;
+		var latAdj = lat + 90;
+		var fieldLon = Math.floor(lonAdj / 20);
+		var fieldLat = Math.floor(latAdj / 10);
+		var locator = String.fromCharCode(65 + fieldLon) + String.fromCharCode(65 + fieldLat);
+		lonAdj -= fieldLon * 20;
+		latAdj -= fieldLat * 10;
+		var squareLon = Math.floor(lonAdj / 2);
+		var squareLat = Math.floor(latAdj / 1);
+		locator += String(squareLon) + String(squareLat);
+		if(Number(precision) >= 6){
+			lonAdj -= squareLon * 2;
+			latAdj -= squareLat * 1;
+			var subLon = Math.floor(lonAdj / (5/60));
+			var subLat = Math.floor(latAdj / (2.5/60));
+			if(subLon > 23){ subLon = 23; }
+			if(subLat > 23){ subLat = 23; }
+			locator += String.fromCharCode(65 + subLon) + String.fromCharCode(65 + subLat);
+		}
+		return locator;
 	}
 
 	function getMapThemeStyle(){
