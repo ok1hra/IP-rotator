@@ -169,12 +169,6 @@ long TxMqttAzimuthTimer = 0;
 //---------------------------------------------------------
 // #define HWREV 8                     // PCB version [7-8]
 #define OTAWEB                      // enable upload firmware via web
-// #define DS18B20                     // external 1wire Temperature sensor
-// #define BMP280                      // pressure I2C sensor
-// #define HTU21D                      // humidity I2C sensor
-// #define SHT21                       // humidity I2C sensor
-// #define SHT                         // general SHT sensors I2C sensor https://github.com/Sensirion/arduino-sht/blob/master/examples/multiple-sht-sensors/multiple-sht-sensors.ino
-// #define RF69_EXTERNAL_SENSOR        // RX temp and humidity radio sensor RF69
 #define ETHERNET                    // Enable ESP32 ethernet (DHCP IPv4)
 #define ETH_ADDR 0
 #define ETH_TYPE ETH_PHY_LAN8720
@@ -187,8 +181,6 @@ char MACchar[18];
 // #define ETH_CLK ETH_CLOCK_GPIO0_OUT    // settings for ESP32 GATEWAY rev c and older
 // ETH.begin(ETH_ADDR, ETH_POWER, ETH_MDC, ETH_MDIO, ETH_TYPE, ETH_CLK);
 // #define WIFI                     // Enable ESP32 WIFI (DHCP IPv4) - NOT TESTED
-const char* ssid     = "";
-const char* password = "";
 //-------------------------------------------------------------------------------------------------------
 
 #include "esp_adc_cal.h"
@@ -234,35 +226,14 @@ const int greenPWMChannel = 2;
 #include "esp_attr.h"
 
 // values
-char key[100];
+char key[101];
 long MeasureTimer[2]={2800000,300000};   //  millis,timer (5 min)
 
-
-int RainCount;
-String RainCountDayOfMonth;
-bool RainStatus;
 /*
 1mm rain = 15,7cm^2/10 = 1,57ml     <- by rain funnel radius
 10ml = 11,5 pulses = 0,87ml/pulse   <- constanta tilting measuring cup
 */
-float mmInPulse = 0.2 ; // callibration rain 17,7-20,2 mm with 95 pulse
 
-int WindDir = 0;
-int WindDirShift = 0;
-
-long RpmTimer[2]={0,3000};
-long RpmPulse = 987654321;
-long PeriodMinRpmPulse = 987654321;
-String PeriodMinRpmPulseTimestamp;
-long MinRpmPulse;
-String MinRpmPulseTimestamp;
-unsigned int RpmSpeed = 0;
-unsigned long RpmAverage[2]={1,0};  // counter,sum time
-bool RpmInterrupt = false;
-
-int SpeedAlertLimit_ms = 0;
-int SpeedAlert_ms = 3000;
-// bool NeedSpeedAlert_ms = false;
 long AlertTimer[2]={0,60000};
 //  |alert...........|alert........... everry max 1 minutes and with publish max value in period
 
@@ -274,22 +245,14 @@ long WdtTimer=0;
 byte InputByte[21];
 // #define Ser2net                  // Serial to ip proxy - DISABLE if board revision 0.3 or lower
 #define EnableOTA                // Enable flashing ESP32 Over The Air
-int NumberOfEncoderOutputs = 8;  // 2-16
 int EnableSerialDebug     = 0;
 long FreneticModeTimer ;
 #define HTTP_SERVER_PORT  80     // Web server port
-int IncomingSwitchUdpPort;
+#define DEFAULT_SWITCH_UDP_PORT 88
 #define ShiftOut                 // Enable ShiftOut register
 #define UdpAnswer                // Send UDP answer confirm packet
-int BroadcastPort;               // destination broadcast packet port
-bool EnableGroupPrefix = 0;      // enable multi controller control
-bool EnableGroupButton = 0;      // group to one from
-unsigned int GroupButton[8]={1,2,3,4,5,6,7,8};
-byte DetectedRemoteSw[16][4];
-unsigned int DetectedRemoteSwPort[16];
 
 int BaudRate = 115200; // serial debug baudrate
-int SERIAL1_BAUDRATE; // serial1 to IP baudrate
 int incomingByte = 0;   // for incoming serial data
 
 int i = 0;
@@ -350,15 +313,12 @@ int i = 0;
 273-274 - MapZoomKm (1000-20000)
 275-324 - GraylineNtpServer
 325 - GraylineDarkness (0-100)
-326 - MapTheme (0-4)
+326 - MapTheme (0-5)
 
 !! Increment EEPROM_SIZE #define !!
 
 */
 int Altitude = 0;
-bool needEEPROMcommit = false;
-unsigned int RebootWatchdog;
-unsigned int OutputWatchdog;
 unsigned long WatchdogTimer=0;
 
 //ajax
@@ -377,18 +337,13 @@ WiFiServer server(HTTP_SERVER_PORT);
 // Client variables
 char linebuf[80];
 int charcount=0;
-//Are we currently connected?
-boolean connected = false;
 //The udp library class
 WiFiUDP UdpCommand;
 uint8_t buffer[50] = "";
 unsigned char packetBuffer[10];
 int UDPpacketSize;
-byte TxUdpBuffer[8];
 #include <ETH.h>
 static bool eth_connected = false;
-IPAddress RemoteSwIP(0, 0, 0, 0);         // remote UDP IP switch - set from UDP DetectRemote array
-int RemoteSwPort         = 0;             // remote UDP IP switch port
 String HTTP_req;
 #if defined(EnableOTA)
   #include <ESPmDNS.h>
@@ -454,75 +409,6 @@ bool rxShiftInRead;
 #define I2C_SDA 33
 #define I2C_SCL 32
 
-#if defined(BMP280)||defined(HTU21D)||defined(SHT21)
-  // #include <SPI.h>
-  #include <Adafruit_Sensor.h>
-  TwoWire I2Cone = TwoWire(0);
-#endif
-
-#if defined(BMP280)
-  #include <Adafruit_BMP280.h>
-  Adafruit_BMP280 bmp(&I2Cone); // use I2C interface
-  Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
-  Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
-  bool BMP280enable;
-#endif
-
-#if defined(HTU21D)
-  #include "Adafruit_HTU21DF.h"
-  Adafruit_HTU21DF htu = Adafruit_HTU21DF();
-  bool HTU21Denable;
-#endif
-
-#if defined(SHT21)
-  #include "SHT2x.h"
-  SHT2x internal;
-  // SHT2x external;
-#endif
-
-#if defined(SHT)
-  #include "SHTSensor.h"
-  // Sensor with normal i2c address
-  // Sensor 1 with address pin pulled to GND
-  SHTSensor sht1(SHTSensor::SHT3X);
-  // Sensor with alternative i2c address
-  // Sensor 2 with address pin pulled to Vdd
-  // SHTSensor sht2(SHTSensor::SHT3X_ALT);
-#endif
-
-// https://github.com/PaulStoffregen/RadioHead
-#if defined(RF69_EXTERNAL_SENSOR)
-  bool RF69enable;
-  #include <SPI.h>
-  #include <RH_RF69.h>
-  // Change to 434.0 or other frequency, must match RX's freq!
-  #define RF69_FREQ 434.0
-  #define RFM69_RST     -1   // same as LED
-  #define RFM69_CS      0   // "B"
-  #define RFM69_INT     16   // "A"
-
-  // Singleton instance of the radio driver
-  RH_RF69 rf69(RFM69_CS, RFM69_INT);
-
-  int16_t packetnum = 0;  // packet counter, we increment per xmission
-  String received_data;
-  float humidity, temp_f, temp_f2, temp_PT100, temp_dallas;
-  String temp_radio;
-  String humidity_radio;
-  String vbat_radio;
-
-  uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
-  uint8_t len = sizeof(buf);
-#endif
-
-const int RpmPin = 39;
-#if HWREV==8
-  const int RainPin = 36;
-#endif
-#if HWREV==7
-  const int Rain1Pin = 36;
-  const int Rain2Pin = 35;
-#endif
 // const int EnablePin = 13;
 // const int ButtonPin = 34;
 
@@ -531,16 +417,6 @@ const int RpmPin = 39;
   #define TX1 1
   HardwareSerial Serial_one(1);
 #endif
-
-const int MappingRow = 5;
-const long mapping[MappingRow][2] = { // ms > m/s
-  {987654321,0},
-  {120,1},
-  {50,2},
-  {2,4},
-  {1,200},
-};
-// WX end
 
 // SD
 // #define ETH_CLK_MODE ETH_CLOCK_GPIO17_OUT
@@ -571,11 +447,6 @@ bool GraylineUtcAvailable(time_t* nowOut = nullptr){
 }
 
 #define MAX_SRV_CLIENTS 1
-int SerialServerIPport;
-// WiFiServer SerialServer(SerialServerIPport);
-WiFiServer SerialServer;
-WiFiClient SerialServerClients[MAX_SRV_CLIENTS];
-
 int TelnetServerIPport = 23;
 WiFiServer TelnetServer;
 WiFiClient TelnetServerClients[MAX_SRV_CLIENTS];
@@ -587,54 +458,6 @@ int TelnetLoginFails=0;
 long TelnetLoginFailsBanTimer[2]={0,600000};
 int RandomNumber;
 bool FirstListCommands=true;
-
-int CompareInt;
-
-// APRS
-WiFiClient AprsClient;
-boolean AprsON = false;
-uint16_t AprsPort;
-IPAddress aprs_server_ip(0, 0, 0, 0);
-String AprsPassword;
-String AprsCoordinates;
-
-// DS18B20
-#if defined(DS18B20)
-  // #include <OneWire.h>
-  // #include <DallasTemperature.h>
-  // // const int DsPin = 3;
-  // // OneWire ds(DsPin);
-  // // DallasTemperature sensors(&ds);
-  // const int oneWireBus = 13;
-  // OneWire oneWire(oneWireBus);
-  // DallasTemperature sensors(&oneWire);
-  bool ExtTemp = true;
-
-  // Include the libraries we need
-  #include <OneWire.h>
-  #include <DallasTemperature.h>
-  // Data wire is plugged into port 2 on the Arduino
-  #if HWREV==8
-    #define ONE_WIRE_BUS 2
-  #endif
-  #if HWREV==7
-    #define ONE_WIRE_BUS 13
-  #endif
-  #define TEMPERATURE_PRECISION 9 // 9-12
-  // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
-  OneWire oneWire(ONE_WIRE_BUS);
-  // Pass our oneWire reference to Dallas Temperature.
-  DallasTemperature sensors(&oneWire);
-  // arrays to hold device addresses
-  DeviceAddress insideThermometer, outsideThermometer;
-  // Assign address manually. The addresses below will need to be changed
-  // to valid device addresses on your bus. Device address can be retrieved
-  // by using either oneWire.search(deviceAddress) or individually via
-  // sensors.getAddress(deviceAddress, index)
-  // DeviceAddress insideThermometer = { 0x28, 0x1D, 0x39, 0x31, 0x2, 0x0, 0x0, 0xF0 };
-  // DeviceAddress outsideThermometer   = { 0x28, 0x3F, 0x1C, 0x31, 0x2, 0x0, 0x0, 0x2 };
-
-#endif
 
 //-------------------------------------------------------------------------------------------------------
 
@@ -698,15 +521,6 @@ void setup() {
   // for (int i = 0; i < 8; i++) {
   //   pinMode(TestPin[i], INPUT);
   // }
-  #if HWREV==8
-    pinMode(RainPin, INPUT);
-  #endif
-  #if HWREV==7
-    pinMode(Rain1Pin, INPUT);
-    pinMode(Rain2Pin, INPUT);
-  #endif
-
-  pinMode(RpmPin, INPUT);
   // pinMode(EnablePin, OUTPUT);
   // digitalWrite(EnablePin,1);
 
@@ -734,124 +548,6 @@ void setup() {
   while(!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
-
-  #if defined(DS18B20)
-    sensors.begin();
-
-    // locate devices on the bus
-    Serial.print("DS18B20 found ");
-    Serial.print(sensors.getDeviceCount(), DEC);
-    Serial.println(" devices.");
-
-    // report parasite power requirements
-    //  Serial.print("Parasite power is: ");
-    //  if (sensors.isParasitePowerMode()) Serial.println("ON");
-    //  else Serial.println("OFF");
-
-    // Search for devices on the bus and assign based on an index. Ideally,
-    // you would do this to initially discover addresses on the bus and then
-    // use those addresses and manually assign them (see above) once you know
-    // the devices on your bus (and assuming they don't change).
-    //
-    // method 1: by index
-    if (!sensors.getAddress(insideThermometer, 0)){
-      ExtTemp = false;
-      Serial.println("DS18B20 unable to find address for Device 0");
-    }
-    //  if (!sensors.getAddress(outsideThermometer, 1)) Serial.println("Unable to find address for Device 1");
-
-    // method 2: search()
-    // search() looks for the next device. Returns 1 if a new address has been
-    // returned. A zero might mean that the bus is shorted, there are no devices,
-    // or you have already retrieved all of them. It might be a good idea to
-    // check the CRC to make sure you didn't get garbage. The order is
-    // deterministic. You will always get the same devices in the same order
-    //
-    // Must be called before search()
-    //oneWire.reset_search();
-    // assigns the first address found to insideThermometer
-    //if (!oneWire.search(insideThermometer)) Serial.println("Unable to find address for insideThermometer");
-    // assigns the seconds address found to outsideThermometer
-    //if (!oneWire.search(outsideThermometer)) Serial.println("Unable to find address for outsideThermometer");
-
-    // show the addresses we found on the bus
-    Serial.print("DS18B20 device 0 Address: ");
-    printAddress(insideThermometer);
-    Serial.println();
-
-    //  Serial.print("Device 1 Address: ");
-    //  printAddress(outsideThermometer);
-    //  Serial.println();
-
-    // set the resolution to 9 bit per device
-    sensors.setResolution(insideThermometer, TEMPERATURE_PRECISION);
-    //  sensors.setResolution(outsideThermometer, TEMPERATURE_PRECISION);
-
-    Serial.print("DS18B20 device 0 Resolution: ");
-    Serial.print(sensors.getResolution(insideThermometer), DEC);
-    Serial.println();
-
-    //  Serial.print("Device 1 Resolution: ");
-    //  Serial.print(sensors.getResolution(outsideThermometer), DEC);
-    //  Serial.println();
-  #endif
-
-  #if defined(BMP280)
-    // I2Cone.begin(0x76, I2C_SDA, I2C_SCL, 100000); // SDA pin, SCL pin, 100kHz frequency
-    // I2Cone.begin(I2C_SDA, I2C_SCL, (uint32_t)100000); // SDA pin, SCL pin, 100kHz frequency
-    Serial.print("BMP280 sensor init ");
-    if(!bmp.begin(0x76)){
-      Serial.println("failed!");
-      // while (1) delay(10);
-      BMP280enable=false;
-    }else{
-      Serial.println("OK");
-      BMP280enable=true;
-      /* Default settings from datasheet. */
-      bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
-        Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
-        Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
-        Adafruit_BMP280::FILTER_X16,      /* Filtering. */
-        Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
-        bmp_temp->printSensorDetails();
-    }
-  #endif
-
-  #if defined(HTU21D) || defined(SHT)
-    // Wire.begin(I2C_SDA, I2C_SCL);
-  #endif
-  #if defined(HTU21D)
-    Serial.print("HTU21D sensor init ");
-    if(!htu.begin()){
-      Serial.println("failed!");
-      // while (1);
-      HTU21Denable=false;
-    }else{
-      Serial.println("OK");
-      HTU21Denable=true;
-    }
-  #endif
-
-  #if defined(SHT21)
-    Serial.println(__FILE__);
-    Serial.print("SHT2x_LIB_VERSION: \t");
-    Serial.println(SHT2x_LIB_VERSION);
-
-    internal.begin(&I2Cone);
-    // external.begin(&I2Ctwo);
-
-    uint8_t stat = internal.getStatus();
-    Serial.print(stat, HEX);
-    Serial.println();
-    // stat = external.getStatus();
-    // Serial.print(stat, HEX);
-    // Serial.println();
-    Serial.println();
-  #endif
-
-  #if !defined(BMP280) && !defined(HTU21D)
-    // Wire.begin(I2C_SDA, I2C_SCL);
-  #endif
 
   // // SD
   // if(!SD_MMC.begin()){
@@ -989,7 +685,7 @@ void setup() {
   if(EEPROM.read(326)==0xff){
     MapTheme = 1;
   }else{
-    if(EEPROM.readByte(326) <= 4){
+    if(EEPROM.readByte(326) <= 5){
       MapTheme = EEPROM.readByte(326);
     }else{
       MapTheme = 1;
@@ -1193,57 +889,6 @@ void setup() {
     }
   }
 
-
-  // 2-encoder range
-  NumberOfEncoderOutputs = EEPROM.read(2);
-  if(NumberOfEncoderOutputs < 2 || NumberOfEncoderOutputs > 0x0f){
-    NumberOfEncoderOutputs=8;
-  }
-
-  // 4-EnableGroupPrefix
-  // Serial.print("Enable group NET-ID prefix ");
-  if(EEPROM.read(4)<2){
-    EnableGroupPrefix=EEPROM.read(4);
-  }
-  // Serial.println(EnableGroupPrefix);
-
-  // 5-EnableGroupButton
-  if(EEPROM.read(5)<2){
-    EnableGroupButton=EEPROM.read(5);
-  }
-
-  // 6-13 ButtonGroup
-  if(EnableGroupButton==true){
-    for (int i = 0; i < 8; i++) {
-      if(EEPROM.read(6+i)<9){
-        GroupButton[i]=EEPROM.read(6+i);
-      }
-    }
-  }
-
-
-
-
-
-
-
-  SERIAL1_BAUDRATE=EEPROM.readInt(14);
-  SerialServerIPport=EEPROM.readInt(18);
-  IncomingSwitchUdpPort=EEPROM.readInt(22);
-  BroadcastPort=IncomingSwitchUdpPort;
-  RebootWatchdog=EEPROM.readUInt(26);
-  if(RebootWatchdog>10080){
-    RebootWatchdog=0;
-  }
-  OutputWatchdog=EEPROM.readUInt(30);
-  if(OutputWatchdog>10080){
-    OutputWatchdog=0;
-  }
-  // if(RebootWatchdog>0){
-  //   ShiftOutByte[0]=EEPROM.readByte(34);
-  //   ShiftOutByte[1]=EEPROM.readByte(35);
-  //   ShiftOutByte[2]=EEPROM.readByte(36);
-  // }
   TelnetServerClientAuth[0]=EEPROM.readByte(37);
   TelnetServerClientAuth[1]=EEPROM.readByte(38);
   TelnetServerClientAuth[2]=EEPROM.readByte(39);
@@ -1265,6 +910,7 @@ void setup() {
   for(int i=41; i<141; i++){
     key[i-41] = EEPROM.readChar(i);
   }
+  key[100] = '\0';
 
   // YOUR_CALL
   // move after ETH init
@@ -1297,7 +943,7 @@ void setup() {
     mqtt_server_ip[3]=EEPROM.readByte(164);
   }
 
-  if(EEPROM.read(164)==0xff){
+  if(EEPROM.read(165)==0xff){
     MQTT_PORT=1883;
   }else{
     MQTT_PORT = EEPROM.readUShort(165);
@@ -1309,67 +955,10 @@ void setup() {
   }else{
     OneTurnLimitSec = EEPROM.readUShort(220);
   }
-
-
-
-  // RPM
-  MinRpmPulse = EEPROM.readLong(169);
-  if(MinRpmPulse<=0){
-    MinRpmPulse=987654321;
-  }
-
-  // 173
-  if(EEPROM.readByte(173)!=255){
-    MinRpmPulseTimestamp = EEPROM.readString(173);
-  }
-
-  // 199   - APRS ON/OFF;
-  if(EEPROM.read(199)<2){
-    AprsON=EEPROM.read(199);
-  }
-
-  // 200-203 - APRS server IP
-  // 204-207 - APRS server port
-  for(int i=0; i<4; i++){
-    aprs_server_ip[i]=EEPROM.readByte(i+200);
-  }
-  AprsPort = EEPROM.readInt(204);
-
-  // 208-212 - APRS password
-  for (int i=208; i<213; i++){
-    if(EEPROM.read(i)!=0xff){
-      AprsPassword=AprsPassword+char(EEPROM.read(i));
-    }
-  }
-
-  // 213-230 - APRS coordinate
-  // for (int i=213; i<231; i++){
-  //   if(EEPROM.read(i)!=0xff){
-  //     AprsCoordinates=AprsCoordinates+char(EEPROM.read(i));
-  //   }
-  // }
-  //
   // // 231-234 Altitude
   // if(EEPROM.readByte(231)!=255){
   //   Altitude = EEPROM.readInt(231);
   // }
-
-  // 235-238 AlertLimit
-  if(EEPROM.readByte(235)!=255){
-    SpeedAlertLimit_ms = EEPROM.readInt(235);
-  }
-
-  #if defined(DS18B20)
-    // 239   - ExtTemp ON/OFF;
-    if(EEPROM.read(239)<2){
-      ExtTemp=EEPROM.read(239);
-    }
-  #endif
-
-  // 240-243 WindDirShift
-  if(EEPROM.readByte(240)!=255){
-    WindDirShift = EEPROM.readInt(240);
-  }
 
   #if defined(ETHERNET)
     // mqtt_server_ip=BrokerIpArray[0];
@@ -1384,7 +973,7 @@ void setup() {
     }
   #endif
     server.begin();
-    UdpCommand.begin(IncomingSwitchUdpPort);    // incoming udp port
+    UdpCommand.begin(DEFAULT_SWITCH_UDP_PORT);    // incoming udp port
     // chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
     //   unsigned long long1 = (unsigned long)((chipid & 0xFFFF0000) >> 16 );
     //   unsigned long long2 = (unsigned long)((chipid & 0x0000FFFF));
@@ -1444,69 +1033,10 @@ void setup() {
     OTAserver.begin();
   #endif
 
-  #if defined(Ser2net)
-    Serial_one.begin(SERIAL1_BAUDRATE, SERIAL_8N1, RX1, TX1);
-  // Serial2.begin(9600);
-  SerialServer.begin(SerialServerIPport);
-  SerialServer.setNoDelay(true);
-  #endif
-
   TelnetServer.begin(TelnetServerIPport);
   // TelnetlServer.setNoDelay(true);
 
 
-  #if HWREV==8
-    int intBuf = analogRead(RainPin);
-    if(intBuf<1000){
-      RainStatus=false;
-    }else if(intBuf>=1000 && intBuf<=2000){
-      RainStatus=true;
-    }
-  #endif
-  #if HWREV==7
-    if(digitalRead(Rain1Pin)==0 && digitalRead(Rain2Pin)==1){
-      RainStatus=false;
-    }else if(digitalRead(Rain1Pin)==1 && digitalRead(Rain2Pin)==0){
-      RainStatus=true;
-    }
-  #endif
-
-  #if defined(RF69_EXTERNAL_SENSOR)
-   // clock, miso,mosi, ss
-    SPI.begin(14, 15, 2, 0);
-    //while (!Serial) { delay(1); } // wait until serial console is open, remove if not tethered to computer
-
-    Serial.println();
-    Serial.print("RFM69 radio init ");
-    if (!rf69.init()) {
-      Serial.println("failed!");
-      RF69enable = false;
-      // while (1);
-    }else{
-      Serial.println("OK");
-      RF69enable = true;
-
-      // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM (for low power module)
-      // No encryption
-      Serial.print("RFM69 setFrequency ");
-      if (!rf69.setFrequency(RF69_FREQ)) {
-        Serial.println("failed!");
-      }else{
-        Serial.println("OK");
-        // If you are using a high power RF69 eg RFM69HW, you *must* set a Tx power with the
-        // ishighpowermodule flag set like this:
-        rf69.setTxPower(20, true);  // range from 14-20 for power, 2nd arg must be true for 69HCW
-
-        // The encryption key has to be the same as the one in the server
-        uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-          0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08
-        };
-        rf69.setEncryptionKey(key);
-        Serial.print("RFM69 radio @");  Serial.print((int)RF69_FREQ);  Serial.println(" MHz");
-      }
-    }
-
-  #endif
   //------------------------------------------------
 
   // digitalWrite(EnablePin,0);
@@ -1518,7 +1048,6 @@ void setup() {
 
   // init and get UTC for grayline and other time-dependent features
    ApplyGraylineNtpConfig();
-   RainCountDayOfMonth=UtcTime(2);
 
    // ajax
    ajaxserver.on("/",HTTP_POST, handlePostRot);
@@ -1811,39 +1340,6 @@ void Watchdog(){
       Prn(3, 1, UtcTime(1));
     }
   }
-
-  if(RebootWatchdog > 0 && millis()-WatchdogTimer > RebootWatchdog*60000){
-    Prn(3, 1,"** Activate reboot watchdog - IP switch will be restarted **");
-    // EEPROM.writeByte(34, ShiftOutByte[0]);
-    // EEPROM.writeByte(35, ShiftOutByte[1]);
-    // EEPROM.writeByte(36, ShiftOutByte[2]);
-    // EEPROM.commit();
-    delay(1000);
-    TelnetServerClients[0].stop();
-    ESP.restart();
-  }
-
-  if(OutputWatchdog > 0 && millis()-WatchdogTimer > OutputWatchdog*60000 && OutputWatchdog < 123456){
-    Prn(3, 1,"** Activate clear output watchdog **");
-    // ShiftOutByte[0]=0x00;
-    // ShiftOutByte[1]=0x00;
-    // ShiftOutByte[2]=0x00;
-    // EEPROM.writeByte(34, ShiftOutByte[0]);
-    // EEPROM.writeByte(35, ShiftOutByte[1]);
-    // EEPROM.writeByte(36, ShiftOutByte[2]);
-    // EEPROM.commit();
-    #if defined(ShiftOut)
-      // digitalWrite(ShiftOutLatchPin, LOW);  // když dáme latchPin na LOW mužeme do registru poslat data
-      // shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, 0x01);
-      // shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftOutByte[2]);
-      // shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftOutByte[1]);
-      // shiftOut(ShiftOutDataPin, ShiftOutClockPin, LSBFIRST, ShiftOutByte[0]);
-      // digitalWrite(ShiftOutLatchPin, HIGH);    // jakmile dáme latchPin na HIGH data se objeví na výstupu
-    #endif
-    // deactivate
-    OutputWatchdog=123456;
-  }
-
 
   if(!TelnetServerClients[0].connected() && FirstListCommands==false){
     FirstListCommands=true;
@@ -2291,15 +1787,6 @@ void ReverseProcedure(bool CCW){
 
 
 
-//-------------------------------------------------------------------------------------------------------
-void AzShift(int AZ){
-  WindDir=AZ+WindDirShift;
-  if(WindDir>360){
-    WindDir=WindDir-360;
-  }
-}
-
-//-------------------------------------------------------------------------------------------------------
 String LeadingZero(int NumberOfZero, int NR){
   String StrBuf = String((int)round(NR));
   if(StrBuf.length()>NumberOfZero){
@@ -2311,26 +1798,6 @@ String LeadingZero(int NumberOfZero, int NR){
   return StrBuf;
 }
 
-//---------------------------------------------------------------------------------------------------------
-byte HiByte(int ID){
-  bitClear(ID, 0);  // ->
-  bitClear(ID, 1);
-  bitClear(ID, 2);
-  bitClear(ID, 3);
-  ID = ID >> 4;
-  return(ID);
-}
-
-//---------------------------------------------------------------------------------------------------------
-byte LowByte(int ID){
-  bitClear(ID, 4);
-  bitClear(ID, 5);
-  bitClear(ID, 6);
-  bitClear(ID, 7);  // <-
-  return(ID);
-}
-
-//-------------------------------------------------------------------------------------------------------
 void CLI2(){
   int OUT=2;
   if (Serial.available() > 0) {
@@ -2461,7 +1928,9 @@ long RawTmp = 0;
           // Serial.write(incomingByte);
           if(incomingByte!=10 && incomingByte!=13){
             if(incomingByte==127){
-              InputByte[0]--;
+              if(InputByte[0] > 0){
+                InputByte[0]--;
+              }
             }else{
               InputByte[InputByte[0]+1]=incomingByte;
               InputByte[0]++;
@@ -2563,451 +2032,6 @@ long RawTmp = 0;
   }
   incomingByte=0;
 }
-//-------------------------------------------------------------------------------------------------------
-void CLI(){
-  int OUT=2;
-  // incomingByte = 0;
-
-  if (Serial.available() > 0) {
-    incomingByte = Serial.read();
-    OUT = 0;
-  }
-
-  if(TelnetServerClients[0].connected() && OUT!=0){
-    TelnetAuthorized = false;
-    if(TelnetServerClients[0].remoteIP()==TelnetServerClientAuth){
-        TelnetAuthorized = true;
-        // timeout ... > false
-    }else{
-      TelnetAuth();
-    }
-    if(TelnetAuthorized==true){
-      // incomingByte = TelnetRX();
-      if(incomingByte!=0){
-        OUT=1;
-        ListCommands(OUT);
-        if(FirstListCommands==true){
-          FirstListCommands=false;
-        }
-      }
-    }
-  }else if(!TelnetServerClients[0].connected()){
-    TelnetAuthStep=0;
-  }
-
-  if(OUT==1){     // telnet only
-  // if(OUT>-1){  // always
-    esp_task_wdt_reset();
-    WdtTimer=millis();
-
-    // ?
-    if(incomingByte==63){
-      ListCommands(OUT);
-
-    // +
-    }else if(incomingByte==43){
-      Prn(OUT, 1,"  enter MQTT broker IP address by four number (0-255) and press [enter] after each");
-      Prn(OUT, 1,"  NOTE: public remoteqth broker 54.38.157.134:1883");
-      for (int i=0; i<5; i++){
-        if(i==4){
-          Prn(OUT, 0,"enter IP port (1-65535) and press [");
-        }
-        if(TelnetAuthorized==true){
-          Prn(OUT, 1,"enter]");
-        }else{
-          Prn(OUT, 1,";]");
-        }
-        Enter();
-        int intBuf=0;
-        int mult=1;
-        for (int j=InputByte[0]; j>0; j--){
-          intBuf = intBuf + ((InputByte[j]-48)*mult);
-          mult = mult*10;
-        }
-        if( (i<4 && intBuf>=0 && intBuf<=255) || (i==4 && intBuf>=1 && intBuf<=65535) ){
-          if(i==4){
-            EEPROM.writeUShort(165, intBuf);
-          }else{
-            EEPROM.writeByte(161+i, intBuf);
-          }
-          // Prn(OUT, 1,"EEPROMcomit");
-          EEPROM.commit();
-        }else{
-          Prn(OUT, 1,"Out of range.");
-          break;
-        }
-      }
-      Prn(OUT, 0,"** device will be restarted **");
-      delay(1000);
-      TelnetServerClients[0].stop();
-      ESP.restart();
-
-    // e
-    }else if(incomingByte==101){
-        Prn(OUT, 1,"List EEPROM [adr>value]");
-        for (int i=0; i<EEPROM_SIZE; i++){
-          if( (i<41)||(i>140&&i<208)||(i>212) ){  // hiden pass
-            Prn(OUT, 0, String(i));
-            Prn(OUT, 0, ">" );
-            Prn(OUT, 0, String(EEPROM.read(i)) );
-            Prn(OUT, 0, " " );
-          }
-        }
-        Prn(OUT, 1, "" );
-
-    // *
-    }else if(incomingByte==42){
-      EnableSerialDebug++;
-      if(EnableSerialDebug>2){
-        EnableSerialDebug=0;
-      }
-      Prn(OUT, 0,"** Terminal DEBUG ");
-      if(EnableSerialDebug==0){
-        Prn(OUT, 1,"DISABLE **");
-      }else if(EnableSerialDebug==1){
-        Prn(OUT, 1,"ENABLE **");
-      }else if(EnableSerialDebug==2){
-        Prn(OUT, 1,"ENABLE with frenetic mode **");
-      }
-
-    // E
-    }else if(incomingByte==69 && OUT==0){
-      Prn(OUT, 1,"  Erase whole eeprom (also telnet key)? (y/n)");
-      EnterChar(OUT);
-      if(incomingByte==89 || incomingByte==121){
-        Prn(OUT, 1,"  Stop erase? (y/n)");
-        EnterChar(OUT);
-        if(incomingByte==78 || incomingByte==110){
-          for(int i=0; i<EEPROM_SIZE; i++){
-            EEPROM.write(i, 0xff);
-            Prn(OUT, 0,".");
-          }
-          EEPROM.commit();
-          Prn(OUT, 1,"");
-          Prn(OUT, 1,"  Eeprom erased done");
-        }else{
-          Prn(OUT, 1,"  Erase aborted");
-        }
-      }else{
-        Prn(OUT, 1,"  Erase aborted");
-      }
-
-    // .
-    }else if(incomingByte==46){
-      Prn(OUT, 1,"Reset timer and sent measure");
-      MeasureTimer[0]=millis()-MeasureTimer[1];
-
-    // q
-    }else if(incomingByte==113 && TelnetServerClients[0].connected() ){
-      TelnetServerClients[0].stop();
-      TelnetAuthorized=false;
-      // TelnetServerClientAuth = {0,0,0,0};
-      TelnetAuthStep=0;
-      FirstListCommands=true;
-
-    // Q
-    }else if(incomingByte==81 && TelnetServerClients[0].connected() ){
-      TelnetServerClients[0].stop();
-      TelnetAuthorized=false;
-      TelnetServerClientAuth = {0,0,0,0};
-      Prn(OUT, 1,String(TelnetServerClientAuth));
-      TelnetAuthStep=0;
-      FirstListCommands=true;
-      EEPROM.write(37, 0); // address, value
-      EEPROM.write(38, 0); // address, value
-      EEPROM.write(39, 0); // address, value
-      EEPROM.write(40, 0); // address, value
-      EEPROM.commit();
-
-    // @
-    }else if(incomingByte==64){
-      Prn(OUT, 1,"** IP switch will be restarted **");
-      if(RebootWatchdog > 0){
-        Prn(OUT, 1,"   Activate reboot watchdog - store outputs to EEPROM...");
-        // EEPROM.writeByte(34, ShiftOutByte[0]);
-        // EEPROM.writeByte(35, ShiftOutByte[1]);
-        // EEPROM.writeByte(36, ShiftOutByte[2]);
-        // EEPROM.commit();
-        delay(1000);
-      }
-      TelnetServerClients[0].stop();
-      ESP.restart();
-
-    // ~K
-    // }else if(incomingByte==126){
-    //   EnterChar(OUT);
-    //   if(incomingByte==75){
-    //     Prn(OUT, 1,"");
-    //     Prn(OUT, 0," ");
-    //     for(int i=0; i<10; i++){
-    //       Prn(OUT, 0,"    ["+String(i*10+1)+"-"+String(i*10+10)+"]  ");
-    //       if(i<9){
-    //         Prn(OUT, 0," ");
-    //       }
-    //       for(int j=0; j<10; j++){
-    //         Prn(OUT, 0, String(key[i*10+j]));
-    //       }
-    //       Prn(OUT, 1,"");
-    //     }
-    //     Prn(OUT, 1,"");
-    //   }
-
-    // L
-    }else if(incomingByte==76){
-      Prn(OUT, 0,"  Input new location (CALLSIGN-ssid) and press [");
-      if(TelnetAuthorized==true){
-        Prn(OUT, 0,"enter");
-      }else{
-        Prn(OUT, 0,";");
-      }
-      Prn(OUT, 1,"]. If blank, will be use MAC");
-      Enter();
-      YOUR_CALL="";
-      for (int i=1; i<21; i++){
-        YOUR_CALL=YOUR_CALL+char(InputByte[i]);
-        if(i<InputByte[0]+1){
-          EEPROM.write(140+i, InputByte[i]);
-        }else{
-          EEPROM.write(140+i, 0xff);
-        }
-      }
-      EEPROM.commit();
-      Prn(OUT, 1,"** Device will be restarted **");
-      delay(1000);
-      ESP.restart();
-
-    // A
-    }else if(incomingByte==65){
-      if(AprsON==true){
-        AprsON=false;
-        Prn(OUT, 1,"** APRS DISABLE **");
-        // EEPROM.write(199, AprsON); // address, value
-        // EEPROM.commit();
-      }else{
-        Prn(OUT, 1,"** Do you own a valid amateur radio license? **");
-        EnterChar(OUT);
-        if(incomingByte==89 || incomingByte==121){
-          Prn(OUT, 1,"  Do you nothing disable APRS, after the license expires?");
-          EnterChar(OUT);
-          if(incomingByte==78 || incomingByte==110){
-            AprsON=true;
-            Prn(OUT, 1,"** APRS ENABLE **");
-            // EEPROM.write(199, AprsON); // address, value
-            // EEPROM.commit();
-          }else{
-            Prn(OUT, 1,"  bye");
-          }
-        }else{
-          Prn(OUT, 1,"  bye");
-        }
-      }
-
-    // p
-    }else if(incomingByte==112 && AprsON==true){
-        Prn(OUT, 0,"  Input APRS i-gate password and press [");
-        if(TelnetAuthorized==true){
-          Prn(OUT, 1,"enter]");
-        }else{
-          Prn(OUT, 1,";]");
-        }
-        Enter();
-        AprsPassword="";
-        for (int i=1; i<6; i++){
-          AprsPassword=AprsPassword+char(InputByte[i]);
-          if(i<InputByte[0]+1){
-            // EEPROM.write(207+i, InputByte[i]);
-          }else{
-            // EEPROM.write(207+i, 0xff);
-          }
-        }
-        // EEPROM.commit();
-
-      // c
-      }else if(incomingByte==99 && AprsON==true){
-        Prn(OUT, 1,"  ddmm.ssN/dddmm.ssE | dd-degrees | mm-minutes | ss-seconds | N-north, S-south.");
-        Prn(OUT, 1,"  for example 5108.41N/01259.35E");
-        Prn(OUT, 0,"  Input WX coordinates and press [");
-        if(TelnetAuthorized==true){
-          Prn(OUT, 1,"enter]");
-        }else{
-          Prn(OUT, 1,";]");
-        }
-        Enter();
-        AprsCoordinates="";
-        for (int i=1; i<19; i++){
-          AprsCoordinates=AprsCoordinates+char(InputByte[i]);
-          if(i<InputByte[0]+1){
-            // EEPROM.write(212+i, InputByte[i]);
-          }else{
-            // EEPROM.write(212+i, 0xff);
-          }
-        }
-        EEPROM.commit();
-
-      // m
-      }else if(incomingByte==109){
-        Prn(OUT, 0,"write your altitude in meter, and press [");
-        if(TelnetAuthorized==true){
-          Prn(OUT, 1,"enter]");
-        }else{
-          Prn(OUT, 1,";]");
-        }
-        Enter();
-        int intBuf=0;
-        int mult=1;
-        for (int j=InputByte[0]; j>0; j--){
-          // detect -
-          if(j==1 && InputByte[j]==45){
-            intBuf = 0-intBuf;
-          }else{
-            intBuf = intBuf + ((InputByte[j]-48)*mult);
-            mult = mult*10;
-          }
-        }
-        if(intBuf>=0 && intBuf<=7300){
-          Altitude = intBuf;
-          // EEPROM.writeInt(231, Altitude); // address, value
-          // EEPROM.commit();
-          Prn(OUT, 1," altitude "+String(EEPROM.readInt(231))+"m has been saved");
-        }else{
-          Prn(OUT, 1," Out of range");
-        }
-
-      // S
-      }else if(incomingByte==83){
-        Prn(OUT, 0,"write wind direction shift 0-359°, and press [");
-        if(TelnetAuthorized==true){
-          Prn(OUT, 1,"enter]");
-        }else{
-          Prn(OUT, 1,";]");
-        }
-        Enter();
-        int intBuf=0;
-        int mult=1;
-        for (int j=InputByte[0]; j>0; j--){
-          // detect -
-          if(j==1 && InputByte[j]==45){
-            intBuf = 0-intBuf;
-          }else{
-            intBuf = intBuf + ((InputByte[j]-48)*mult);
-            mult = mult*10;
-          }
-        }
-        if(intBuf>=0 && intBuf<=359){
-          WindDirShift = intBuf;
-          // EEPROM.writeInt(240, WindDirShift); // address, value
-          // EEPROM.commit();
-          Prn(OUT, 1," shift "+String(EEPROM.readInt(240))+"° has been saved");
-        }else{
-          Prn(OUT, 1," Out of range");
-        }
-
-    // W
-    }else if(incomingByte==87){
-      Prn(OUT, 1,"** Erase WindSpeedMax memory? [y/n] **");
-      EnterChar(OUT);
-      if(incomingByte==89 || incomingByte==121){
-        // EEPROM.writeLong(169, 987654321);
-        // EEPROM.writeByte(173, 255);
-        EEPROM.commit();
-        MqttPubString("WindSpeedMax-mps", "", true);
-        MqttPubString("WindSpeedMax-utc", "", true);
-        Prn(OUT, 1,"** IP switch will be restarted **");
-        delay(1000);
-        TelnetServerClients[0].stop();
-        ESP.restart();
-      }else{
-        Prn(OUT, 1,"  bye");
-      }
-
-// // a
-// }else if(incomingByte==97){
-//     Prn(OUT, 0,"write limit for wind speed alert 0-60 m/s, and press [");
-//     if(TelnetAuthorized==true){
-//       Prn(OUT, 1,"enter]");
-//     }else{
-//       Prn(OUT, 1,";]");
-//     }
-//     Enter();
-//     int intBuf=0;
-//     int mult=1;
-//     for (int j=InputByte[0]; j>0; j--){
-//       // detect -
-//       if(j==1 && InputByte[j]==45){
-//         intBuf = 0-intBuf;
-//       }else{
-//         intBuf = intBuf + ((InputByte[j]-48)*mult);
-//         mult = mult*10;
-//       }
-//     }
-//     if(intBuf>=0 && intBuf<=60){
-//       SpeedAlertLimit_ms = MpsToMs(intBuf);
-//       EEPROM.writeInt(235, SpeedAlertLimit_ms); // address, value
-//       EEPROM.commit();
-//     }else{
-//       Prn(OUT, 1," Out of range");
-//     }
-
-    // CR/LF
-    }else if(incomingByte==13||incomingByte==10){
-
-    // anykey
-    }else{
-
-      if(EnableSerialDebug>0){
-        Prn(OUT, 0," [");
-        Prn(OUT, 0, String(incomingByte) ); //, DEC);
-        Prn(OUT, 1,"] unknown command");
-      }
-    }
-    incomingByte=0;
-
-  }else if(OUT==0){
-    // ?
-    if(incomingByte==63){
-      ListCommands(OUT);
-
-    // E
-    }else if(incomingByte==69){
-      Prn(OUT, 1,"  Erase whole eeprom (also telnet key)? (y/n)");
-      EnterChar(OUT);
-      if(incomingByte==89 || incomingByte==121){
-        Prn(OUT, 1,"  Stop erase? (y/n)");
-        EnterChar(OUT);
-        if(incomingByte==78 || incomingByte==110){
-          for(int i=0; i<EEPROM_SIZE; i++){
-            EEPROM.write(i, 0xff);
-            Prn(OUT, 0,".");
-          }
-          EEPROM.commit();
-          Prn(OUT, 1,"");
-          Prn(OUT, 1,"  Eeprom erased done");
-        }else{
-          Prn(OUT, 1,"  Erase aborted");
-        }
-      }else{
-        Prn(OUT, 1,"  Erase aborted");
-      }
-    }
-
-    // e
-    }else if(incomingByte==101){
-        Prn(OUT, 1,"List EEPROM [adr>value]");
-        for (int i=0; i<EEPROM_SIZE; i++){
-          if( (i<41)||(i>140&&i<208)||(i>212) ){  // hiden pass
-            Prn(OUT, 0, String(i));
-            Prn(OUT, 0, ">" );
-            Prn(OUT, 0, String(EEPROM.read(i)) );
-            Prn(OUT, 0, " " );
-          }
-        }
-        Prn(OUT, 1, "" );
-
-
-  }
-
-}
-//-------------------------------------------------------------------------------------------------------
 void Enter(){
   int OUT;
   if(TelnetAuthorized==true){
@@ -3032,7 +2056,9 @@ void Enter(){
           Serial.write(incomingByte);
           if(incomingByte!=10 && incomingByte!=13){
             if(incomingByte==127){
-              InputByte[0]--;
+              if(InputByte[0] > 0){
+                InputByte[0]--;
+              }
             }else{
               InputByte[InputByte[0]+1]=incomingByte;
               InputByte[0]++;
@@ -3059,7 +2085,9 @@ void Enter(){
               TelnetServerClients[0].write(incomingByte);
               if(incomingByte!=10 && incomingByte!=13){
                 if(incomingByte==127){
-                  InputByte[0]--;
+                  if(InputByte[0] > 0){
+                    InputByte[0]--;
+                  }
                 }else{
                   InputByte[InputByte[0]+1]=incomingByte;
                   InputByte[0]++;
@@ -3110,54 +2138,6 @@ void EnterChar(int OUT){
   Prn(OUT, 1, String(char(incomingByte)) );
 }
 
-//-------------------------------------------------------------------------------------------------------
-
-void EnterInt(int OUT){
-  incomingByte = 0;
-  Prn(OUT, 0,"> ");
-  if(OUT==0){
-    while(!Serial.available()) {
-    }
-    delay(3000);
-    CompareInt = Serial.parseInt();
-  }else if(OUT==1){
-    if (TelnetServerClients[0] && TelnetServerClients[0].connected()){
-      bool br=true;
-      int intField[10];
-      int count=0;
-
-      while(incomingByte==0 && br==true){
-        if(TelnetServerClients[0].available()){
-          incomingByte=TelnetServerClients[0].read();
-          // out of 0-9
-          if(incomingByte<48 || incomingByte>57){
-            br=false;
-            intField[count]=0;
-            Prn(OUT, 1,"");
-          }else{
-            intField[count]=incomingByte-48;
-            Prn(OUT, 0,String(intField[count]));
-            count++;
-            incomingByte=0;
-          }
-        }
-      }
-
-      count--;
-      CompareInt=0;
-      int i=1;
-      while(count>-1){
-        CompareInt=CompareInt+intField[count]*i;
-        // Prn(OUT, 1, String(intField[count])+"*"+String(i)+"="+String(CompareInt) );
-        i=i*10;
-        count--;
-      }
-    }
-  }
-  // Prn(OUT, 1, "out"+String(CompareInt) );
-}
-
-//-------------------------------------------------------------------------------------------------------
 void Prn(int OUT, int LN, String STR){
   if(OUT==3){
     if(TelnetAuthorized==true){
@@ -3180,7 +2160,7 @@ void Prn(int OUT, int LN, String STR){
     //push data to all connected telnet clients
     for(i = 0; i < MAX_SRV_CLIENTS; i++){
       if (TelnetServerClients[i] && TelnetServerClients[i].connected()){
-        TelnetServerClients[i].write(sbuf, len);
+        TelnetServerClients[i].write(sbuf, len-1);
         // delay(1);
         if(LN==1){
           TelnetServerClients[i].write(13); // CR
@@ -3279,17 +2259,6 @@ void ListCommands(int OUT){
       Prn(OUT, 1," days");
     }
 
-    if(RebootWatchdog > 0){
-      Prn(OUT, 0,"> Reboot countdown in ");
-      Prn(OUT, 0, String(RebootWatchdog-((millis()-WatchdogTimer)/60000)) );
-      Prn(OUT, 1, " minutes");
-    }
-    if(OutputWatchdog > 0 && OutputWatchdog<123456){
-      Prn(OUT, 0,"> Clear output countdown in ");
-      Prn(OUT, 0, String(OutputWatchdog-((millis()-WatchdogTimer)/60000)) );
-      Prn(OUT, 1," minutes");
-    }
-
     Prn(OUT, 0,"  MqttSubscribe: "+String(mqtt_server_ip[0])+"."+String(mqtt_server_ip[1])+"."+String(mqtt_server_ip[2])+"."+String(mqtt_server_ip[3])+":"+String(MQTT_PORT)+"/");
       String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/sub";
       const char *cstr = topic.c_str();
@@ -3320,38 +2289,6 @@ void ListCommands(int OUT){
     // } else {
     //     Prn(OUT, 1,"unknown ");
     // }
-    Prn(OUT, 1,"-----------------  Sensors  -----------------");
-    #if HWREV==8
-      int intBuf = analogRead(RainPin);
-      Prn(OUT, 0,"  RainPin raw "+String(analogRead(intBuf)));
-      if(intBuf<1000){
-        Prn(OUT, 0," > false");
-      }else if(intBuf>=1000 && intBuf<=2000){
-        Prn(OUT, 0," > true");
-      }else if(intBuf>2000){
-        Prn(OUT, 0," > malformed");
-      }
-      Prn(OUT, 1,"|"+RainCountDayOfMonth+"th day Rain counter "+String(RainCount)+"|"+String(RainPulseToMM(RainCount))+"mm|"+String(mmInPulse)+" rain mm per pulse" );
-    #endif
-
-    #if HWREV==7
-      Prn(OUT, 0,"  Rain1Pin ");
-      Prn(OUT, 0,String(digitalRead(Rain1Pin)));
-      Prn(OUT, 0,"|Rain2Pin ");
-      Prn(OUT, 0,String(digitalRead(Rain2Pin)));
-      // Prn(OUT, 0," | ButtonPin ");
-      //   Prn(OUT, 1, String(digitalRead(ButtonPin)));
-      if(digitalRead(Rain1Pin)==digitalRead(Rain2Pin)){
-        Prn(OUT, 1,"|sensor malformed!" );
-      }else{
-        Prn(OUT, 1,"|"+RainCountDayOfMonth+"th day Rain counter "+String(RainCount)+"|"+String(RainPulseToMM(RainCount))+"mm|"+String(mmInPulse)+" rain mm per pulse" );
-      }
-    #endif
-    // if(EnableSerialDebug>0){
-    // }else{
-    // }
-    // Azimuth();
-
     Prn(OUT, 1,"------------------  Menu  -------------------");
     // Prn(OUT, 1,"  You can change source, with send character:");
     // if(TxUdpBuffer[2]=='m'){
@@ -3387,62 +2324,6 @@ void ListCommands(int OUT){
     }
     Prn(OUT, 1, "");
 
-    Prn(OUT, 0,"      S  Wind direction shift [");
-    Prn(OUT, 1, String(WindDirShift)+"°]");
-
-    // #if defined(DS18B20)
-    //   // Prn(OUT, 1,"      s  scan DS18B20 1wire temperature sensor");
-    //   Prn(OUT, 0,"      s  external temperature Sensor DS18B20 [O");
-    //     if(ExtTemp==true){
-    //       Prn(OUT, 1,"N]");
-    //     }else{
-    //       Prn(OUT, 1,"FF] CONNECT SENSOR (used inaccurate internal)");
-    //     }
-    // #endif
-    // Prn(OUT, 0,"      a  speed Alert [");
-    // Prn(OUT, 1, String(PulseToMetterBySecond(SpeedAlertLimit_ms))+" m/s] - not implemented");
-    if(TxUdpBuffer[2]!='n'){
-      Prn(OUT, 0,"      w  inactivity reboot watchdog ");
-      if(RebootWatchdog>0){
-        Prn(OUT, 0,"after [");
-        Prn(OUT, 0, String(RebootWatchdog) );
-        Prn(OUT, 1,"] minutes");
-      }else{
-        Prn(OUT, 1,"[disable]");
-      }
-      Prn(OUT, 0,"      W  inactivity clear output watchdog ");
-      if(OutputWatchdog>0){
-        Prn(OUT, 0,"after [");
-        Prn(OUT, 0, String(OutputWatchdog) );
-        Prn(OUT, 1,"] minutes");
-      }else{
-        Prn(OUT, 1,"[disable]");
-      }
-      Prn(OUT, 0,"      <  change Switch incoming UDP port [");
-      Prn(OUT, 0, String(IncomingSwitchUdpPort) );
-      Prn(OUT, 0,"]");
-      if(IncomingSwitchUdpPort!=88){
-        Prn(OUT, 0,"<-- WARNING! default is 88");
-      }
-      Prn(OUT, 1,"");
-    }
-    if(TxUdpBuffer[2] == 'm'){
-      Prn(OUT, 0,"      /  set encoder range - now [");
-      Prn(OUT, 0, String(NumberOfEncoderOutputs+1) );
-      if(NumberOfEncoderOutputs>7){
-        Prn(OUT, 1,"] (two bank)");
-      }else{
-        Prn(OUT, 1,"]");
-      }
-      Prn(OUT, 0,"      %  group buttons (select one from group) [");
-      if(EnableGroupButton==true){
-        Prn(OUT, 1,"ON]");
-        Prn(OUT, 1,"         !  SET group buttons");
-        Prn(OUT, 1,"         :  list group buttons");
-      }else{
-        Prn(OUT, 1,"OFF]");
-      }
-    }
     Prn(OUT, 0,"      *  terminal debug ");
       if(EnableSerialDebug==0){
         Prn(OUT, 1,"[OFF]");
@@ -3451,94 +2332,33 @@ void ListCommands(int OUT){
       }else if(EnableSerialDebug==2){
         Prn(OUT, 1,"[ON-frenetic]");
       }
-    if(TxUdpBuffer[2]!='n'){
-      Prn(OUT, 0,"      #  network ID prefix [");
-      byte ID = 0;
-      bitClear(ID, 0); // ->
-      bitClear(ID, 1);
-      bitClear(ID, 2);
-      bitClear(ID, 3);
-      ID = ID >> 4;
-      if(EnableGroupPrefix==true && TxUdpBuffer[2]=='m'){
-        Prn(OUT, 0,"x");
-      }else{
-        Prn(OUT, 0, String(ID, HEX) );
-      }
-      Prn(OUT, 0,"] hex");
-      if(TxUdpBuffer[2]=='m' && EnableGroupPrefix==true){
-        Prn(OUT, 0," (set only on controllers)");
-      }
-      Prn(OUT, 1,"");
+    Prn(OUT, 0,"      #  network ID prefix [");
+    byte ID = 0;
+    bitClear(ID, 0); // ->
+    bitClear(ID, 1);
+    bitClear(ID, 2);
+    bitClear(ID, 3);
+    ID = ID >> 4;
+    Prn(OUT, 0, String(ID, HEX) );
+    Prn(OUT, 0,"] hex");
+    Prn(OUT, 1,"");
 
-      // if(HW_BCD_SW==false){
-        ID = 0;
-        bitClear(ID, 4);
-        bitClear(ID, 5);
-        bitClear(ID, 6);
-        bitClear(ID, 7); // <-
-        Prn(OUT, 0,"         +network ID sufix [");
-        Prn(OUT, 0, String(ID, HEX) );
-        Prn(OUT, 0,"] hex");
-        if(TxUdpBuffer[2]=='m' && EnableGroupPrefix==true){
-          Prn(OUT, 0," (multi control group - same at all)");
-        }
-        Prn(OUT, 1,"");
-      // }
-
-      if(TxUdpBuffer[2]=='m'){
-        Prn(OUT, 0,"      $  group network ID prefix (multi control) [");
-        if(EnableGroupPrefix==true){
-          Prn(OUT, 1,"ON]");
-        }else{
-          Prn(OUT, 1,"OFF]");
-        }
-      }
-      if(TxUdpBuffer[2]=='m' && EnableGroupPrefix==true){
-        Prn(OUT, 1,"      .  list detected IP switch (multi control)");
-      }
-    }
-    #if defined(Ser2net)
-      Prn(OUT, 0,"      (  change serial1 baudrate [");
-      Prn(OUT, 0, String(SERIAL1_BAUDRATE) );
-      Prn(OUT, 1,"]");
-      Prn(OUT, 0,"      )  change ser2net IP port [");
-      Prn(OUT, 0, String(SerialServerIPport) );
-      Prn(OUT, 1,"]");
-    #endif
-
+    ID = 0;
+    bitClear(ID, 4);
+    bitClear(ID, 5);
+    bitClear(ID, 6);
+    bitClear(ID, 7); // <-
+    Prn(OUT, 0,"         +network ID sufix [");
+    Prn(OUT, 0, String(ID, HEX) );
+    Prn(OUT, 0,"] hex");
+    Prn(OUT, 1,"");
     Prn(OUT, 1, "      +  change MQTT broker IP | "+String(mqtt_server_ip[0])+"."+String(mqtt_server_ip[1])+"."+String(mqtt_server_ip[2])+"."+String(mqtt_server_ip[3])+":"+String(MQTT_PORT));
     // Prn(OUT, 0, String(mqtt_server_ip));
     // Prn(OUT, 0, ":");
     // Prn(OUT, 1, String(MQTT_PORT));
     Prn(OUT, 1,"      x  TX repeat time ["+String(MeasureTimer[1]/60000)+" min]");
-    Prn(OUT, 0,"      A  APRS [");
-      if(AprsON==true){
-        Prn(OUT, 1,"ON]");
-      }else{
-        Prn(OUT, 1,"OFF]");
-      }
-      if(AprsON==true){
-        // Prn(OUT, 0,"         i  change APRS server ip:port | ");
-        // Prn(OUT, 1,String(aprs_server_ip[0])+"."+String(aprs_server_ip[1])+"."+String(aprs_server_ip[2])+"."+String(aprs_server_ip[3])+":"+String(AprsPort));
-        Prn(OUT, 0,"         p  change APRS password | ");
-        for (int i=208; i<213; i++){
-          if(EEPROM.read(i)!=0xff){
-            Prn(OUT, 0,"*");
-          }
-        }
-        Prn(OUT, 1,"");
-        Prn(OUT, 0,"         c  change APRS coordinate | ");
-        Prn(OUT, 1,AprsCoordinates);
-      }
-    Prn(OUT, 0,"      L  change ");
-      if(AprsON==true){
-        Prn(OUT, 1,"CALLSIGN with ssid 6-4 | "+YOUR_CALL);
-      }else{
-        Prn(OUT, 1,"location | "+YOUR_CALL);
-      }
-    if(TxUdpBuffer[2]!='n'){
-      Prn(OUT, 1,"      &  send broadcast packet");
-    }
+    Prn(OUT, 1,"      L  change location | "+YOUR_CALL);
+    Prn(OUT, 1,"      &  send broadcast packet");
     if(TelnetServerClients[0].connected()){
       Prn(OUT, 0,"      q  disconnect and close telnet [verified IP ");
       Prn(OUT, 0, String(TelnetServerClientAuth[0])+"."+String(TelnetServerClientAuth[1])+"."+String(TelnetServerClientAuth[2])+"."+String(TelnetServerClientAuth[3]) );
@@ -3551,9 +2371,7 @@ void ListCommands(int OUT){
       Prn(OUT, 1,"      R  read log file");
     }
     Prn(OUT, 1,"      e  list EEPROM");
-    #if !defined(BMP280) && !defined(HTU21D)
-      Prn(OUT, 1,"      2  I2C scanner");
-    #endif
+    Prn(OUT, 1,"      2  I2C scanner");
     Prn(OUT, 1,"      .  reset timer and send measure");
     Prn(OUT, 1,"      W  erase wind speed max memory");
     Prn(OUT, 1,"      @  restart device");
@@ -3563,18 +2381,6 @@ void ListCommands(int OUT){
   // digitalWrite(EnablePin,0);
 }
 
-//-------------------------------------------------------------------------------------------------------
-float RainPulseToMM(int PULSE){
-  if(PULSE>20000 || PULSE==0){
-    return 0;
-  }else{
-    float mm;
-    mm = PULSE*mmInPulse;
-    return mm;
-  }
-}
-
-//-------------------------------------------------------------------------------------------------------
 char RandomChar(){
     int R = random(48, 122);
     if(R>=58 && 64>=R){
@@ -3585,67 +2391,6 @@ char RandomChar(){
     }
     return char(R);
 }
-
-// http://www.catonmat.net/blog/low-level-bit-hacks-you-absolutely-must-know/
-//-------------------------------------------------------------------------------------------------------
-
-byte IdPrefix(byte ID){
-  bitClear(ID, 0);  // ->
-  bitClear(ID, 1);
-  bitClear(ID, 2);
-  bitClear(ID, 3);
-  ID = ID >> 4;
-  return(ID);
-}
-
-//---------------------------------------------------------------------------------------------------------
-
-byte IdSufix(byte ID){
-  bitClear(ID, 4);
-  bitClear(ID, 5);
-  bitClear(ID, 6);
-  bitClear(ID, 7);  // <-
-  return(ID);
-}
-
-//-------------------------------------------------------------------------------------------------------
-byte AsciiToHex(int ASCII){
-  if(ASCII>=48 && ASCII<=57){
-    return(ASCII-48);
-  }else if(ASCII>=97 && ASCII<=102){
-    return(ASCII-87);
-  }else{
-    return(255);
-  }
-}
-//-------------------------------------------------------------------------------------------------------
-
-String getValue(String data, char separator, int index)
-{
-  int found = 0;
-  int strIndex[] = { 0, -1 };
-  int maxIndex = data.length() - 1;
-
-  for (int i = 0; i <= maxIndex && found <= index; i++) {
-    if (data.charAt(i) == separator || i == maxIndex) {
-      found++;
-      strIndex[0] = strIndex[1] + 1;
-      strIndex[1] = (i == maxIndex) ? i + 1 : i;
-    }
-  }
-  return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
-}
-
-//-------------------------------------------------------------------------------------------------------
-
-unsigned char hexToDecBy4bit(unsigned char hex)
-// convert a character representation of a hexidecimal digit into the actual hexidecimal value
-{
-  if(hex > 0x39) hex -= 7; // adjust for hex letters upper or lower case
-  return(hex & 0xf);
-}
-
-//-------------------------------------------------------------------------------------------------------
 
 void http(){
   // listen for incoming clients
@@ -4203,26 +2948,6 @@ void MqttPubString(String TOPIC, String DATA, bool RETAIN){
     }
   }
 }
-//-----------------------------------------------------------------------------------
-
-void testClient(const char * host, uint16_t port)
-{
-  Serial.print("\nETH  connecting to ");
-  Serial.println(host);
-  WiFiClient webClient;
-  if (!webClient.connect(host, port)) {
-    Serial.println("ETH  connection failed");
-    return;
-  }
-  webClient.printf("GET / HTTP/1.1\r\nHost: %s\r\n\r\n", host);
-  while (webClient.connected() && !webClient.available());
-  while (webClient.available()) {
-    Serial.write(webClient.read());
-  }
-  Serial.println("ETH closing connection\n");
-  webClient.stop();
-}
-
 //-------------------------------------------------------------------------------------------------------
 void TelnetAuth(){
 
@@ -4456,19 +3181,6 @@ String UtcTime(int format){
   return String(buf);
 }
 
-String Timestamp(){
-  //time_t now;
-  //time(&now);
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  char timestamp[40];
-  // sprintf(timestamp,"%u.%06u",tv.tv_sec, tv.tv_usec);
-  sprintf(timestamp,"%ld.%06ld",tv.tv_sec, tv.tv_usec);
-  return String(timestamp);
-}
-
-//-------------------------------------------------------------------------------------------------------
-
 // ajax rx
 void handlePostRot() {
  // String s = MAIN_page; //Read HTML contents
@@ -4604,7 +3316,7 @@ void handleSet() {
         YOUR_CALL = String(ajaxserver.arg("yourcall"));
 
         int str_len = str.length();
-        char char_array[str_len];
+        char char_array[str_len+1];
         str.toCharArray(char_array, str_len+1);
         for (int i=0; i<20; i++){
           if(i < str_len){
@@ -4629,7 +3341,7 @@ void handleSet() {
         NET_ID = String(ajaxserver.arg("rotid"));
 
         int str_len = str.length();
-        char char_array[str_len];
+        char char_array[str_len+1];
         str.toCharArray(char_array, str_len+1);
         for (int i=0; i<2; i++){
           if(i < str_len){
@@ -4654,9 +3366,9 @@ void handleSet() {
         RotName = String(ajaxserver.arg("rotname"));
 
         int str_len = str.length();
-        char char_array[str_len];
+        char char_array[str_len+1];
         str.toCharArray(char_array, str_len+1);
-        for (int i=0; i<19; i++){
+        for (int i=0; i<20; i++){
           if(i < str_len){
             EEPROM.write(2+i, char_array[i]);
           }else{
@@ -4684,9 +3396,9 @@ void handleSet() {
         MQTT_USER = String(ajaxserver.arg("mqttuser"));
 
         int str_len = str.length();
-        char char_array[str_len];
+        char char_array[str_len+1];
         str.toCharArray(char_array, str_len+1);
-        for (int i=0; i<9; i++){
+        for (int i=0; i<10; i++){
           if(i < str_len){
             EEPROM.write(236+i, char_array[i]);
           }else{
@@ -4713,9 +3425,9 @@ void handleSet() {
         MQTT_PASS = String(ajaxserver.arg("mqttpass"));
 
         int str_len = str.length();
-        char char_array[str_len];
+        char char_array[str_len+1];
         str.toCharArray(char_array, str_len+1);
-        for (int i=0; i<19; i++){
+        for (int i=0; i<20; i++){
           if(i < str_len){
             EEPROM.write(246+i, char_array[i]);
           }else{
@@ -4804,7 +3516,7 @@ void handleSet() {
         MapUrl = String(ajaxserver.arg("mapurl"));
 
         int str_len = str.length();
-        char char_array[str_len];
+        char char_array[str_len+1];
         str.toCharArray(char_array, str_len+1);
         for (int i=0; i<50; i++){
           if(i < str_len){
@@ -4895,7 +3607,7 @@ void handleSet() {
       if(GraylineNtpServer != NewGraylineNtpServer){
         GraylineNtpServer = NewGraylineNtpServer;
         int str_len = GraylineNtpServer.length();
-        char char_array[str_len];
+        char char_array[str_len+1];
         GraylineNtpServer.toCharArray(char_array, str_len+1);
         for (int i=0; i<50; i++){
           if(i < str_len){
@@ -5943,13 +4655,6 @@ void handleCal() {
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
 }
 
-void handlePostStop() {
-  if(Status<0){
-    Status=-3;
-  }else if(Status>0){
-    Status=3;
-  }
-}
 void handleRoot() {
  String s = MAIN_page; //Read HTML contents
  ajaxserver.send(200, "text/html", s); //Send web page
