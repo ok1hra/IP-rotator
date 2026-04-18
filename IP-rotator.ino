@@ -119,7 +119,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260417";
+const char* REV = "20260418";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -1093,7 +1093,6 @@ void setup() {
 void loop() {
   http();
   Mqtt();
-  // CLI();
   CLI2();
   Telnet();
   ajaxserver.handleClient();
