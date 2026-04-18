@@ -11,3 +11,48 @@
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/setup.png" height="600"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/calibrate.png" height="600">
 
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/elevation.png" height="400">
+
+## OTA artifacts
+
+The project now uses SPIFFS for the web UI assets in [`data/`](/home/dan/inst/IP-rotator/data), so OTA/web updates may require two separate images:
+
+- `firmware.bin` for the sketch
+- `spiffs.bin` for the filesystem
+
+### Build `firmware.bin`
+
+In Arduino IDE 1.8.19 use:
+
+- `Sketch > Export compiled Binary`
+
+For this project select:
+
+- Board: `OLIMEX ESP32-PoE`
+- Partition Scheme: `Default`
+
+The sketch includes a local [`partitions.csv`](/home/dan/inst/IP-rotator/partitions.csv), so Arduino will prefer that partition table during build/upload. This keeps USB upload, `ESP32 Sketch Data Upload`, and `tools/build_spiffs_image.sh` aligned.
+
+### Build `spiffs.bin`
+
+Use the helper script from the repo root:
+
+```bash
+tools/build_spiffs_image.sh
+```
+
+Default output:
+
+- `build/spiffs.bin`
+
+The script reads the SPIFFS size and offset from the project's local [`partitions.csv`](/home/dan/inst/IP-rotator/partitions.csv) and packs the current `data/` directory with `mkspiffs`.
+
+### Upload options
+
+- USB/serial: use Arduino IDE upload for firmware and `Tools > ESP32 Sketch Data Upload` for SPIFFS
+- Web OTA: upload `firmware.bin` as firmware image and `spiffs.bin` as filesystem image
+
+### Notes
+
+- If you change only files in `data/`, you only need to rebuild and upload `spiffs.bin`
+- If you change only `IP-rotator.ino`, you only need a new `firmware.bin`
+- If the board uses a different partition scheme than `Default`, pass a different CSV to the script with `--partitions PATH`

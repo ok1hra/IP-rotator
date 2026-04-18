@@ -2,7 +2,9 @@
 
 3D printed IP rotator
 ----------------------
-Compile for HARDWARE ESP32-POE
+1. Compile for HARDWARE ESP32-POE + Tools/Partition Scheme:"Default" | export bin or upload
+2. ~/inst/IP-rotator$ tools/build_spiffs_image.sh | generate map
+3. Tools/ESP32 Sketch Data Upload | upload map or use OTA
 
  ___               _        ___ _____ _  _
 | _ \___ _ __  ___| |_ ___ / _ \_   _| || |  __ ___ _ __
@@ -192,7 +194,7 @@ int RxAzimuth           = 0;
 int Status              = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
 const int VoltagePin    = 35;  // analog
 float VoltageValue      = 0.0;
-const float VoltageLimit = 11.5; // ! also change if( Number(this.responseText)<11.5){ in index.h file | (11.0) Voltage limit below which the control electronics is unstable
+const float VoltageLimit = 11.5; // Keep in sync with the client-side undervoltage warning shown in data/index.html.
 const int ReversePin    = 16;  //
 const int PwmPin        = 4;   //
 
@@ -244,7 +246,6 @@ long WdtTimer=0;
 
 byte InputByte[21];
 // #define Ser2net                  // Serial to ip proxy - DISABLE if board revision 0.3 or lower
-#define EnableOTA                // Enable flashing ESP32 Over The Air
 int EnableSerialDebug     = 0;
 long FreneticModeTimer ;
 #define HTTP_SERVER_PORT  80     // Web server port
@@ -323,9 +324,7 @@ unsigned long WatchdogTimer=0;
 
 //ajax
 #include <WebServer.h>
-#include "index.h"  //Web page header file
-#include "index-cal.h"  //Web page header file
-#include "map50.h"  //Offline map dataset for locator mode
+#include "SPIFFS.h"
 WebServer ajaxserver(HTTP_SERVER_PORT+8);
 
 WiFiServer server(HTTP_SERVER_PORT);
@@ -345,10 +344,6 @@ int UDPpacketSize;
 #include <ETH.h>
 static bool eth_connected = false;
 String HTTP_req;
-#if defined(EnableOTA)
-  #include <ESPmDNS.h>
-  #include <ArduinoOTA.h>
-#endif
 #if defined(OTAWEB)
   #include <AsyncTCP.h>
   #include <ESPAsyncWebServer.h>
@@ -458,6 +453,72 @@ int TelnetLoginFails=0;
 long TelnetLoginFailsBanTimer[2]={0,600000};
 int RandomNumber;
 bool FirstListCommands=true;
+
+// Explicit prototypes keep Arduino's sketch preprocessor from breaking
+// if the large comment header is malformed or contains unusual content.
+uint32_t readADC_Cal(int ADC_Raw);
+char RandomChar();
+void Watchdog();
+void LedStatus();
+void LedStatusErr();
+void RotCalculate();
+void RunTimer();
+void DetectEndstopZone();
+void EthTest();
+void RunByStatus();
+void ReverseProcedure(bool CCW);
+String LeadingZero(int NumberOfZero, int NR);
+void CLI2();
+void Enter();
+void EnterChar(int OUT);
+void Prn(int OUT, int LN, String STR);
+void ListCommands(int OUT);
+void http();
+void EthEvent(WiFiEvent_t event);
+void Mqtt();
+bool mqttReconnect();
+void reSubscribe();
+void MqttRx(char *topic, byte *payload, unsigned int length);
+void AfterMQTTconnect();
+void MqttPubString(String TOPIC, String DATA, bool RETAIN);
+void TelnetAuth();
+void AuthQ(int NR, bool BAD);
+void Telnet();
+String UtcTime(int format);
+void handlePostRot();
+void handleSet();
+void handleCal();
+bool streamStaticFile(const char* path, const char* contentType);
+void handleRoot();
+void handleADC();
+void handleAZ();
+void handleFrontAZ();
+void handleAZadc();
+void handleStat();
+void handleStart();
+void handleElevation();
+void handleMax();
+void handleAnt();
+void handleAntName();
+void handleMapUrl();
+void handleMapSource();
+void handleMapLocator();
+void handleMapZoomKm();
+void handleSetMapLocator();
+void handleSetMapZoomKm();
+void handleMapTheme();
+void handleGraylineDarkness();
+void handleGraylineInfo();
+void handleRev();
+void handleMap50js();
+void handleMap50jsGz();
+void handleEndstop();
+void handleEndstopLowZone();
+void handleEndstopHighZone();
+void handleCwraw();
+void handleCcwraw();
+void handleMAC();
+void handleUptime();
 
 //-------------------------------------------------------------------------------------------------------
 
@@ -972,6 +1033,9 @@ void setup() {
       //config(IPAddress local_ip, IPAddress gateway, IPAddress subnet, IPAddress dns1 = (uint32_t)0x00000000, IPAddress dns2 = (uint32_t)0x00000000);
     }
   #endif
+    if(!SPIFFS.begin(false)){
+      Serial.println("SPIFFS mount failed");
+    }
     server.begin();
     UdpCommand.begin(DEFAULT_SWITCH_UDP_PORT);    // incoming udp port
     // chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
@@ -980,51 +1044,6 @@ void setup() {
     //   ChipidHex = String(long1, HEX) + String(long2, HEX); // six octets
     //   YOUR_CALL=ChipidHex;
 
-  #if defined(EnableOTA)
-    // Port defaults to 3232
-    // ArduinoOTA.setPort(3232);
-    // Hostname defaults to esp3232-[MAC]
-
-    // String StringHostname = "WX-station-"+String(NET_ID, HEX);
-    String StringHostname = "ROT-"+String(YOUR_CALL);
-    char copy[13];
-    StringHostname.toCharArray(copy, 13);
-
-    ArduinoOTA.setHostname(copy);
-    ArduinoOTA.setPassword("remoteqth");
-    // $ echo password | md5sum
-    // ArduinoOTA.setPasswordHash("5587ba7a03b12a409ee5830cea97e079");
-    ArduinoOTA
-      .onStart([]() {
-        esp_task_wdt_reset();
-        WdtTimer=millis();
-
-        String type;
-        if (ArduinoOTA.getCommand() == U_FLASH)
-          type = "sketch";
-        else // U_SPIFFS
-          type = "filesystem";
-
-        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-        Serial.println("Start updating " + type);
-      })
-      .onEnd([]() {
-        Serial.println("\nEnd");
-      })
-      .onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-      })
-      .onError([](ota_error_t error) {
-        Serial.printf("Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-        else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-        else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-        else if (error == OTA_END_ERROR) Serial.println("End Failed");
-      });
-
-    ArduinoOTA.begin();
-  #endif
   #if defined(OTAWEB)
     OTAserver.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/plain", "PSE QSY to /update");
@@ -1074,6 +1093,7 @@ void setup() {
    ajaxserver.on("/readGraylineInfo", handleGraylineInfo);
    ajaxserver.on("/readRev", handleRev);
    ajaxserver.on("/map50.js", handleMap50js);
+   ajaxserver.on("/map50.js.gz", handleMap50jsGz);
    ajaxserver.on("/set", handleSet);
    ajaxserver.on("/cal", handleCal);
    ajaxserver.on("/readEndstop", handleEndstop);
@@ -1099,11 +1119,6 @@ void loop() {
   ajaxserver.handleClient();
   RunByStatus();
   Watchdog();
-
-  
-  #if defined(EnableOTA)
-   ArduinoOTA.handle();
-  #endif
 
   #if defined(OTAWEB)
    // OTAserver.on("/printIp", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -3292,7 +3307,7 @@ void handleSet() {
     && ajaxserver.hasArg("edstoplowzone") == false \
     && ajaxserver.hasArg("edstophighzone") == false \
     && ajaxserver.hasArg("pwmdegree") == false \
-    && ajaxserver.hasArg("pwmrampsteps") == false \    
+    && ajaxserver.hasArg("pwmrampsteps") == false \
     && ajaxserver.hasArg("mapsource") == false \
     && ajaxserver.hasArg("maplocator") == false \
     && ajaxserver.hasArg("mapzoomkm") == false \
@@ -4650,14 +4665,33 @@ void handleCal() {
 
   HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></p></span></div>";
 
-  String s = CAL_page; //Read HTML contents
-  HtmlSrc +=s;
+  File calFile = SPIFFS.open("/cal.html", "r");
+  if(!calFile){
+    ajaxserver.send(500, "text/plain", "Missing /cal.html in SPIFFS");
+    return;
+  }
+  HtmlSrc.reserve(HtmlSrc.length() + calFile.size());
+  while(calFile.available()){
+    HtmlSrc += char(calFile.read());
+  }
+  calFile.close();
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
 }
 
+bool streamStaticFile(const char* path, const char* contentType) {
+  File file = SPIFFS.open(path, "r");
+  if(!file){
+    return false;
+  }
+  ajaxserver.streamFile(file, contentType);
+  file.close();
+  return true;
+}
+
 void handleRoot() {
- String s = MAIN_page; //Read HTML contents
- ajaxserver.send(200, "text/html", s); //Send web page
+  if(!streamStaticFile("/index.html", "text/html")){
+    ajaxserver.send(500, "text/plain", "Missing /index.html in SPIFFS");
+  }
 }
 void handleADC() {
  ajaxserver.send(200, "text/plane", String(VoltageValue)); //Send ADC value only to client ajax request
@@ -4771,7 +4805,19 @@ void handleRev() {
   ajaxserver.send(200, "text/plane", String(REV));
 }
 void handleMap50js() {
-  ajaxserver.send_P(200, "application/javascript", MAP50_JS);
+  if(streamStaticFile("/map50.js", "application/javascript")){
+    return;
+  }
+  ajaxserver.send(404, "text/plain", "Missing /map50.js in SPIFFS");
+}
+void handleMap50jsGz() {
+  File file = SPIFFS.open("/map50.js.gz", "r");
+  if(file){
+    ajaxserver.streamFile(file, "application/gzip");
+    file.close();
+    return;
+  }
+  ajaxserver.send(404, "text/plain", "Missing /map50.js.gz in SPIFFS");
 }
 void handleEndstop() {
   ajaxserver.send(200, "text/plane", String(Endstop) );
