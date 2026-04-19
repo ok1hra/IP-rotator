@@ -158,7 +158,7 @@ bool AZtwoWire =  false;
 bool AZpreamp =  false;
 
 bool PWMenable = true;
-unsigned int PwmRampSteps = 0;
+unsigned int PwmRampSteps = 100;
 unsigned int PwmUpDelay  = 3;  // [ms]*255steps
 unsigned int PwmDwnDelay = 2;  // [ms]*255steps
 byte dutyCycle = 0;
@@ -168,6 +168,7 @@ float AzimuthControlDeg = 0.0;
 bool AzimuthControlInit = false;
 float AzimuthNoiseDeg = 0.2;
 float PwmSlowWindowDeg = 12.0;
+byte PwmTuneAggressiveness = 2;
 long PwmTuneSaveTimer = 0;
 long StatusWatchdogTimer = 0;
 long RotateWatchdogTimer = 0;
@@ -267,7 +268,7 @@ int i = 0;
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 330   /*
+#define EEPROM_SIZE 331   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -324,6 +325,7 @@ int i = 0;
 326 - MapTheme (0-5)
 327 - PwmMaxDuty (40-255)
 328-329 - PwmSlowWindowDeg x10 UShort
+330 - PwmTuneAggressiveness (0-4)
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -523,6 +525,8 @@ void handlePwmUi();
 void handleSetPwmMaxDuty();
 void handleMap50js();
 void handleMap50jsGz();
+void handleFontRegular();
+void handleFontBold();
 void handleEndstop();
 void handleEndstopLowZone();
 void handleEndstopHighZone();
@@ -539,8 +543,12 @@ float GetStopToleranceDeg();
 bool TargetReachedInDirection(int directionSign);
 byte ComputeClosedLoopDuty(int directionSign);
 void ApplyDutySlew(byte targetDuty, long &PwmTimer);
+void MaybeBeginBrakeLearning(int directionSign, bool &brakeLearningActive, int &brakeLearningDirection, float &brakeStartDistance);
 void UpdateAutoSlowWindow(float brakeStartDistance, float finalDistance);
 void PersistAutoSlowWindowIfNeeded();
+float GetPwmTuneAggressionFactor();
+float GetPwmTuneLeadOffsetDeg();
+bool ShouldForceStopFromPwmStall(int directionSign, byte currentDuty, float rawAzimuthDeg, byte maxDuty);
 
 //-------------------------------------------------------------------------------------------------------
 
@@ -931,11 +939,11 @@ void setup() {
 
   // 234 PwmRampSteps UShort
   if(EEPROM.read(234)==0xff){
-    PwmRampSteps=5;
+    PwmRampSteps=100;
   }else{
     PwmRampSteps = EEPROM.readUShort(234);
     if(PwmRampSteps<1 || PwmRampSteps>200){
-      PwmRampSteps=5;
+      PwmRampSteps=100;
     }
   }
 
@@ -956,6 +964,16 @@ void setup() {
     PwmSlowWindowDeg = float(EEPROM.readUShort(328)) / 10.0;
     if(PwmSlowWindowDeg < 3.0 || PwmSlowWindowDeg > 60.0){
       PwmSlowWindowDeg=12.0;
+    }
+  }
+
+  // 330 PwmTuneAggressiveness
+  if(EEPROM.read(330)==0xff){
+    PwmTuneAggressiveness=2;
+  }else{
+    PwmTuneAggressiveness = EEPROM.readByte(330);
+    if(PwmTuneAggressiveness > 4){
+      PwmTuneAggressiveness=2;
     }
   }
 
@@ -1123,19 +1141,21 @@ void setup() {
   ajaxserver.on("/readGraylineDarkness", handleGraylineDarkness);
   ajaxserver.on("/readGraylineInfo", handleGraylineInfo);
   ajaxserver.on("/readRev", handleRev);
-  ajaxserver.on("/readPwmUi", handlePwmUi);
-  ajaxserver.on("/setPwmMaxDuty", handleSetPwmMaxDuty);
-  ajaxserver.on("/map50.js", handleMap50js);
-   ajaxserver.on("/map50.js.gz", handleMap50jsGz);
-   ajaxserver.on("/set", handleSet);
-   ajaxserver.on("/cal", handleCal);
-   ajaxserver.on("/readEndstop", handleEndstop);
-   ajaxserver.on("/readEndstopLowZone", handleEndstopLowZone);
-   ajaxserver.on("/readEndstopHighZone", handleEndstopHighZone);
-   ajaxserver.on("/readCwraw", handleCwraw);
-   ajaxserver.on("/readCcwraw", handleCcwraw);
-   ajaxserver.on("/readMAC", handleMAC);
-   ajaxserver.on("/readUptime", handleUptime);
+ ajaxserver.on("/readPwmUi", handlePwmUi);
+ ajaxserver.on("/setPwmMaxDuty", handleSetPwmMaxDuty);
+ ajaxserver.on("/map50.js", handleMap50js);
+  ajaxserver.on("/map50.js.gz", handleMap50jsGz);
+  ajaxserver.on("/RC-R.ttf", handleFontRegular);
+  ajaxserver.on("/RC-B.ttf", handleFontBold);
+  ajaxserver.on("/set", handleSet);
+  ajaxserver.on("/cal", handleCal);
+  ajaxserver.on("/readEndstop", handleEndstop);
+  ajaxserver.on("/readEndstopLowZone", handleEndstopLowZone);
+  ajaxserver.on("/readEndstopHighZone", handleEndstopHighZone);
+  ajaxserver.on("/readCwraw", handleCwraw);
+  ajaxserver.on("/readCcwraw", handleCcwraw);
+  ajaxserver.on("/readMAC", handleMAC);
+  ajaxserver.on("/readUptime", handleUptime);
    // ajaxserver.on("/cal/readAZ", handleAZ);
    ajaxserver.begin();                  //Start server
    Serial.println("HTTP ajax server started");
@@ -1663,13 +1683,62 @@ bool TargetReachedInDirection(int directionSign){
   return ReadRemainingDistanceDeg(directionSign, ReadRawAzimuthDeg()) <= GetStopToleranceDeg();
 }
 
+float GetPwmTuneAggressionFactor(){
+  switch (PwmTuneAggressiveness) {
+    case 0: { return 0.95f; }
+    case 1: { return 1.40f; }
+    case 2: { return 2.05f; }
+    case 3: { return 2.85f; }
+    default: { return 3.70f; }
+  }
+}
+
+float GetPwmTuneLeadOffsetDeg(){
+  switch (PwmTuneAggressiveness) {
+    case 0: { return 0.00f; }
+    case 1: { return 0.20f; }
+    case 2: { return 0.45f; }
+    case 3: { return 0.90f; }
+    default: { return 1.40f; }
+  }
+}
+
+bool ShouldForceStopFromPwmStall(int directionSign, byte currentDuty, float rawAzimuthDeg, byte maxDuty){
+  static int trackedDirection = 0;
+  static float stallStartAzimuthDeg = 0.0f;
+  static unsigned long stallTimer = 0;
+
+  int lowDutyThreshold = min(int(maxDuty), max(10, int(round(float(maxDuty) * 0.18f))));
+  if(currentDuty > lowDutyThreshold){
+    trackedDirection = 0;
+    stallTimer = 0;
+    stallStartAzimuthDeg = rawAzimuthDeg;
+    return false;
+  }
+
+  if(trackedDirection != directionSign || stallTimer == 0){
+    trackedDirection = directionSign;
+    stallStartAzimuthDeg = rawAzimuthDeg;
+    stallTimer = millis();
+    return false;
+  }
+
+  if(abs(rawAzimuthDeg - stallStartAzimuthDeg) > 0.18f){
+    stallStartAzimuthDeg = rawAzimuthDeg;
+    stallTimer = millis();
+    return false;
+  }
+
+  return millis() - stallTimer > 2500;
+}
+
 byte ComputeClosedLoopDuty(int directionSign){
   const byte pwmMinStart = 64;
   const byte pwmMinRun = 40;
   float stopToleranceDeg = GetStopToleranceDeg();
   float slowWindowDeg = max(PwmSlowWindowDeg, stopToleranceDeg + 1.0f);
 
-  float remainingDeg = ReadRemainingDistanceDeg(directionSign, ReadControlAzimuthDeg());
+  float remainingDeg = ReadRemainingDistanceDeg(directionSign, ReadControlAzimuthDeg()) - GetPwmTuneLeadOffsetDeg();
   if(remainingDeg <= stopToleranceDeg){
     return 0;
   }
@@ -1677,8 +1746,23 @@ byte ComputeClosedLoopDuty(int directionSign){
   float normalized = (remainingDeg - stopToleranceDeg) / (slowWindowDeg - stopToleranceDeg);
   normalized = ClampFloat(normalized, 0.0, 1.0);
 
+  float aggression = GetPwmTuneAggressionFactor();
   int maxDuty = int(PwmMaxDuty);
-  int minDuty = min(maxDuty, int(pwmMinRun));
+  float currentDutyRatio = (maxDuty > 0) ? ClampFloat(float(dutyCycle) / float(maxDuty), 0.0, 1.0) : 0.0;
+  float brakeWindowShape = (0.24f + 0.76f * currentDutyRatio * currentDutyRatio) * (0.96f + aggression * 0.16f);
+  float dynamicBrakeWindow = stopToleranceDeg + (slowWindowDeg - stopToleranceDeg) * ClampFloat(brakeWindowShape, 0.0, 1.30);
+  float brakingUrgency = 0.0f;
+  if(dynamicBrakeWindow > stopToleranceDeg){
+    brakingUrgency = (dynamicBrakeWindow - remainingDeg) / (dynamicBrakeWindow - stopToleranceDeg);
+    brakingUrgency = ClampFloat(brakingUrgency, 0.0, 1.0);
+  }
+
+  // When the current speed is too high for the remaining angle, bend the curve down
+  // and allow a lower holding PWM so the stop ramp reacts sooner.
+  normalized = powf(normalized, 1.0f + brakingUrgency * (1.35f + aggression * 0.95f));
+
+  float minDutyReduction = ClampFloat(0.50f + aggression * 0.18f, 0.50f, 0.88f);
+  int minDuty = min(maxDuty, max(8, int(round(float(pwmMinRun) * (1.0f - brakingUrgency * minDutyReduction)))));
   int targetDuty = minDuty + int((maxDuty - minDuty) * normalized);
 
   if(dutyCycle == 0 && targetDuty > 0){
@@ -1712,16 +1796,54 @@ void ApplyDutySlew(byte targetDuty, long &PwmTimer){
   PwmTimer=millis();
 }
 
+String FormatPwmTotalRampTime(unsigned int stepIntervalMs, byte maxDuty){
+  unsigned int dutySteps = max(1, (int(maxDuty) + 9) / 10);
+  unsigned long normalizedStepIntervalMs = (stepIntervalMs == 0) ? 1UL : static_cast<unsigned long>(stepIntervalMs);
+  unsigned long totalRampMs = normalizedStepIntervalMs * static_cast<unsigned long>(dutySteps);
+
+  if(totalRampMs >= 1000){
+    return String(float(totalRampMs) / 1000.0f, 2) + " s total";
+  }
+  return String(totalRampMs) + " ms total";
+}
+
+void MaybeBeginBrakeLearning(int directionSign, bool &brakeLearningActive, int &brakeLearningDirection, float &brakeStartDistance){
+  if(brakeLearningActive || AZsource != 0 || PWMenable == false || AzimuthTarget < 0){
+    return;
+  }
+
+  float stopToleranceDeg = GetStopToleranceDeg();
+  float slowWindowDeg = max(PwmSlowWindowDeg, stopToleranceDeg + 1.0f);
+  float rawRemainingDeg = ReadRemainingDistanceDeg(directionSign, ReadRawAzimuthDeg());
+  if(rawRemainingDeg <= 0.0f || rawRemainingDeg > slowWindowDeg + 0.8f){
+    return;
+  }
+
+  brakeLearningActive = true;
+  brakeLearningDirection = directionSign;
+  brakeStartDistance = rawRemainingDeg;
+}
+
 void UpdateAutoSlowWindow(float brakeStartDistance, float finalDistance){
   if(AZsource != 0){
     return;
   }
   float reachedDistance = max(0.0f, brakeStartDistance - max(finalDistance, 0.0f));
   float overshoot = max(0.0f, -finalDistance);
+  float undershoot = max(0.0f, finalDistance);
   float settleMargin = GetStopToleranceDeg() + 0.5;
-  float recommendedWindow = reachedDistance + overshoot * 2.0 + settleMargin;
+  float aggression = GetPwmTuneAggressionFactor();
+  float overshootGain = 2.2f + aggression * 1.1f;
+  float undershootGain = 0.45f + aggression * 0.30f;
+  float recommendedWindow = reachedDistance + overshoot * overshootGain - undershoot * undershootGain + settleMargin;
   recommendedWindow = ClampFloat(recommendedWindow, 3.0, 60.0);
-  PwmSlowWindowDeg = ClampFloat(PwmSlowWindowDeg * 0.82 + recommendedWindow * 0.18, 3.0, 60.0);
+  float windowError = abs(recommendedWindow - PwmSlowWindowDeg);
+  float normalizedError = ClampFloat(windowError / 14.0f, 0.0, 1.0);
+  float overshootFactor = ClampFloat(overshoot / 8.0f, 0.0, 1.0);
+  float residualFactor = ClampFloat(abs(finalDistance) / 3.0f, 0.0, 1.0);
+  float adaptiveBlend = 0.16f + aggression * 0.10f + normalizedError * (0.12f + aggression * 0.05f) + normalizedError * normalizedError * 0.18f + residualFactor * (0.07f + aggression * 0.04f) + overshootFactor * (0.10f + aggression * 0.06f);
+  adaptiveBlend = ClampFloat(adaptiveBlend, 0.18f, 0.82f);
+  PwmSlowWindowDeg = ClampFloat(PwmSlowWindowDeg * (1.0f - adaptiveBlend) + recommendedWindow * adaptiveBlend, 3.0, 60.0);
   PersistAutoSlowWindowIfNeeded();
 }
 
@@ -1753,11 +1875,6 @@ void RunByStatus(){
   // }else if( (Azimuth>=0 && Azimuth<=450) ){
     switch (Status) {
       case -3: {
-        if(BrakeLearningActive==false){
-          BrakeLearningActive = true;
-          BrakeLearningDirection = -1;
-          BrakeStartDistance = max(0.0f, ReadRemainingDistanceDeg(-1, ReadRawAzimuthDeg()));
-        }
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
@@ -1799,8 +1916,12 @@ void RunByStatus(){
         ; break; }
       case -2: {
         if(PWMenable==true){
+          MaybeBeginBrakeLearning(-1, BrakeLearningActive, BrakeLearningDirection, BrakeStartDistance);
           if(TargetReachedInDirection(-1)){
             Status=-3;
+          }else if(ShouldForceStopFromPwmStall(-1, dutyCycle, ReadRawAzimuthDeg(), PwmMaxDuty)){
+            Status=-3;
+            MqttPubString("Debug", "Forced stop after low PWM stall during CCW braking", false);
           }else{
             ApplyDutySlew(ComputeClosedLoopDuty(-1), PwmTimer);
           }
@@ -1847,6 +1968,8 @@ void RunByStatus(){
       case -1: {
         ReverseProcedure(true);
         RunTimer();
+        BrakeLearningActive = false;
+        ShouldForceStopFromPwmStall(0, PwmMaxDuty, ReadRawAzimuthDeg(), PwmMaxDuty);
         Status=-11;
         OneTimeSend = false;
         PwmTimer=millis();
@@ -1863,6 +1986,8 @@ void RunByStatus(){
       case 1: {
         ReverseProcedure(false);
         RunTimer();
+        BrakeLearningActive = false;
+        ShouldForceStopFromPwmStall(0, PwmMaxDuty, ReadRawAzimuthDeg(), PwmMaxDuty);
         Status=11;
         OneTimeSend = false;
         PwmTimer=millis();
@@ -1902,8 +2027,12 @@ void RunByStatus(){
         ; break; }
       case  2: {
         if(PWMenable==true){
+          MaybeBeginBrakeLearning(1, BrakeLearningActive, BrakeLearningDirection, BrakeStartDistance);
           if(TargetReachedInDirection(1)){
             Status=3;
+          }else if(ShouldForceStopFromPwmStall(1, dutyCycle, ReadRawAzimuthDeg(), PwmMaxDuty)){
+            Status=3;
+            MqttPubString("Debug", "Forced stop after low PWM stall during CW braking", false);
           }else{
             ApplyDutySlew(ComputeClosedLoopDuty(1), PwmTimer);
           }
@@ -1915,11 +2044,6 @@ void RunByStatus(){
         }
         ; break; }
       case  3: {
-        if(BrakeLearningActive==false){
-          BrakeLearningActive = true;
-          BrakeLearningDirection = 1;
-          BrakeStartDistance = max(0.0f, ReadRemainingDistanceDeg(1, ReadRawAzimuthDeg()));
-        }
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
@@ -3125,6 +3249,7 @@ void AfterMQTTconnect(){
         // MqttPubString("Name", String(RotName), true);
         MqttPubString("PwmMaxDuty", String(PwmMaxDuty), true);
         MqttPubString("PwmSlowWindowDeg", String(PwmSlowWindowDeg, 1), true);
+        MqttPubString("PwmTuneAggressiveness", String(PwmTuneAggressiveness + 1), true);
         MqttPubString("StopToleranceDeg", String(GetStopToleranceDeg(), 2), true);
 
         // String pcbString = String(HWREV);   // to string
@@ -3404,20 +3529,31 @@ String UtcTime(int format){
 void handlePostRot() {
  // String s = MAIN_page; //Read HTML contents
  String str = ajaxserver.arg("ROT");
+ if(str.length()<1){
+   ajaxserver.send(400, "text/plain", "ROTATE REQUEST FAILED");
+   return;
+ }
+ int requestedAzimuth = str.toInt();
+ if(requestedAzimuth < 0 || requestedAzimuth > 359){
+   ajaxserver.send(400, "text/plain", "ROTATE REQUEST FAILED");
+   return;
+ }
  if(Status==0){
-   AzimuthTarget = str.toInt() - StartAzimuth;
+   AzimuthTarget = requestedAzimuth - StartAzimuth;
    if(AzimuthTarget<0){
        AzimuthTarget = 360+AzimuthTarget;
    }
    MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
    RotCalculate();
+   ajaxserver.send(200, "text/plain", "ROTATE REQUEST ACCEPTED");
  }else{
    if(Status<0){
      Status=-3;
    }else{
      Status=3;
    }
- }
+   ajaxserver.send(409, "text/plain", "ROTATE REQUEST FAILED");
+  }
 }
 
 void handleSet() {
@@ -3469,6 +3605,14 @@ void handleSet() {
   String pwmrampstepsERR= "";
   String pwmrampstepsSTYLE= "";
   String pwmrampstepsDisable= "";
+  String pwmtuneaggrERR= "";
+  String pwmtuneaggrSTYLE= "";
+  String pwmtuneaggrDisable= "";
+  String pwmtuneaggrSELECT0= "";
+  String pwmtuneaggrSELECT1= "";
+  String pwmtuneaggrSELECT2= "";
+  String pwmtuneaggrSELECT3= "";
+  String pwmtuneaggrSELECT4= "";
   String mqtt_loginSTYLE= "";
   String mqtt_loginCHECKED= "";
   String elevationCHECKED= "";
@@ -3508,6 +3652,7 @@ void handleSet() {
     && ajaxserver.hasArg("edstoplowzone") == false \
     && ajaxserver.hasArg("edstophighzone") == false \
     && ajaxserver.hasArg("pwmrampsteps") == false \
+    && ajaxserver.hasArg("pwmtuneaggr") == false \
     && ajaxserver.hasArg("mapsource") == false \
     && ajaxserver.hasArg("maplocator") == false \
     && ajaxserver.hasArg("mapzoomkm") == false \
@@ -4035,6 +4180,20 @@ void handleSet() {
           MqttPubString("PwmRampSteps", String(PwmRampSteps), true);
         }
       }
+
+      if(ajaxserver.arg("pwmtuneaggr").length()<1 || ajaxserver.arg("pwmtuneaggr").toInt()<1 || ajaxserver.arg("pwmtuneaggr").toInt()>5){
+        pwmtuneaggrERR= " Select level 1-5";
+      }else{
+        byte newTuneAggressiveness = byte(ajaxserver.arg("pwmtuneaggr").toInt() - 1);
+        if(PwmTuneAggressiveness == newTuneAggressiveness){
+          pwmtuneaggrERR="";
+        }else{
+          pwmtuneaggrERR="";
+          PwmTuneAggressiveness = newTuneAggressiveness;
+          EEPROM.writeByte(330, PwmTuneAggressiveness);
+          MqttPubString("PwmTuneAggressiveness", String(PwmTuneAggressiveness + 1), true);
+        }
+      }
     }
 
     // 226-227 BaudRate
@@ -4351,6 +4510,8 @@ if(ACmotor==true){
   pwmenableDisable=" disabled";
     pwmrampstepsSTYLE=" style='text-decoration: line-through; color: #555;'";
     pwmrampstepsDisable=" disabled";
+    pwmtuneaggrSTYLE=" style='text-decoration: line-through; color: #555;'";
+    pwmtuneaggrDisable=" disabled";
 }else{
   motorSELECT0= " selected";
   motorSELECT1= "";
@@ -4362,22 +4523,34 @@ if(ACmotor==true){
     pwmSELECT1= " selected";
     pwmrampstepsSTYLE= "";
     pwmrampstepsDisable= "";
+    pwmtuneaggrSTYLE= "";
+    pwmtuneaggrDisable= "";
   }else{
     pwmSELECT0= " selected";
     pwmSELECT1= "";
     pwmrampstepsSTYLE=" style='text-decoration: line-through; color: #555;'";
     pwmrampstepsDisable=" disabled";
+    pwmtuneaggrSTYLE=" style='text-decoration: line-through; color: #555;'";
+    pwmtuneaggrDisable=" disabled";
   }
+}
+
+switch (PwmTuneAggressiveness) {
+  case 0: {pwmtuneaggrSELECT0= " selected"; break; }
+  case 1: {pwmtuneaggrSELECT1= " selected"; break; }
+  case 2: {pwmtuneaggrSELECT2= " selected"; break; }
+  case 3: {pwmtuneaggrSELECT3= " selected"; break; }
+  default: {pwmtuneaggrSELECT4= " selected"; break; }
 }
 
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>\n";
   // <meta http-equiv = 'refresh' content = '600; url = /'>\n";
-  HtmlSrc +="<style type='text/css'> button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button#go:hover {background-color: orange;} table, th, td {color: #fff; border-collapse: collapse; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle; padding-right: 15px} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
+  HtmlSrc +="<style type='text/css'> @font-face {font-family: 'Roboto Condensed'; src: url('/RC-R.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap;} @font-face {font-family: 'Roboto Condensed'; src: url('/RC-B.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap;} button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button#go:hover {background-color: orange;} table, th, td {color: #fff; border-collapse: collapse; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle; padding-right: 15px} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} body {margin: 0; padding: 0 18px 28px 18px;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
   HtmlSrc +=".b {border-top: 1px dotted #666;} .tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
-  HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }</style>\n";
-  HtmlSrc +="<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>\n";
+  HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; } .setup-wrap {max-width: 980px; margin: 0 auto;} .setup-form {color: #ccc; margin: 0; text-align: center;} .setup-section {background: #3b3b3b; border: 1px solid #555; border-radius: 14px; margin: 0 0 14px 0; overflow: hidden;} .setup-summary {cursor: pointer; list-style: none; padding: 16px 20px; text-align: left; font-size: 24px; color: #ddd; background: #444;} .setup-summary::-webkit-details-marker {display: none;} .setup-summary:after {content: '\\25be'; float: right; color: #aaa;} .setup-section[open] .setup-summary:after {content: '\\25b4';} .setup-table {width: 100%; table-layout: fixed;} .setup-table td {padding-top: 2px; padding-bottom: 2px;} .setup-table .tdr {width: 50%; box-sizing: border-box;} .setup-table td:last-child {width: 50%; text-align: left; box-sizing: border-box;} .setup-actions {text-align: center; margin-top: 18px;} .setup-note {color: #666; text-align: center; margin-top: 18px;}</style>\n";
+  HtmlSrc +="</head><body>\n";
   HtmlSrc +="<H1 style='color: #666; text-align: center;'>Setup<br><span style='font-size: 50%;'>(MAC ";
   HtmlSrc +=MACString;
   HtmlSrc +="|FW ";
@@ -4386,7 +4559,8 @@ if(ACmotor==true){
   HtmlSrc +=String(HardwareRev);
   HtmlSrc +=")</span><span style='color: #333;'>";
   HtmlSrc +=String(HWidValue);
-  HtmlSrc +="</span></H1><div style='display: flex; justify-content: center;'><table><form action='/set' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>\n";
+  HtmlSrc +="</span></H1><div class='setup-wrap'><form action='/set' method='post' class='setup-form'>\n";
+  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Station and rotor</summary><table class='setup-table'>\n";
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
   HtmlSrc += YOUR_CALL;
   HtmlSrc +="'><span style='color:red;'>";
@@ -4416,6 +4590,14 @@ if(ACmotor==true){
   HtmlSrc +="'>&deg; <span style='color:red;'>";
   HtmlSrc += maxrotatedegreeERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Range from CCW to CW endstop in degrees</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
+  HtmlSrc += AntRadiationAngle;
+  HtmlSrc +="'>&deg; <span style='color:red;'>";
+  HtmlSrc += antradiationangleERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[1-180&deg;]</span></span></td></tr>\n";
+  HtmlSrc +="</table></details>\n";
+
+  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Map and display</summary><table class='setup-table'>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='mapsource'>Map source:</label></td><td><select id='mapsource' name='mapsource' onchange='toggleMapSourceRows()'><option value='0'";
   HtmlSrc += mapSourceSELECT0;
   HtmlSrc +=">URL bitmap</option><option value='1'";
@@ -4471,11 +4653,9 @@ if(ACmotor==true){
   HtmlSrc +="'>&nbsp;%<span style='color:red;'>";
   HtmlSrc += graylinedarknessERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 190px;'>0 means invisible overlay, 100 means darkest night mask.</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
-  HtmlSrc += AntRadiationAngle;
-  HtmlSrc +="'>&deg; <span style='color:red;'>";
-  HtmlSrc += antradiationangleERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[1-180&deg;]</span></span></td></tr>\n";
+  HtmlSrc +="</table></details>\n";
+
+  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Sensors and limits</summary><table class='setup-table'>\n";
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='source'>Azimuth source:</label></td><td><select name='source' id='source'><option value='0'";
   HtmlSrc += sourceSELECT0;
   HtmlSrc +=">Potentiometer</option><option value='1'";
@@ -4543,7 +4723,9 @@ if(ACmotor==true){
       HtmlSrc += edstophighzoneERR;
       HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Allowed range<br>[16-31] tenths of a Volt</span></span></td></tr>\n";
   // }
+  HtmlSrc +="</table></details>\n";
 
+  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Motor and drive</summary><table class='setup-table'>\n";
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
   HtmlSrc += OneTurnLimitSec;
   HtmlSrc +="'> seconds per one turn <span style='color:red;'>";
@@ -4572,10 +4754,30 @@ if(ACmotor==true){
     HtmlSrc += PwmRampSteps;
     HtmlSrc +="' ";
     HtmlSrc += pwmrampstepsDisable;
-    HtmlSrc +="> " + String(PwmRampSteps) + " ms <span style='color:red;'>";
+    HtmlSrc +="> " + FormatPwmTotalRampTime(PwmRampSteps, PwmMaxDuty) + " <span style='color:red;'>";
     HtmlSrc += pwmrampstepsERR;
-    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 270px;'>Allowed range [1-200] ms<br>Lower value = faster PWM response<br>Higher value = softer start and stop<br>Braking distance is learned automatically from real stops.</span></span></span></td></tr>\n";
+    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 320px;'>Allowed range [1-200] ms for one PWM step<br>The value after the field shows the estimated total ramp-up time from 0 to the current PWM max duty<br>Lower value = faster response<br>Higher value = softer start and stop<br>Braking distance is learned automatically from real stops.</span></span></span></td></tr>\n";
 
+    HtmlSrc +="<tr><td class='tdr'><label for='pwmtuneaggr'><span";
+    HtmlSrc += pwmtuneaggrSTYLE;
+    HtmlSrc += ">Brake learning aggressiveness:</span></label></td><td><select id='pwmtuneaggr' name='pwmtuneaggr'";
+    HtmlSrc += pwmtuneaggrDisable;
+    HtmlSrc +="><option value='1'";
+    HtmlSrc += pwmtuneaggrSELECT0;
+    HtmlSrc +=">1 Very soft</option><option value='2'";
+    HtmlSrc += pwmtuneaggrSELECT1;
+    HtmlSrc +=">2 Soft</option><option value='3'";
+    HtmlSrc += pwmtuneaggrSELECT2;
+    HtmlSrc +=">3 Medium</option><option value='4'";
+    HtmlSrc += pwmtuneaggrSELECT3;
+    HtmlSrc +=">4 Strong</option><option value='5'";
+    HtmlSrc += pwmtuneaggrSELECT4;
+    HtmlSrc +=">5 Very strong</option></select><span style='color:red;'>";
+    HtmlSrc += pwmtuneaggrERR;
+    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 360px;'>Controls how fast the learned braking window reacts to overshoot and undershoot.<br>Level 3 is the intended center point near zero error.<br>Level 4 should already be able to slightly undershoot on some stops.<br>Level 5 is intentionally over-aggressive.</span></span></td></tr>\n";
+  HtmlSrc +="</table></details>\n";
+
+  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Serial and MQTT</summary><table class='setup-table'>\n";
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='baud'>USB serial BAUDRATE:</label></td><td><select name='baud' id='baud'><option value='0'";
   HtmlSrc += baudSELECT0;
   HtmlSrc +=">1200</option><option value='1'";
@@ -4622,15 +4824,11 @@ if(ACmotor==true){
     HtmlSrc +="><span style='color:red;'>";
     HtmlSrc += mqtt_passERR;
     HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Password max 20 character, for connect to MQTT broker</span></span></td></tr>\n";
-
-  HtmlSrc +="<tr class='b'><td class='tdr'></td><td><button id='go'>&#10004; Change</button></form>&nbsp; ";
-  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=1150,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a>";
-  HtmlSrc +="</td></tr>\n";
-
-  // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>\n";
-  // HtmlSrc +="<tr><td class='tdr'></td><td style='height: 42px;'></td></tr>";
-  // HtmlSrc +="<tr><td class='tdr'><a href='/'><button id='go'>&#8617; Back to Control</button></a></td><td class='tdl'><a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=715,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></td></tr>";
-  HtmlSrc +="<tr><td class='tdr'></td><td class='tdl'><span style='color: #666;'>After change, refresh all other page for apply changes.</span><br><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></td></tr>\n";
+  HtmlSrc +="</table></details>\n";
+  HtmlSrc +="<div class='setup-actions'><button id='go'>&#10004; Change</button></form>&nbsp; ";
+  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=1150,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></div>";
+  HtmlSrc +="<p class='setup-note'>After change, refresh all other page for apply changes.<br><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></p>";
+  HtmlSrc +="</div>";
   HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapThemeRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineNtpRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineDarknessRow').style.display=(s==='1')?'table-row':'none';}toggleMapSourceRows();</script>";
   HtmlSrc +="</body></html>\n";
 
@@ -4740,7 +4938,7 @@ void handleCal() {
 
   String HtmlSrc = "<!DOCTYPE html><html><head><title>CALIBRATE</title>";
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>";
-  HtmlSrc +="<style type='text/css'>button {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button:hover {background-color: orange;} ";
+  HtmlSrc +="<style type='text/css'>@font-face {font-family: 'Roboto Condensed'; src: url('/RC-R.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap;} @font-face {font-family: 'Roboto Condensed'; src: url('/RC-B.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap;} button {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button:hover {background-color: orange;} ";
   HtmlSrc +=".red {background-color: #c00; color: #FFF;} table, th, td { color: #fff; border: 0px; border-color: #666; border-style: solid; margin: 0px;}";
   HtmlSrc +=".tdl { text-align: left; padding: 10px;}";
   HtmlSrc +=".tdc { text-align: center; padding: 10px;}";
@@ -4748,7 +4946,7 @@ void handleCal() {
   HtmlSrc +="html,body { background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;}";
   HtmlSrc +="a:hover {color: #fff;}";
   HtmlSrc +="a {color: #ccc; text-decoration: underline;}";
-  HtmlSrc +="</style><link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'></head><body>";
+  HtmlSrc +="</style></head><body>";
   HtmlSrc +="<H1 style='color: #666; text-align: center;'>Calibration steps:<br><span style='font-size: 50%;'>(MAC ";
   HtmlSrc +=MACString;
   HtmlSrc +="|FW ";
@@ -5007,6 +5205,18 @@ void handleMap50jsGz() {
     return;
   }
   ajaxserver.send(404, "text/plain", "Missing /map50.js.gz in SPIFFS");
+}
+void handleFontRegular() {
+  if(streamStaticFile("/RC-R.ttf", "font/ttf")){
+    return;
+  }
+  ajaxserver.send(404, "text/plain", "Missing /RC-R.ttf in SPIFFS");
+}
+void handleFontBold() {
+  if(streamStaticFile("/RC-B.ttf", "font/ttf")){
+    return;
+  }
+  ajaxserver.send(404, "text/plain", "Missing /RC-B.ttf in SPIFFS");
 }
 void handleEndstop() {
   ajaxserver.send(200, "text/plane", String(Endstop) );

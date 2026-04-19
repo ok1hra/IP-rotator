@@ -7,6 +7,20 @@
 	<meta http-equiv="refresh" content="1800">
 	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 	<style type="text/css">
+		@font-face {
+			font-family: 'Roboto Condensed';
+			src: url('/RC-R.ttf') format('truetype');
+			font-weight: 400;
+			font-style: normal;
+			font-display: swap;
+		}
+		@font-face {
+			font-family: 'Roboto Condensed';
+			src: url('/RC-B.ttf') format('truetype');
+			font-weight: 700;
+			font-style: normal;
+			font-display: swap;
+		}
 		html, body {
 			font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;
 			background-color: #000;
@@ -87,14 +101,14 @@
 		}
 		.pwmctl{
 			position: absolute;
-			left: 16px;
+			left: 8px;
 			top: 16px;
 			z-index: 6;
-			width: 132px;
-			padding: 7px 10px 8px 10px;
+			width: 112px;
+			padding: 5px 6px 5px 6px;
 			border-radius: 9px;
 			background: rgba(6, 8, 11, 0.58);
-			border: 1px solid rgba(160, 170, 175, 0.12);
+			border: 1px solid rgba(160, 170, 175, 0.08);
 			box-sizing: border-box;
 			display: none;
 		}
@@ -102,8 +116,8 @@
 			position: relative;
 			width: 100%;
 			height: 20px;
-			margin: 5px 0 3px 0;
-			border-radius: 6px;
+			margin: 0 0 4px 0;
+			border-radius: 0;
 			background: linear-gradient(180deg, rgba(28, 34, 39, 0.96), rgba(8, 11, 14, 0.98));
 			border: 1px solid rgba(182, 190, 196, 0.24);
 			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 -2px 4px rgba(0, 0, 0, 0.45);
@@ -112,26 +126,32 @@
 		.pwmbarmask{
 			height: 100%;
 			width: 100%;
-			border-radius: 5px;
-			background: rgba(20, 24, 28, 0.74);
+			border-radius: 0;
+			background:
+				repeating-linear-gradient(
+					90deg,
+					rgba(122, 132, 138, 0.32) 0px,
+					rgba(122, 132, 138, 0.32) 7px,
+					rgba(8, 11, 14, 0) 7px,
+					rgba(8, 11, 14, 0) 9px
+				),
+				linear-gradient(180deg, rgba(34, 39, 44, 0.84), rgba(16, 20, 24, 0.9));
 			overflow: hidden;
 			transition: width 0.15s ease;
 		}
 		.pwmbarfill{
 			height: 100%;
 			width: 0%;
-			border-radius: 5px;
-			background:
-				repeating-linear-gradient(
-					90deg,
-					rgba(74, 224, 255, 0.98) 0px,
-					rgba(74, 224, 255, 0.98) 7px,
-					rgba(8, 11, 14, 0.0) 7px,
-					rgba(8, 11, 14, 0.0) 9px
-				),
-				linear-gradient(180deg, rgba(180, 248, 255, 0.96), rgba(40, 210, 255, 0.94) 48%, rgba(9, 166, 214, 0.96));
-			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.28);
-			transition: width 0.12s ease;
+			border-radius: 0;
+			background: repeating-linear-gradient(
+				90deg,
+				rgba(226, 67, 48, 0.96) 0px,
+				rgba(226, 67, 48, 0.96) 7px,
+				rgba(8, 11, 14, 0.0) 7px,
+				rgba(8, 11, 14, 0.0) 9px
+			);
+			box-shadow: none;
+			transition: width 0.08s linear;
 		}
 		.pwmslider{
 			position: absolute;
@@ -143,7 +163,8 @@
 			background: transparent;
 			-webkit-appearance: none;
 			appearance: none;
-			accent-color: rgba(232, 236, 239, 0.92);
+			accent-color: #8f969a;
+			opacity: 0.72;
 		}
 		.pwmslider::-webkit-slider-runnable-track{
 			height: 20px;
@@ -157,9 +178,9 @@
 			height: 14px;
 			margin-top: 3px;
 			border-radius: 50%;
-			border: 1px solid rgba(242, 245, 247, 0.92);
-			background: rgba(244, 247, 249, 0.95);
-			box-shadow: 0 0 0 2px rgba(10, 14, 18, 0.45);
+			border: 1px solid rgba(143, 150, 154, 0.92);
+			background: rgba(143, 150, 154, 0.96);
+			box-shadow: 0 0 0 2px rgba(10, 14, 18, 0.32);
 			cursor: pointer;
 		}
 		.pwmslider::-moz-range-track{
@@ -171,9 +192,9 @@
 			width: 14px;
 			height: 14px;
 			border-radius: 50%;
-			border: 1px solid rgba(242, 245, 247, 0.92);
-			background: rgba(244, 247, 249, 0.95);
-			box-shadow: 0 0 0 2px rgba(10, 14, 18, 0.45);
+			border: 1px solid rgba(143, 150, 154, 0.92);
+			background: rgba(143, 150, 154, 0.96);
+			box-shadow: 0 0 0 2px rgba(10, 14, 18, 0.32);
 			cursor: pointer;
 		}
 		.dxccsearch{
@@ -221,12 +242,13 @@
 			font-size: 10px;
 			line-height: 1.2;
 			letter-spacing: 0.04em;
+			text-align: right;
 			text-transform: uppercase;
 		}
 		.maptoggle{
 			position: absolute;
 			left: 16px;
-			top: 572px;
+			top: 550px;
 			z-index: 6;
 			width: 184px;
 			padding: 7px 10px 8px 10px;
@@ -298,10 +320,45 @@
 			box-sizing: border-box;
 			white-space: nowrap;
 		}
+		.statuspill{
+			display: inline-flex;
+			align-items: stretch;
+			overflow: hidden;
+			border-radius: 5px;
+			background: #585858;
+		}
+		.statuspillmain{
+			display: inline-flex;
+			align-items: center;
+			padding: 4px 6px;
+			color: #000;
+		}
+		.statuspillmain span{
+			vertical-align: middle;
+		}
+		.setupbtn{
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			padding: 0 12px;
+			color: #fff;
+			text-decoration: none;
+			background: linear-gradient(180deg, #6d7378, #53585d);
+			border-left: 1px solid rgba(255, 255, 255, 0.18);
+			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+			box-sizing: border-box;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+			cursor: pointer;
+		}
+		.setupbtn:hover{
+			background: linear-gradient(180deg, #7a8187, #5d6369);
+			color: #fff;
+			text-decoration: underline;
+		}
 		a:hover {color: #fff;}
     a { color: #ccc; text-decoration: underline;}
 	</style>
-	<link href='http://fonts.googleapis.com/css?family=Roboto+Condensed:300italic,400italic,700italic,400,700,300&subset=latin-ext' rel='stylesheet' type='text/css'>
 	</head>
 	<body>
 
@@ -319,24 +376,28 @@
 			<input class="zoomslider" type="range" id="MapZoomSlider" min="1000" max="20000" step="250" value="20000">
 		</div>
 		<div class="pwmctl" id="PwmControl">
-			<div class="zoomlabel">
-				<span>Motor speed</span>
-				<span class="zoomvalue" id="PwmValue">100%</span>
-			</div>
 			<div class="pwmbarwrap">
 				<div class="pwmbarmask" id="PwmBarMask">
 					<div class="pwmbarfill" id="PwmBarFill"></div>
 				</div>
 				<input class="pwmslider" type="range" id="PwmMaxSlider" min="40" max="255" step="5" value="255">
 			</div>
+			<div class="zoomlabel" style="margin-bottom: 0;">
+				<span>SPEED</span>
+				<span class="zoomvalue" id="PwmValue">100%</span>
+			</div>
 		</div>
 		<div class="dxccsearch" id="MapDxccSearchControl">
-			<label class="dxccsearchlabel" for="MapDxccSearchInput">DXCC rotate</label>
+			<label class="dxccsearchlabel" for="MapDxccSearchInput">TO DXCC</label>
 			<input class="dxccsearchinput" type="text" id="MapDxccSearchInput" list="MapDxccSearchList" placeholder="e.g. OK, DL, JA" autocomplete="off" spellcheck="false">
 			<datalist id="MapDxccSearchList"></datalist>
 			<div class="dxccsearchstatus" id="MapDxccSearchStatus"></div>
 		</div>
 		<div class="maptoggle" id="MapBordersControl">
+			<label class="togglelabel" for="MapGraylineToggle">
+				<input type="checkbox" id="MapGraylineToggle">
+				<span>Grayline</span>
+			</label>
 			<label class="togglelabel" for="MapBordersToggle">
 				<input type="checkbox" id="MapBordersToggle">
 				<span>State borders</span>
@@ -349,12 +410,13 @@
 		<div class="maphint" id="MapHint"></div>
 		<div class="second">
 			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
-				<span style="color: #000; background: #666; padding: 4px 6px 4px 6px; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;">
-					<span style="color: #fff;" id="AntName2"> </span> | POE
-					<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V |
-					 raw <span style="font-weight: bold;" id="AZValue">0</span>&deg; |
-					<a href="/set" onclick="window.open( this.href, this.href, 'width=700,height=1350,left=0,top=0,menubar=no,location=no,status=no' ); return false;"); return false;\">SETUP</a>
-
+				<span class="statuspill">
+					<span class="statuspillmain">
+						<span style="color: #fff;" id="AntName2"> </span> | POE
+						<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V |
+						 raw <span style="font-weight: bold;" id="AZValue">0</span>&deg; |
+					</span>
+					<a class="setupbtn" href="/set" onclick="window.open( this.href, this.href, 'width=700,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;">SETUP</a>
 				</span>
 				<br>
 				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="NtpStatus" style="color: #666; font-size: 73%"></span><span id="ReleaseStatus" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
@@ -376,11 +438,14 @@
 	var MapUrl = 0;
 	var MapLocator = "JO60UC";
 	var MapZoomKm = 5000;
+	var MapGraylineEnabled = true;
 	var MapBordersEnabled = false;
 	var MapDxccEnabled = false;
 	var MapTheme = 1;
 	var GraylineDarkness = 80;
 	var GraylineEpoch = 0;
+	var LastDxccRotateRequest = "";
+	var LastDxccRotateAt = 0;
 	var GraylineNtpOk = false;
 	var GraylineMinuteKey = "";
 	var AzimuthPulseStart = 0;
@@ -411,7 +476,7 @@
 //	setTimeout(() => { map(); }, 1000);
 	Static();
 	StaticBot();
-	var AZtarget;
+	var AZtarget = null;
 
 	function CheckOnline() {
 		if( new Date().getTime() - Number(OnlineTimeStamp) > 1500){
@@ -449,7 +514,7 @@
 		if(!wrap || !slider || !value){ return; }
 		if(Number(MapSource) === 1 && Number(Elevation) !== 1){
 			wrap.style.display = "block";
-			slider.value = Number(MapZoomKm);
+			slider.value = mapZoomKmToSliderValue(Number(MapZoomKm));
 			value.innerHTML = String(MapZoomKm) + " km";
 		}else{
 			wrap.style.display = "none";
@@ -466,6 +531,21 @@
 		return Math.round(Number(duty || 0) * 100 / 255);
 	}
 
+	function getPwmSegmentWidthPx(){
+		return 9;
+	}
+
+	function snapPwmPercentToSegments(percent, totalWidthPx){
+		if(Number(totalWidthPx) <= 0){
+			return 0;
+		}
+		var clampedPercent = Clamp(Number(percent || 0), 0, 100);
+		var widthPx = totalWidthPx * clampedPercent / 100;
+		var segmentWidthPx = getPwmSegmentWidthPx();
+		var segmentsLit = Math.floor(widthPx / segmentWidthPx);
+		return Clamp(segmentsLit * segmentWidthPx / totalWidthPx * 100, 0, 100);
+	}
+
 	function updatePwmControl(){
 		var wrap = document.getElementById("PwmControl");
 		var slider = document.getElementById("PwmMaxSlider");
@@ -476,12 +556,18 @@
 		if(PwmUiEnabled){
 			wrap.style.display = "block";
 			slider.value = Number(PwmMaxDuty);
-			valueLabel.innerHTML = String(dutyToPercent(PwmActualDuty)) + "% / " + String(dutyToPercent(PwmMaxDuty)) + "%";
+			valueLabel.innerHTML = String(dutyToPercent(PwmMaxDuty)) + "%";
+			var totalWidthPx = barMask.parentElement ? Number(barMask.parentElement.clientWidth || 0) : 0;
+			if(totalWidthPx <= 0){
+				totalWidthPx = Number(wrap.clientWidth || 1);
+			}
 			var maxWidth = Clamp(Number(PwmMaxDuty) / 255 * 100, 0, 100);
 			var actualWithinMax = 0;
 			if(Number(PwmMaxDuty) > 0){
 				actualWithinMax = Clamp(Number(PwmActualDuty) / Number(PwmMaxDuty) * 100, 0, 100);
 			}
+			maxWidth = snapPwmPercentToSegments(maxWidth, totalWidthPx);
+			actualWithinMax = snapPwmPercentToSegments(actualWithinMax, totalWidthPx * maxWidth / 100);
 			barMask.style.width = String(maxWidth) + "%";
 			barFill.style.width = String(actualWithinMax) + "%";
 		}else{
@@ -527,16 +613,24 @@
 
 	function updateMapBordersControl(){
 		var wrap = document.getElementById("MapBordersControl");
+		var graylineToggle = document.getElementById("MapGraylineToggle");
 		var toggle = document.getElementById("MapBordersToggle");
 		var dxccToggle = document.getElementById("MapDxccToggle");
-		if(!wrap || !toggle || !dxccToggle){ return; }
+		if(!wrap || !graylineToggle || !toggle || !dxccToggle){ return; }
 		if(Number(MapSource) === 1 && Number(Elevation) !== 1){
 			wrap.style.display = "block";
+			graylineToggle.checked = !!MapGraylineEnabled;
 			toggle.checked = !!MapBordersEnabled;
 			dxccToggle.checked = !!MapDxccEnabled;
 		}else{
 			wrap.style.display = "none";
 		}
+	}
+
+	function setMapGraylineEnabled(enabled){
+		MapGraylineEnabled = !!enabled;
+		updateMapBordersControl();
+		map();
 	}
 
 	function setMapBordersEnabled(enabled){
@@ -612,6 +706,14 @@
 			zoomKm = 20000;
 		}
 		return zoomKm;
+	}
+
+	function mapZoomKmToSliderValue(zoomKm){
+		return 21000 - clampMapZoomKm(zoomKm);
+	}
+
+	function sliderValueToMapZoomKm(sliderValue){
+		return clampMapZoomKm(21000 - Number(sliderValue));
 	}
 
 	function applyMapZoom(nextZoomKm, persistNow){
@@ -888,10 +990,17 @@
 		var zoomSlider = document.getElementById("MapZoomSlider");
 		if(zoomSlider){
 			zoomSlider.addEventListener("input", function(){
-				applyMapZoom(this.value, false);
+				applyMapZoom(sliderValueToMapZoomKm(this.value), false);
 			});
 			zoomSlider.addEventListener("change", function(){
-				applyMapZoom(this.value, true);
+				applyMapZoom(sliderValueToMapZoomKm(this.value), true);
+			});
+		}
+		var graylineToggle = document.getElementById("MapGraylineToggle");
+		if(graylineToggle){
+			graylineToggle.checked = true;
+			graylineToggle.addEventListener("change", function(){
+				setMapGraylineEnabled(this.checked);
 			});
 		}
 		var bordersToggle = document.getElementById("MapBordersToggle");
@@ -910,11 +1019,9 @@
 		}
 		var dxccSearchInput = document.getElementById("MapDxccSearchInput");
 		if(dxccSearchInput){
-			dxccSearchInput.addEventListener("input", function(){
+			dxccSearchInput.addEventListener("input", function(evt){
 				updateDxccSearchSuggestions(this.value);
-			});
-			dxccSearchInput.addEventListener("change", function(){
-				rotateToDxccPrefix(this.value);
+				maybeRotateToDxccPrefixFromSuggestion(evt);
 			});
 			dxccSearchInput.addEventListener("keydown", function(evt){
 				if(evt.key === "Enter"){
@@ -978,6 +1085,9 @@
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("StatValue").innerHTML = this.responseText;
 				Status = this.responseText;
+				if(Number(Status) === 0 && Number(StatusTmp) !== 0){
+					clearTargetAzimuth();
+				}
 				if( Number(StatusTmp)!=Number(Status) ){
 					AZ(Azimuth);
 					Static();
@@ -1154,7 +1264,7 @@
 	    	return;
 	    }
 	    evt.preventDefault();
-	    var nextZoomKm = Number(MapZoomKm) + (evt.deltaY < 0 ? -step : step);
+	    var nextZoomKm = Number(MapZoomKm) + (evt.deltaY < 0 ? step : -step);
 	    if (applyMapZoom(nextZoomKm, false)) {
 	    	showMapHint(mousePos);
 	    }
@@ -1172,9 +1282,9 @@
 	    	return;
 	    }
 	    // alert(mousePos.x + ',' + mousePos.y);
-			AZtarget = getAzimuthForMousePos(mousePos);
+			setTargetAzimuth(getAzimuthForMousePos(mousePos));
 			rotateToAzimuth(AZtarget, function(ok, responseText){
-				if(ok){
+				if(!ok && responseText){
 					alert(responseText);
 				}
 			});
@@ -1218,17 +1328,30 @@ var LAND_OUTLINES = [];
 	];
 	var MapDatasetReady = false;
 	var MapDatasetLoading = false;
+	var MapDatasetWaiters = [];
 
 	function ensureMapDataset(onReady){
 		if(MapDatasetReady){
 			DxccPrefixIndex = null;
-			onReady();
+			if(onReady){ onReady(); }
 			return;
+		}
+		if(onReady){
+			MapDatasetWaiters.push(onReady);
 		}
 		if(MapDatasetLoading){
 			return;
 		}
 		MapDatasetLoading = true;
+		function flushWaiters(){
+			var waiters = MapDatasetWaiters.slice();
+			MapDatasetWaiters = [];
+			for(var i = 0; i < waiters.length; i++){
+				if(waiters[i]){
+					waiters[i]();
+				}
+			}
+		}
 		function cleanup(){
 			window.removeEventListener('map50-ready', handleReady);
 			window.removeEventListener('map50-error', handleError);
@@ -1238,11 +1361,12 @@ var LAND_OUTLINES = [];
 			MapDatasetLoading = false;
 			MapDatasetReady = true;
 			DxccPrefixIndex = null;
-			onReady();
+			flushWaiters();
 		}
 		function handleError(evt){
 			cleanup();
 			MapDatasetLoading = false;
+			MapDatasetWaiters = [];
 			if(window.console && console.error){
 				console.error('Map dataset load failed', evt && evt.detail ? evt.detail : evt);
 			}
@@ -1318,6 +1442,8 @@ var LAND_OUTLINES = [];
 		if(Number(MapTheme)===1){
 			return {
 				mapBg: "#081018",
+				mapBgCenter: "#102118",
+				mapBgEdge: "#081018",
 				ring: "rgba(120, 164, 130, 0.18)",
 				landFill: "rgba(113,145,118,0.78)",
 				landStroke: "rgba(184,215,168,0.92)",
@@ -1329,6 +1455,8 @@ var LAND_OUTLINES = [];
 		if(Number(MapTheme)===2){
 			return {
 				mapBg: "#15161b",
+				mapBgCenter: "#24252b",
+				mapBgEdge: "#15161b",
 				ring: "rgba(156, 166, 188, 0.18)",
 				landFill: "rgba(198,191,173,0.78)",
 				landStroke: "rgba(241,233,214,0.94)",
@@ -1340,6 +1468,8 @@ var LAND_OUTLINES = [];
 		if(Number(MapTheme)===3){
 			return {
 				mapBg: "#140d06",
+				mapBgCenter: "#2b1a10",
+				mapBgEdge: "#140d06",
 				ring: "rgba(205, 140, 64, 0.18)",
 				landFill: "rgba(163,117,67,0.78)",
 				landStroke: "rgba(255,210,145,0.94)",
@@ -1351,6 +1481,8 @@ var LAND_OUTLINES = [];
 		if(Number(MapTheme)===4){
 			return {
 				mapBg: "#071109",
+				mapBgCenter: "#0d2413",
+				mapBgEdge: "#071109",
 				ring: "rgba(88, 182, 104, 0.18)",
 				landFill: "rgba(68,136,82,0.78)",
 				landStroke: "rgba(169,255,176,0.94)",
@@ -1362,6 +1494,8 @@ var LAND_OUTLINES = [];
 		if(Number(MapTheme)===5){
 			return {
 				mapBg: "#000030",
+				mapBgCenter: "#112f63",
+				mapBgEdge: "#000030",
 				ring: "rgba(214, 226, 255, 0.22)",
 				landFill: "rgba(220,234,216,0.82)",
 				landStroke: "rgba(248,255,245,0.98)",
@@ -1372,6 +1506,8 @@ var LAND_OUTLINES = [];
 		}
 		return {
 			mapBg: "#0b1320",
+			mapBgCenter: "#15293a",
+			mapBgEdge: "#0b1320",
 			ring: "rgba(160, 180, 200, 0.18)",
 			landFill: "rgba(208,232,200,0.78)",
 			landStroke: "rgba(238,249,231,0.95)",
@@ -1379,6 +1515,34 @@ var LAND_OUTLINES = [];
 			borderWidth: 1.05,
 			grayline: "0,0,0"
 		};
+	}
+
+	function getMapBackgroundCanvasStyle(ctx, theme, mapRadiusPx){
+		var gradient = ctx.createRadialGradient(
+			Xcenter + mapRadiusPx * 0.16,
+			Ycenter - mapRadiusPx * 0.18,
+			mapRadiusPx * 0.02,
+			Xcenter + mapRadiusPx * 0.16,
+			Ycenter - mapRadiusPx * 0.18,
+			mapRadiusPx
+		);
+		gradient.addColorStop(0.0, theme.mapBgCenter || theme.mapBg);
+		gradient.addColorStop(0.24, theme.mapBgCenter || theme.mapBg);
+		gradient.addColorStop(0.56, theme.mapBg);
+		gradient.addColorStop(1.0, theme.mapBgEdge || theme.mapBg);
+		return gradient;
+	}
+
+	function buildMapBackgroundSvg(theme, circleR){
+		return "<defs>"
+			+ "<radialGradient id='mapbggrad' cx='58%' cy='40%' fx='58%' fy='40%' r='60%'>"
+			+ "<stop offset='0%' stop-color='" + (theme.mapBgCenter || theme.mapBg) + "'/>"
+			+ "<stop offset='24%' stop-color='" + (theme.mapBgCenter || theme.mapBg) + "'/>"
+			+ "<stop offset='56%' stop-color='" + theme.mapBg + "'/>"
+			+ "<stop offset='100%' stop-color='" + (theme.mapBgEdge || theme.mapBg) + "'/>"
+			+ "</radialGradient>"
+			+ "<clipPath id='mapclip'><circle cx='" + Xcenter + "' cy='" + Ycenter + "' r='" + circleR + "'/></clipPath>"
+			+ "</defs>";
 	}
 
 	function projectAzimuthal(latDeg, lonDeg, centerLatDeg, centerLonDeg, mapRadiusPx, zoomKm){
@@ -1460,6 +1624,39 @@ var LAND_OUTLINES = [];
 		status.innerHTML = message || "";
 	}
 
+	function setTargetAzimuth(targetAzimuth){
+		var azimuth = Math.round(Number(targetAzimuth));
+		if(!isFinite(azimuth)){
+			return;
+		}
+		while(azimuth < 0){ azimuth += 360; }
+		while(azimuth >= 360){ azimuth -= 360; }
+		AZtarget = azimuth;
+		AZ(Azimuth);
+	}
+
+	function clearTargetAzimuth(){
+		if(AZtarget === null || !isFinite(Number(AZtarget))){
+			return;
+		}
+		AZtarget = null;
+		AZ(Azimuth);
+	}
+
+	function hasTargetAzimuthValue(){
+		return AZtarget !== null && AZtarget !== undefined && isFinite(Number(AZtarget));
+	}
+
+	function isDuplicateDxccRotate(normalized){
+		var now = Date.now();
+		return normalized === LastDxccRotateRequest && (now - LastDxccRotateAt) < 800;
+	}
+
+	function rememberDxccRotate(normalized){
+		LastDxccRotateRequest = normalized;
+		LastDxccRotateAt = Date.now();
+	}
+
 	function normalizePrefixQuery(value){
 		var text = String(value || "").trim().toUpperCase();
 		if(!text){
@@ -1511,7 +1708,7 @@ var LAND_OUTLINES = [];
 		}
 		list.innerHTML = html.join("");
 		if(normalized){
-			setDxccSearchStatus(html.length > 0 ? "Select prefix and press Enter" : "No prefix match", html.length === 0);
+			setDxccSearchStatus(html.length > 0 ? "Select prefix or press Enter" : "No prefix match", html.length === 0);
 		}else{
 			setDxccSearchStatus("");
 		}
@@ -1540,7 +1737,7 @@ var LAND_OUTLINES = [];
 	function rotateToAzimuth(targetAzimuth, onDone){
 		var azimuth = Math.round(Number(targetAzimuth));
 		if(!isFinite(azimuth)){
-			if(onDone){ onDone(false); }
+			if(onDone){ onDone(false, "Invalid azimuth"); }
 			return;
 		}
 		var http = new XMLHttpRequest();
@@ -1553,10 +1750,29 @@ var LAND_OUTLINES = [];
 			if(http.status === 200){
 				if(onDone){ onDone(true, http.responseText); }
 			}else{
-				if(onDone){ onDone(false); }
+				if(onDone){ onDone(false, http.responseText); }
 			}
 		};
 		http.send("ROT=" + azimuth);
+	}
+
+	function maybeRotateToDxccPrefixFromSuggestion(evt){
+		if(!evt || !MapDatasetReady){
+			return;
+		}
+		var inputType = String(evt.inputType || "");
+		if(inputType !== "insertReplacementText"){
+			return;
+		}
+		var normalized = normalizePrefixQuery(evt.target && evt.target.value);
+		if(!normalized){
+			return;
+		}
+		var entry = ensureDxccPrefixIndex()[normalized];
+		if(!entry || isDuplicateDxccRotate(normalized)){
+			return;
+		}
+		rotateToDxccPrefix(normalized);
 	}
 
 	function rotateToDxccPrefix(query){
@@ -1587,12 +1803,19 @@ var LAND_OUTLINES = [];
 		}
 		var azimuth = bearingDegrees(center.lat, center.lon, entry.lat, entry.lon);
 		var entryName = entry.name ? " " + entry.name : "";
+		var dxccSearchInput = document.getElementById("MapDxccSearchInput");
+		rememberDxccRotate(normalized);
+		setTargetAzimuth(azimuth);
+		if(dxccSearchInput){
+			dxccSearchInput.value = "";
+			updateDxccSearchSuggestions("");
+		}
 		setDxccSearchStatus("Rotating to " + normalized + entryName + " (" + azimuth + "°)");
-		rotateToAzimuth(azimuth, function(ok){
+		rotateToAzimuth(azimuth, function(ok, responseText){
 			if(ok){
 				setDxccSearchStatus("Rotating to " + normalized + entryName + " (" + azimuth + "°)");
 			}else{
-				setDxccSearchStatus("Rotate request failed", true);
+				setDxccSearchStatus(responseText || "Rotate request failed", true);
 			}
 		});
 	}
@@ -1908,9 +2131,9 @@ var LAND_OUTLINES = [];
 		var svg = "";
 		svg += "<svg xmlns='http://www.w3.org/2000/svg' width='" + BoxSize + "' height='" + BoxSize + "' viewBox='0 0 " + BoxSize + " " + BoxSize + "'>";
 		svg += "<rect width='100%' height='100%' fill='#000'/>";
-		svg += "<defs><clipPath id='mapclip'><circle cx='" + Xcenter + "' cy='" + Ycenter + "' r='" + circleR + "'/></clipPath></defs>";
+		svg += buildMapBackgroundSvg(theme, circleR);
 		svg += "<g clip-path='url(#mapclip)'>";
-		svg += "<rect width='100%' height='100%' fill='" + theme.mapBg + "'/>";
+		svg += "<rect width='100%' height='100%' fill='url(#mapbggrad)'/>";
 		for(var ring = 1; ring <= 4; ring++){
 			var rr = Math.round((circleR * ring / 4) * 10) / 10;
 			svg += "<circle cx='" + Xcenter + "' cy='" + Ycenter + "' r='" + rr + "' fill='none' stroke='" + theme.ring + "' stroke-width='1'/>";
@@ -2164,6 +2387,9 @@ var LAND_OUTLINES = [];
 	}
 
 	function drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm){
+		if(!MapGraylineEnabled){
+			return;
+		}
 		if(!GraylineNtpOk || GraylineEpoch <= 0){
 			return;
 		}
@@ -2347,7 +2573,7 @@ var LAND_OUTLINES = [];
 		if(LocatorLandFillMode){
 			ctx.beginPath();
 			ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
-			ctx.fillStyle = theme.mapBg;
+			ctx.fillStyle = getMapBackgroundCanvasStyle(ctx, theme, mapRadiusPx);
 			ctx.fill();
 
 			drawProjectedLandFill(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
@@ -2370,7 +2596,7 @@ var LAND_OUTLINES = [];
 			ctx.beginPath();
 			ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
 			ctx.clip();
-			ctx.fillStyle = theme.mapBg;
+			ctx.fillStyle = getMapBackgroundCanvasStyle(ctx, theme, mapRadiusPx);
 			ctx.fillRect(0, 0, BoxSize, BoxSize);
 			ctx.strokeStyle = theme.ring;
 			ctx.lineWidth = 1;
@@ -2523,15 +2749,16 @@ var LAND_OUTLINES = [];
 	  var az = c.getContext("2d");
 		az.clearRect(0, 0, BoxSize, BoxSize);
 	  az.beginPath();
-		var AZtargetTmp = Number(AZtarget) + Number(AzShift);
+		var hasTargetAzimuth = hasTargetAzimuthValue();
+		var AZtargetTmp = hasTargetAzimuth ? Number(AZtarget) + Number(AzShift) : 0;
 		var AzimuthMapTmp = Azimuth;
-		if(Number(AZtargetTmp) > 360){
+		if(hasTargetAzimuth && Number(AZtargetTmp) > 360){
 			AZtargetTmp=Number(AZtargetTmp)-360;
 		}
 		if(Number(AzimuthMapTmp) > 360){
 			AzimuthMapTmp=Number(AzimuthMapTmp)-360;
 		}
-			if( Math.abs(Number(AZtargetTmp) - Number(AzimuthMapTmp)) > Number(AntRadiationAngle)/2 ){	// || Status != 4
+			if(hasTargetAzimuth && Math.abs(Number(AZtargetTmp) - Number(AzimuthMapTmp)) > Number(AntRadiationAngle)/2 ){	// || Status != 4
 				az.moveTo(BoxSize/2, BoxSize/2);
 			  az.lineTo(Xcoordinate(Number(AZtarget), BoxSize/2*0.9), Ycoordinate(Number(AZtarget), BoxSize/2*0.9));
 			}
@@ -2605,22 +2832,24 @@ var LAND_OUTLINES = [];
 					az.fillText("CW endstop zone", Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
 				}
 			}else{
-				az.fillStyle = "black";
-				az.fillText(ShowAzimuth+String.fromCharCode(176), Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2)+3, Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2)+3 );
 				if (Status != 4) {
 					az.fillStyle = "red";
 				}else if (Azimuth > 359) {
 					az.fillStyle = "orange";
 				}else{
-					az.fillStyle = "green";
+				az.fillStyle = "#00aa00";
 				}
 				var pulseFont = 100 + Math.round(pulseGain * 10);
 				az.font = "bold " + String(pulseFont) + "px Arial";
-				az.shadowColor = "rgba(255,255,255," + String((0.12 + pulseGain * 0.28).toFixed(2)) + ")";
-				az.shadowBlur = 4 + pulseGain * 16;
+				az.shadowColor = "rgba(0,0,0," + String((0.56 + pulseGain * 0.16).toFixed(2)) + ")";
+				az.shadowBlur = 10 + pulseGain * 10;
+				az.shadowOffsetX = 0;
+				az.shadowOffsetY = 4;
 				az.fillText(ShowAzimuth+String.fromCharCode(176), Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
 				az.shadowBlur = 0;
 				az.shadowColor = "transparent";
+				az.shadowOffsetX = 0;
+				az.shadowOffsetY = 0;
 			}
 		az.beginPath();
 			az.moveTo(BoxSize/2, BoxSize/2);
