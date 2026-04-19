@@ -8,6 +8,7 @@ LAND_IN_PATH = Path('tools/map-data/countries-50m.json')
 DXCC_PREFIXES_PATH = Path('tools/map-data/dxcc_prefixes.json')
 DXCC_EXTRA_ENTITIES_PATH = Path('tools/map-data/dxcc_extra_entities.json')
 ADMIN0_LINES_SHP = Path('tools/map-data/ne/ne_10m_admin_0_boundary_lines_land/ne_10m_admin_0_boundary_lines_land.shp')
+ADMIN1_LINES_DBF = Path('tools/map-data/ne/ne_10m_admin_1_states_provinces_lines/ne_10m_admin_1_states_provinces_lines.dbf')
 ADMIN1_LINES_SHP = Path('tools/map-data/ne/ne_10m_admin_1_states_provinces_lines/ne_10m_admin_1_states_provinces_lines.shp')
 OUT_PATH = Path('tools/map-data/map50_dataset.js')
 WEB_BOOTSTRAP_PATH = Path('data/map50.js')
@@ -17,6 +18,7 @@ BORDER_EPSILON_DEG = 0.08
 LAND_MIN_POINTS = 5
 BORDER_MIN_POINTS = 2
 SCALE = 100  # store lat/lon as int(lat*100), int(lon*100)
+ADMIN1_KEEP_ADM0 = {"USA", "CAN"}
 
 def load_topo(path):
     obj = json.loads(path.read_text())
@@ -182,9 +184,38 @@ for geom in land_obj['objects']['land']['geometries']:
     for ring in iter_rings(geom['arcs']):
         land_lines.append(stitch_ring(ring))
 
-def read_polyline_shp(path):
+def read_dbf_rows(path):
+    data = path.read_bytes()
+    num_records = struct.unpack('<I', data[4:8])[0]
+    header_len = struct.unpack('<H', data[8:10])[0]
+    record_len = struct.unpack('<H', data[10:12])[0]
+    fields = []
+    pos = 32
+    while pos < header_len and data[pos] != 0x0D:
+        name = data[pos:pos + 11].split(b'\x00', 1)[0].decode('ascii', 'ignore')
+        field_len = data[pos + 16]
+        fields.append((name, field_len))
+        pos += 32
+    rows = []
+    rec_start = header_len
+    for i in range(num_records):
+        rec = data[rec_start + i * record_len:rec_start + (i + 1) * record_len]
+        if not rec or rec[0] == 0x2A:
+            rows.append(None)
+            continue
+        row = {}
+        off = 1
+        for name, field_len in fields:
+            row[name] = rec[off:off + field_len].decode('utf-8', 'ignore').strip()
+            off += field_len
+        rows.append(row)
+    return rows
+
+
+def read_polyline_shp(path, keep_record=None):
     data = path.read_bytes()
     out = []
+    record_index = 0
     pos = 100  # fixed shapefile header size
     while pos + 8 <= len(data):
         _, rec_len_words = struct.unpack('>2i', data[pos:pos + 8])
@@ -192,6 +223,10 @@ def read_polyline_shp(path):
         rec_len = rec_len_words * 2
         rec = data[pos:pos + rec_len]
         pos += rec_len
+        keep = keep_record(record_index) if keep_record else True
+        record_index += 1
+        if not keep:
+            continue
         if len(rec) < 4:
             continue
         shape_type = struct.unpack('<i', rec[:4])[0]
@@ -215,7 +250,11 @@ def read_polyline_shp(path):
     return out
 
 
-country_border_lines = read_polyline_shp(ADMIN0_LINES_SHP) + read_polyline_shp(ADMIN1_LINES_SHP)
+admin1_rows = read_dbf_rows(ADMIN1_LINES_DBF)
+country_border_lines = read_polyline_shp(ADMIN0_LINES_SHP) + read_polyline_shp(
+    ADMIN1_LINES_SHP,
+    keep_record=lambda idx: bool(admin1_rows[idx]) and admin1_rows[idx].get('ADM0_A3') in ADMIN1_KEEP_ADM0,
+)
 
 def process(lines, epsilon, min_points):
     out = []
