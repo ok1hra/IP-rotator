@@ -122,7 +122,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260418";
+const char* REV = "20260419";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -158,11 +158,17 @@ bool AZtwoWire =  false;
 bool AZpreamp =  false;
 
 bool PWMenable = true;
-unsigned int PwmDegree = 0;
 unsigned int PwmRampSteps = 0;
 unsigned int PwmUpDelay  = 3;  // [ms]*255steps
 unsigned int PwmDwnDelay = 2;  // [ms]*255steps
 byte dutyCycle = 0;
+byte PwmMaxDuty = 255;
+float AzimuthRawDeg = 0.0;
+float AzimuthControlDeg = 0.0;
+bool AzimuthControlInit = false;
+float AzimuthNoiseDeg = 0.2;
+float PwmSlowWindowDeg = 12.0;
+long PwmTuneSaveTimer = 0;
 long StatusWatchdogTimer = 0;
 long RotateWatchdogTimer = 0;
 int AzimuthWatchdog = 0;
@@ -261,7 +267,7 @@ int i = 0;
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 327   /*
+#define EEPROM_SIZE 330   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -306,7 +312,7 @@ int i = 0;
 229 AZpreamp
 230 - ReverseAZ
 231 - PWMenable
-232-3 PwmDegree UShort
+232-3 reserved legacy PWM start distance
 234-5 PwmRampSteps UShort
 236-245 - MQTT_USER
 246-265 - MQTT_PASS
@@ -316,6 +322,8 @@ int i = 0;
 275-324 - GraylineNtpServer
 325 - GraylineDarkness (0-100)
 326 - MapTheme (0-5)
+327 - PwmMaxDuty (40-255)
+328-329 - PwmSlowWindowDeg x10 UShort
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -511,6 +519,8 @@ void handleMapTheme();
 void handleGraylineDarkness();
 void handleGraylineInfo();
 void handleRev();
+void handlePwmUi();
+void handleSetPwmMaxDuty();
 void handleMap50js();
 void handleMap50jsGz();
 void handleEndstop();
@@ -520,6 +530,17 @@ void handleCwraw();
 void handleCcwraw();
 void handleMAC();
 void handleUptime();
+float ClampFloat(float value, float minValue, float maxValue);
+byte ClampDuty(int value);
+float ReadControlAzimuthDeg();
+float ReadRawAzimuthDeg();
+float ReadRemainingDistanceDeg(int directionSign, float azimuthDeg);
+float GetStopToleranceDeg();
+bool TargetReachedInDirection(int directionSign);
+byte ComputeClosedLoopDuty(int directionSign);
+void ApplyDutySlew(byte targetDuty, long &PwmTimer);
+void UpdateAutoSlowWindow(float brakeStartDistance, float finalDistance);
+void PersistAutoSlowWindowIfNeeded();
 
 //-------------------------------------------------------------------------------------------------------
 
@@ -908,17 +929,6 @@ void setup() {
     }
   }
 
-  // 232 PwmDegree UShort
-  if(EEPROM.read(232)==0xff){
-    PwmDegree=10;
-    PwmDegree=10;
-  }else{
-    PwmDegree = EEPROM.readUShort(232);
-    if(PwmDegree<1 || PwmDegree>50){
-      PwmDegree=10;
-    }
-  }
-
   // 234 PwmRampSteps UShort
   if(EEPROM.read(234)==0xff){
     PwmRampSteps=5;
@@ -926,6 +936,26 @@ void setup() {
     PwmRampSteps = EEPROM.readUShort(234);
     if(PwmRampSteps<1 || PwmRampSteps>200){
       PwmRampSteps=5;
+    }
+  }
+
+  // 327 PwmMaxDuty
+  if(EEPROM.read(327)==0xff){
+    PwmMaxDuty=255;
+  }else{
+    PwmMaxDuty = EEPROM.readByte(327);
+    if(PwmMaxDuty<40){
+      PwmMaxDuty=40;
+    }
+  }
+
+  // 328-329 PwmSlowWindowDeg x10
+  if(EEPROM.read(328)==0xff){
+    PwmSlowWindowDeg=12.0;
+  }else{
+    PwmSlowWindowDeg = float(EEPROM.readUShort(328)) / 10.0;
+    if(PwmSlowWindowDeg < 3.0 || PwmSlowWindowDeg > 60.0){
+      PwmSlowWindowDeg=12.0;
     }
   }
 
@@ -1090,10 +1120,12 @@ void setup() {
    ajaxserver.on("/setMapLocator", handleSetMapLocator);
    ajaxserver.on("/setMapZoomKm", handleSetMapZoomKm);
    ajaxserver.on("/readMapTheme", handleMapTheme);
-   ajaxserver.on("/readGraylineDarkness", handleGraylineDarkness);
-   ajaxserver.on("/readGraylineInfo", handleGraylineInfo);
-   ajaxserver.on("/readRev", handleRev);
-   ajaxserver.on("/map50.js", handleMap50js);
+  ajaxserver.on("/readGraylineDarkness", handleGraylineDarkness);
+  ajaxserver.on("/readGraylineInfo", handleGraylineInfo);
+  ajaxserver.on("/readRev", handleRev);
+  ajaxserver.on("/readPwmUi", handlePwmUi);
+  ajaxserver.on("/setPwmMaxDuty", handleSetPwmMaxDuty);
+  ajaxserver.on("/map50.js", handleMap50js);
    ajaxserver.on("/map50.js.gz", handleMap50jsGz);
    ajaxserver.on("/set", handleSet);
    ajaxserver.on("/cal", handleCal);
@@ -1190,7 +1222,20 @@ void Watchdog(){
       }
     }
     if(AZsource == 0){ //potentiometer
-      Azimuth=map(AzimuthValue, CcwRaw, CwRaw, 0, MaxRotateDegree);
+      AzimuthRawDeg=map(AzimuthValue, CcwRaw, CwRaw, 0, MaxRotateDegree);
+      float controlAlpha = (Status==0) ? 0.18 : 0.45;
+      if(AzimuthControlInit==false){
+        AzimuthControlDeg = AzimuthRawDeg;
+        AzimuthControlInit = true;
+      }else{
+        AzimuthControlDeg = AzimuthControlDeg + (AzimuthRawDeg - AzimuthControlDeg) * controlAlpha;
+      }
+      AzimuthNoiseDeg = AzimuthNoiseDeg * 0.92 + abs(AzimuthRawDeg - AzimuthControlDeg) * 0.08;
+      Azimuth=int(round(AzimuthRawDeg));
+    }else{
+      AzimuthRawDeg=Azimuth;
+      AzimuthControlDeg=Azimuth;
+      AzimuthNoiseDeg=0.2;
     }
     ADCTimer=millis();
     AZmaster=map(AZmasterValue, 142, 3150, 0, 360);
@@ -1284,6 +1329,22 @@ void Watchdog(){
       MqttPubString("AzimuthStop", String(Azimuth), false);
     }
     TxMqttAzimuthTimer=millis();
+  }
+
+  static long PwmTelemetryTimer = 0;
+  static float PwmSlowWindowPrev = -1.0;
+  static float StopTolerancePrev = -1.0;
+  if(millis()-PwmTelemetryTimer > 5000){
+    float stopToleranceDeg = GetStopToleranceDeg();
+    if(abs(PwmSlowWindowPrev-PwmSlowWindowDeg) > 0.09 || PwmSlowWindowPrev < 0){
+      MqttPubString("PwmSlowWindowDeg", String(PwmSlowWindowDeg, 1), false);
+      PwmSlowWindowPrev = PwmSlowWindowDeg;
+    }
+    if(abs(StopTolerancePrev-stopToleranceDeg) > 0.04 || StopTolerancePrev < 0){
+      MqttPubString("StopToleranceDeg", String(stopToleranceDeg, 2), false);
+      StopTolerancePrev = stopToleranceDeg;
+    }
+    PwmTelemetryTimer=millis();
   }
 
   if(Status!=0){
@@ -1546,36 +1607,173 @@ void EthTest(){
 }
 //-------------------------------------------------------------------------------------------------------
 
+float ClampFloat(float value, float minValue, float maxValue){
+  if(value < minValue){
+    return minValue;
+  }
+  if(value > maxValue){
+    return maxValue;
+  }
+  return value;
+}
+
+byte ClampDuty(int value){
+  if(value < 0){
+    return 0;
+  }
+  if(value > 255){
+    return 255;
+  }
+  return byte(value);
+}
+
+float ReadControlAzimuthDeg(){
+  if(AZsource == 0){
+    return AzimuthControlDeg;
+  }
+  return float(Azimuth);
+}
+
+float ReadRawAzimuthDeg(){
+  if(AZsource == 0){
+    return AzimuthRawDeg;
+  }
+  return float(Azimuth);
+}
+
+float ReadRemainingDistanceDeg(int directionSign, float azimuthDeg){
+  if(AzimuthTarget < 0){
+    return 0.0;
+  }
+  if(directionSign > 0){
+    return float(AzimuthTarget) - azimuthDeg;
+  }
+  return azimuthDeg - float(AzimuthTarget);
+}
+
+float GetStopToleranceDeg(){
+  if(AZsource != 0){
+    return 0.6;
+  }
+  float tolerance = 0.35 + AzimuthNoiseDeg * 2.2;
+  return ClampFloat(tolerance, 0.45, 1.6);
+}
+
+bool TargetReachedInDirection(int directionSign){
+  return ReadRemainingDistanceDeg(directionSign, ReadRawAzimuthDeg()) <= GetStopToleranceDeg();
+}
+
+byte ComputeClosedLoopDuty(int directionSign){
+  const byte pwmMinStart = 64;
+  const byte pwmMinRun = 40;
+  float stopToleranceDeg = GetStopToleranceDeg();
+  float slowWindowDeg = max(PwmSlowWindowDeg, stopToleranceDeg + 1.0f);
+
+  float remainingDeg = ReadRemainingDistanceDeg(directionSign, ReadControlAzimuthDeg());
+  if(remainingDeg <= stopToleranceDeg){
+    return 0;
+  }
+
+  float normalized = (remainingDeg - stopToleranceDeg) / (slowWindowDeg - stopToleranceDeg);
+  normalized = ClampFloat(normalized, 0.0, 1.0);
+
+  int maxDuty = int(PwmMaxDuty);
+  int minDuty = min(maxDuty, int(pwmMinRun));
+  int targetDuty = minDuty + int((maxDuty - minDuty) * normalized);
+
+  if(dutyCycle == 0 && targetDuty > 0){
+    targetDuty = max(targetDuty, min(maxDuty, int(pwmMinStart)));
+  }
+
+  return ClampDuty(targetDuty);
+}
+
+void ApplyDutySlew(byte targetDuty, long &PwmTimer){
+  unsigned int slewInterval = max(1u, PwmRampSteps);
+  if(millis()-PwmTimer < slewInterval){
+    return;
+  }
+
+  int nextDuty = dutyCycle;
+  if(nextDuty < targetDuty){
+    nextDuty += 10;
+    if(nextDuty > targetDuty){
+      nextDuty = targetDuty;
+    }
+  }else if(nextDuty > targetDuty){
+    nextDuty -= 10;
+    if(nextDuty < targetDuty){
+      nextDuty = targetDuty;
+    }
+  }
+
+  dutyCycle = ClampDuty(nextDuty);
+  ledcWrite(mosfetPWMChannel, dutyCycle);
+  PwmTimer=millis();
+}
+
+void UpdateAutoSlowWindow(float brakeStartDistance, float finalDistance){
+  if(AZsource != 0){
+    return;
+  }
+  float reachedDistance = max(0.0f, brakeStartDistance - max(finalDistance, 0.0f));
+  float overshoot = max(0.0f, -finalDistance);
+  float settleMargin = GetStopToleranceDeg() + 0.5;
+  float recommendedWindow = reachedDistance + overshoot * 2.0 + settleMargin;
+  recommendedWindow = ClampFloat(recommendedWindow, 3.0, 60.0);
+  PwmSlowWindowDeg = ClampFloat(PwmSlowWindowDeg * 0.82 + recommendedWindow * 0.18, 3.0, 60.0);
+  PersistAutoSlowWindowIfNeeded();
+}
+
+void PersistAutoSlowWindowIfNeeded(){
+  static unsigned int LastSavedTenths = 0;
+  unsigned int currentTenths = (unsigned int)round(PwmSlowWindowDeg * 10.0);
+  if(LastSavedTenths == 0){
+    LastSavedTenths = EEPROM.readUShort(328);
+  }
+  if(currentTenths != LastSavedTenths && millis()-PwmTuneSaveTimer > 60000){
+    EEPROM.writeUShort(328, currentTenths);
+    EEPROM.commit();
+    LastSavedTenths = currentTenths;
+    PwmTuneSaveTimer = millis();
+    MqttPubString("PwmSlowWindowDeg", String(PwmSlowWindowDeg, 1), true);
+  }
+}
+//-------------------------------------------------------------------------------------------------------
+
 void RunByStatus(){
   static long PwmTimer = 0;
   static bool OneTimeSend = false;
-  static int FromAzimuth = 0;
+  static bool BrakeLearningActive = false;
+  static int BrakeLearningDirection = 0;
+  static float BrakeStartDistance = 0.0;
   DetectEndstopZone();
   EthTest();
 
   // }else if( (Azimuth>=0 && Azimuth<=450) ){
     switch (Status) {
       case -3: {
+        if(BrakeLearningActive==false){
+          BrakeLearningActive = true;
+          BrakeLearningDirection = -1;
+          BrakeStartDistance = max(0.0f, ReadRemainingDistanceDeg(-1, ReadRawAzimuthDeg()));
+        }
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
-            if(millis()-PwmTimer > PwmRampSteps){   //PwmDwnDelay){
-              if(dutyCycle!=0){
-                dutyCycle-=10;  //-10
+            ApplyDutySlew(0, PwmTimer);
+            if(dutyCycle==0){
+              ledcWrite(mosfetPWMChannel, 0);
+              digitalWrite(BrakePin, LOW);
+              delay(24);
+              digitalWrite(ReversePin, LOW);
+              Status=0;
+              if(BrakeLearningActive){
+                UpdateAutoSlowWindow(BrakeStartDistance, ReadRemainingDistanceDeg(BrakeLearningDirection, ReadRawAzimuthDeg()));
+                BrakeLearningActive = false;
               }
-              ledcWrite(mosfetPWMChannel, dutyCycle);
-              PwmTimer=millis();
-              if(dutyCycle<10){ // || (abs(AzimuthTarget-Azimuth)<1) ){ //
-                dutyCycle=0;
-                ledcWrite(mosfetPWMChannel, 0);
-                digitalWrite(BrakePin, LOW);
-                delay(24);
-                // ReverseProcedure(false);
-                digitalWrite(ReversePin, LOW);
-                Status=0;
-                AzimuthTarget=-1;
-                FromAzimuth=-1;
-              }
+              AzimuthTarget=-1;
+              AzimuthControlDeg=AzimuthRawDeg;
             }
           }else{
             dutyCycle=0;
@@ -1586,6 +1784,7 @@ void RunByStatus(){
             digitalWrite(ReversePin, LOW);
             // digitalWrite(ACcwPin, LOW);
             Status=0;
+            BrakeLearningActive = false;
             AzimuthTarget=-1;
           }
         }else{
@@ -1595,13 +1794,15 @@ void RunByStatus(){
           delay(24);
           digitalWrite(BrakePin, LOW);
           Status=0;
+          BrakeLearningActive = false;
         }
         ; break; }
       case -2: {
         if(PWMenable==true){
-          if(abs(AzimuthTarget-Azimuth)<PwmDegree){
-            // MqttPubString("Debug", "RunByStatus-2onPWM|"+String(AzimuthTarget)+"-"+String(Azimuth)+"("+String(abs(AzimuthTarget-Azimuth))+")<"+String(PwmDegree), false);
+          if(TargetReachedInDirection(-1)){
             Status=-3;
+          }else{
+            ApplyDutySlew(ComputeClosedLoopDuty(-1), PwmTimer);
           }
         }else{
           if(abs(AzimuthTarget-Azimuth)<2){
@@ -1616,17 +1817,14 @@ void RunByStatus(){
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
-            if(millis()-PwmTimer > PwmRampSteps){
-              dutyCycle+=10;
-              ledcWrite(mosfetPWMChannel, dutyCycle);
-              PwmTimer=millis();
-              if(dutyCycle>244){
-                ledcWrite(mosfetPWMChannel, 255);
+            byte targetDuty = ComputeClosedLoopDuty(-1);
+            if(targetDuty==0 || TargetReachedInDirection(-1)){
+              Status=-3;
+            }else{
+              ApplyDutySlew(targetDuty, PwmTimer);
+              if(dutyCycle>=targetDuty){
                 Status=-2;
               }
-            }
-            if(abs(AzimuthTarget-Azimuth) < abs(AzimuthTarget-FromAzimuth)/2 ){  // if target near than PwmDegree, switch in 1/2 path to PWMdwn
-              Status=-3;
             }
           }else{
             ledcWrite(mosfetPWMChannel, 255);
@@ -1651,9 +1849,10 @@ void RunByStatus(){
         RunTimer();
         Status=-11;
         OneTimeSend = false;
-        FromAzimuth=Azimuth;
+        PwmTimer=millis();
         ; break; }
       case  0: {
+        BrakeLearningActive = false;
         LedStatusErr();
         if(OneTimeSend==false){
           MqttPubString("AzimuthStop", String(Azimuth), false);
@@ -1666,7 +1865,7 @@ void RunByStatus(){
         RunTimer();
         Status=11;
         OneTimeSend = false;
-        FromAzimuth=Azimuth;
+        PwmTimer=millis();
         ; break; }
       case  11: {
         ErrorDetect=0;
@@ -1674,17 +1873,14 @@ void RunByStatus(){
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
-            if(millis()-PwmTimer > PwmRampSteps){
-              dutyCycle+=10;
-              ledcWrite(mosfetPWMChannel, dutyCycle);
-              PwmTimer=millis();
-              if(dutyCycle>244){
-                ledcWrite(mosfetPWMChannel, 255);
+            byte targetDuty = ComputeClosedLoopDuty(1);
+            if(targetDuty==0 || TargetReachedInDirection(1)){
+              Status=3;
+            }else{
+              ApplyDutySlew(targetDuty, PwmTimer);
+              if(dutyCycle>=targetDuty){
                 Status=2;
               }
-            }
-            if(abs(AzimuthTarget-Azimuth) < abs(AzimuthTarget-FromAzimuth)/2 ){  // if target near than PwmDegree, switch in 1/2 path to PWMdwn
-              Status=3;
             }
           }else{
             ledcWrite(mosfetPWMChannel, 255);
@@ -1706,9 +1902,10 @@ void RunByStatus(){
         ; break; }
       case  2: {
         if(PWMenable==true){
-          if(abs(AzimuthTarget-Azimuth)<PwmDegree){
-            // MqttPubString("Debug", "RunByStatus2onPWM|"+String(AzimuthTarget)+"-"+String(Azimuth)+"("+String(abs(AzimuthTarget-Azimuth))+")<"+String(PwmDegree), false);
+          if(TargetReachedInDirection(1)){
             Status=3;
+          }else{
+            ApplyDutySlew(ComputeClosedLoopDuty(1), PwmTimer);
           }
         }else{
           if(abs(AzimuthTarget-Azimuth)<2){
@@ -1718,26 +1915,27 @@ void RunByStatus(){
         }
         ; break; }
       case  3: {
+        if(BrakeLearningActive==false){
+          BrakeLearningActive = true;
+          BrakeLearningDirection = 1;
+          BrakeStartDistance = max(0.0f, ReadRemainingDistanceDeg(1, ReadRawAzimuthDeg()));
+        }
         if(ACmotor==false){
           //DC
           if(PWMenable==true){
-            if(millis()-PwmTimer > PwmRampSteps){   //PwmDwnDelay){
-              if(dutyCycle!=0){
-                dutyCycle-=10;  // -10
+            ApplyDutySlew(0, PwmTimer);
+            if(dutyCycle==0){
+              ledcWrite(mosfetPWMChannel, 0);
+              digitalWrite(BrakePin, LOW);
+              delay(24);
+              digitalWrite(ReversePin, LOW);
+              Status=0;
+              if(BrakeLearningActive){
+                UpdateAutoSlowWindow(BrakeStartDistance, ReadRemainingDistanceDeg(BrakeLearningDirection, ReadRawAzimuthDeg()));
+                BrakeLearningActive = false;
               }
-              ledcWrite(mosfetPWMChannel, dutyCycle);
-              PwmTimer=millis();
-              if(dutyCycle<10){ // || (abs(AzimuthTarget-Azimuth)<1) ){
-                dutyCycle=0;
-                ledcWrite(mosfetPWMChannel, 0);
-                digitalWrite(BrakePin, LOW);
-                delay(24);
-                // ReverseProcedure(false);
-                digitalWrite(ReversePin, LOW);
-                Status=0;
-                AzimuthTarget=-1;
-                FromAzimuth=-1;
-              }
+              AzimuthTarget=-1;
+              AzimuthControlDeg=AzimuthRawDeg;
             }
           }else{
             dutyCycle=0;
@@ -1748,6 +1946,7 @@ void RunByStatus(){
             digitalWrite(ReversePin, LOW);
             // digitalWrite(ACcwPin, LOW);
             Status=0;
+            BrakeLearningActive = false;
             AzimuthTarget=-1;
           }
         }else{
@@ -1757,6 +1956,7 @@ void RunByStatus(){
           delay(24);
           digitalWrite(BrakePin, LOW);
           Status=0;
+          BrakeLearningActive = false;
         }
         ; break; }
     }
@@ -2923,6 +3123,9 @@ void AfterMQTTconnect(){
 
         // MqttPubString("StartAzimuth", String(StartAzimuth), true);
         // MqttPubString("Name", String(RotName), true);
+        MqttPubString("PwmMaxDuty", String(PwmMaxDuty), true);
+        MqttPubString("PwmSlowWindowDeg", String(PwmSlowWindowDeg, 1), true);
+        MqttPubString("StopToleranceDeg", String(GetStopToleranceDeg(), 2), true);
 
         // String pcbString = String(HWREV);   // to string
         // pcbString.toCharArray( mqttTX, 2 );                          // to array
@@ -3263,9 +3466,6 @@ void handleSet() {
   String twowireSELECT1= "";
   String preampSELECT0= "";
   String preampSELECT1= "";
-  String pwmdegreeERR= "";
-  String pwmdegreeSTYLE= "";
-  String pwmdegreeDisable= "";
   String pwmrampstepsERR= "";
   String pwmrampstepsSTYLE= "";
   String pwmrampstepsDisable= "";
@@ -3307,7 +3507,6 @@ void handleSet() {
     && ajaxserver.hasArg("antradiationangle") == false \
     && ajaxserver.hasArg("edstoplowzone") == false \
     && ajaxserver.hasArg("edstophighzone") == false \
-    && ajaxserver.hasArg("pwmdegree") == false \
     && ajaxserver.hasArg("pwmrampsteps") == false \
     && ajaxserver.hasArg("mapsource") == false \
     && ajaxserver.hasArg("maplocator") == false \
@@ -3821,23 +4020,6 @@ void handleSet() {
       MqttPubString("PWMenable", "OFF", true);
     }
 
-    // 232 PwmDegree
-    if (ACmotor==false && PWMenable==true){
-      if (ajaxserver.arg("pwmdegree").length()<1 || ajaxserver.arg("pwmdegree").toInt()<1 || ajaxserver.arg("pwmdegree").toInt()>50){
-        pwmdegreeERR= " Out of range number 1-30";
-      }else{
-        if(PwmDegree == ajaxserver.arg("pwmdegree").toInt()){
-          pwmdegreeERR="";
-        }else{
-          pwmdegreeERR="";
-          PwmDegree = ajaxserver.arg("pwmdegree").toInt();
-          EEPROM.writeUShort(232, PwmDegree);
-          // EEPROM.commit();
-          MqttPubString("PwmDegree", String(PwmDegree), true);
-        }
-      }
-    }
-
     // 233 PwmRampSteps UShort
     if (ACmotor==false && PWMenable==true){
       if(ajaxserver.arg("pwmrampsteps").length()<1 || ajaxserver.arg("pwmrampsteps").toInt()<1 || ajaxserver.arg("pwmrampsteps").toInt()>200){
@@ -4167,8 +4349,6 @@ if(ACmotor==true){
   motorSELECT1= " selected";
   pwmenableSTYLE=" style='text-decoration: line-through; color: #555;'";
   pwmenableDisable=" disabled";
-    pwmdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
-    pwmdegreeDisable=" disabled";
     pwmrampstepsSTYLE=" style='text-decoration: line-through; color: #555;'";
     pwmrampstepsDisable=" disabled";
 }else{
@@ -4180,15 +4360,11 @@ if(ACmotor==true){
   if(PWMenable==true){
     pwmSELECT0= "";
     pwmSELECT1= " selected";
-    pwmdegreeSTYLE= "";
-    pwmdegreeDisable= "";
     pwmrampstepsSTYLE= "";
     pwmrampstepsDisable= "";
   }else{
     pwmSELECT0= " selected";
     pwmSELECT1= "";
-    pwmdegreeSTYLE=" style='text-decoration: line-through; color: #555;'";
-    pwmdegreeDisable=" disabled";
     pwmrampstepsSTYLE=" style='text-decoration: line-through; color: #555;'";
     pwmrampstepsDisable=" disabled";
   }
@@ -4392,23 +4568,13 @@ if(ACmotor==true){
 
     HtmlSrc +="<tr><td class='tdr'><label for='pwmrampsteps'><span";
     HtmlSrc += pwmrampstepsSTYLE;
-    HtmlSrc += ">PWM ramp length in steps of 25ms:</label></td><td><input type='text' id='pwmrampsteps' name='pwmrampsteps' size='3' value='";
+    HtmlSrc += ">PWM slew interval:</label></td><td><input type='text' id='pwmrampsteps' name='pwmrampsteps' size='3' value='";
     HtmlSrc += PwmRampSteps;
     HtmlSrc +="' ";
     HtmlSrc += pwmrampstepsDisable;
-    HtmlSrc +="> = " + String(float(PwmRampSteps*25)/1000) + " seconds <span style='color:red;'>";
+    HtmlSrc +="> " + String(PwmRampSteps) + " ms <span style='color:red;'>";
     HtmlSrc += pwmrampstepsERR;
-    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 250px;'>Allowed range [1-200] steps<br>it corresponds 25ms-5second<br>Parameter needs to be set so that the rotator stops at distance of " + String(PwmDegree) + "&deg;<br>WARNING: long time means long stopping time!</span></span></span></td></tr>\n";
-
-    HtmlSrc +="<tr><td class='tdr'><label for='pwmdegree'><span";
-    HtmlSrc += pwmdegreeSTYLE;
-    HtmlSrc += ">PWM ramp start distance:</label></td><td><input type='text' id='pwmdegree' name='pwmdegree' size='3' value='";
-    HtmlSrc += PwmDegree;
-    HtmlSrc +="' ";
-    HtmlSrc += pwmdegreeDisable;
-    HtmlSrc +=">&deg; <span style='color:red;'>";
-    HtmlSrc += pwmdegreeERR;
-    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 150px;'>Allowed range [1-50&deg;]</span></span></span></td></tr>\n";
+    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 270px;'>Allowed range [1-200] ms<br>Lower value = faster PWM response<br>Higher value = softer start and stop<br>Braking distance is learned automatically from real stops.</span></span></span></td></tr>\n";
 
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='baud'>USB serial BAUDRATE:</label></td><td><select name='baud' id='baud'><option value='0'";
   HtmlSrc += baudSELECT0;
@@ -4804,6 +4970,28 @@ void handleGraylineInfo() {
 }
 void handleRev() {
   ajaxserver.send(200, "text/plane", String(REV));
+}
+void handlePwmUi() {
+  bool pwmUiEnabled = (ACmotor==false && PWMenable==true);
+  ajaxserver.send(200, "text/plane", String(pwmUiEnabled ? 1 : 0) + "|" + String(PwmMaxDuty) + "|" + String(dutyCycle));
+}
+void handleSetPwmMaxDuty() {
+  if(!ajaxserver.hasArg("value")){
+    ajaxserver.send(400, "text/plane", "Missing value");
+    return;
+  }
+  int newDuty = ajaxserver.arg("value").toInt();
+  if(newDuty < 40 || newDuty > 255){
+    ajaxserver.send(400, "text/plane", "Out of range");
+    return;
+  }
+  if(PwmMaxDuty != byte(newDuty)){
+    PwmMaxDuty = byte(newDuty);
+    EEPROM.writeByte(327, PwmMaxDuty);
+    EEPROM.commit();
+    MqttPubString("PwmMaxDuty", String(PwmMaxDuty), true);
+  }
+  ajaxserver.send(200, "text/plane", String(PwmMaxDuty));
 }
 void handleMap50js() {
   if(streamStaticFile("/map50.js", "application/javascript")){

@@ -85,6 +85,97 @@
 			box-sizing: border-box;
 			display: none;
 		}
+		.pwmctl{
+			position: absolute;
+			left: 16px;
+			top: 16px;
+			z-index: 6;
+			width: 132px;
+			padding: 7px 10px 8px 10px;
+			border-radius: 9px;
+			background: rgba(6, 8, 11, 0.58);
+			border: 1px solid rgba(160, 170, 175, 0.12);
+			box-sizing: border-box;
+			display: none;
+		}
+		.pwmbarwrap{
+			position: relative;
+			width: 100%;
+			height: 20px;
+			margin: 5px 0 3px 0;
+			border-radius: 6px;
+			background: linear-gradient(180deg, rgba(28, 34, 39, 0.96), rgba(8, 11, 14, 0.98));
+			border: 1px solid rgba(182, 190, 196, 0.24);
+			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 -2px 4px rgba(0, 0, 0, 0.45);
+			overflow: hidden;
+		}
+		.pwmbarmask{
+			height: 100%;
+			width: 100%;
+			border-radius: 5px;
+			background: rgba(20, 24, 28, 0.74);
+			overflow: hidden;
+			transition: width 0.15s ease;
+		}
+		.pwmbarfill{
+			height: 100%;
+			width: 0%;
+			border-radius: 5px;
+			background:
+				repeating-linear-gradient(
+					90deg,
+					rgba(74, 224, 255, 0.98) 0px,
+					rgba(74, 224, 255, 0.98) 7px,
+					rgba(8, 11, 14, 0.0) 7px,
+					rgba(8, 11, 14, 0.0) 9px
+				),
+				linear-gradient(180deg, rgba(180, 248, 255, 0.96), rgba(40, 210, 255, 0.94) 48%, rgba(9, 166, 214, 0.96));
+			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+			transition: width 0.12s ease;
+		}
+		.pwmslider{
+			position: absolute;
+			left: 0;
+			top: 0;
+			width: 100%;
+			height: 20px;
+			margin: 0;
+			background: transparent;
+			-webkit-appearance: none;
+			appearance: none;
+			accent-color: rgba(232, 236, 239, 0.92);
+		}
+		.pwmslider::-webkit-slider-runnable-track{
+			height: 20px;
+			background: transparent;
+			border: none;
+		}
+		.pwmslider::-webkit-slider-thumb{
+			-webkit-appearance: none;
+			appearance: none;
+			width: 14px;
+			height: 14px;
+			margin-top: 3px;
+			border-radius: 50%;
+			border: 1px solid rgba(242, 245, 247, 0.92);
+			background: rgba(244, 247, 249, 0.95);
+			box-shadow: 0 0 0 2px rgba(10, 14, 18, 0.45);
+			cursor: pointer;
+		}
+		.pwmslider::-moz-range-track{
+			height: 20px;
+			background: transparent;
+			border: none;
+		}
+		.pwmslider::-moz-range-thumb{
+			width: 14px;
+			height: 14px;
+			border-radius: 50%;
+			border: 1px solid rgba(242, 245, 247, 0.92);
+			background: rgba(244, 247, 249, 0.95);
+			box-shadow: 0 0 0 2px rgba(10, 14, 18, 0.45);
+			cursor: pointer;
+		}
 		.dxccsearch{
 			position: absolute;
 			right: 16px;
@@ -227,6 +318,18 @@
 			</div>
 			<input class="zoomslider" type="range" id="MapZoomSlider" min="1000" max="20000" step="250" value="20000">
 		</div>
+		<div class="pwmctl" id="PwmControl">
+			<div class="zoomlabel">
+				<span>Motor speed</span>
+				<span class="zoomvalue" id="PwmValue">100%</span>
+			</div>
+			<div class="pwmbarwrap">
+				<div class="pwmbarmask" id="PwmBarMask">
+					<div class="pwmbarfill" id="PwmBarFill"></div>
+				</div>
+				<input class="pwmslider" type="range" id="PwmMaxSlider" min="40" max="255" step="5" value="255">
+			</div>
+		</div>
 		<div class="dxccsearch" id="MapDxccSearchControl">
 			<label class="dxccsearchlabel" for="MapDxccSearchInput">DXCC rotate</label>
 			<input class="dxccsearchinput" type="text" id="MapDxccSearchInput" list="MapDxccSearchList" placeholder="e.g. OK, DL, JA" autocomplete="off" spellcheck="false">
@@ -288,6 +391,10 @@
 	var LatestReleaseTag = "";
 	var ReleaseCheckDone = false;
 	var DxccPrefixIndex = null;
+	var PwmUiEnabled = false;
+	var PwmMaxDuty = 255;
+	var PwmActualDuty = 0;
+	var PwmSaveTimer = 0;
 	
 	var Xcenter = BoxSize/2;
 	var Ycenter = BoxSize/2;
@@ -347,6 +454,58 @@
 		}else{
 			wrap.style.display = "none";
 		}
+	}
+
+	function Clamp(value, min, max) {
+		if (value < min) { return min; }
+		if (value > max) { return max; }
+		return value;
+	}
+
+	function dutyToPercent(duty){
+		return Math.round(Number(duty || 0) * 100 / 255);
+	}
+
+	function updatePwmControl(){
+		var wrap = document.getElementById("PwmControl");
+		var slider = document.getElementById("PwmMaxSlider");
+		var valueLabel = document.getElementById("PwmValue");
+		var barMask = document.getElementById("PwmBarMask");
+		var barFill = document.getElementById("PwmBarFill");
+		if(!wrap || !slider || !valueLabel || !barMask || !barFill){ return; }
+		if(PwmUiEnabled){
+			wrap.style.display = "block";
+			slider.value = Number(PwmMaxDuty);
+			valueLabel.innerHTML = String(dutyToPercent(PwmActualDuty)) + "% / " + String(dutyToPercent(PwmMaxDuty)) + "%";
+			var maxWidth = Clamp(Number(PwmMaxDuty) / 255 * 100, 0, 100);
+			var actualWithinMax = 0;
+			if(Number(PwmMaxDuty) > 0){
+				actualWithinMax = Clamp(Number(PwmActualDuty) / Number(PwmMaxDuty) * 100, 0, 100);
+			}
+			barMask.style.width = String(maxWidth) + "%";
+			barFill.style.width = String(actualWithinMax) + "%";
+		}else{
+			wrap.style.display = "none";
+		}
+	}
+
+	function persistPwmMaxDuty(){
+		if(!PwmUiEnabled){
+			return;
+		}
+		var http = new XMLHttpRequest();
+		http.open("GET", "setPwmMaxDuty?value=" + encodeURIComponent(String(PwmMaxDuty)), true);
+		http.send();
+	}
+
+	function schedulePwmMaxDutySave(){
+		if(PwmSaveTimer){
+			clearTimeout(PwmSaveTimer);
+		}
+		PwmSaveTimer = setTimeout(function(){
+			PwmSaveTimer = 0;
+			persistPwmMaxDuty();
+		}, 250);
 	}
 
 	function updateMapDxccSearchControl(){
@@ -764,6 +923,19 @@
 				}
 			});
 		}
+		var pwmSlider = document.getElementById("PwmMaxSlider");
+		if(pwmSlider){
+			pwmSlider.addEventListener("input", function(){
+				PwmMaxDuty = Number(this.value);
+				updatePwmControl();
+				schedulePwmMaxDutySave();
+			});
+			pwmSlider.addEventListener("change", function(){
+				PwmMaxDuty = Number(this.value);
+				updatePwmControl();
+				persistPwmMaxDuty();
+			});
+		}
 	}
 
 	function getData() {
@@ -816,6 +988,19 @@
 	  };
 	  zhttp.open("GET", "readStat", true);
 	  zhttp.send();
+
+	  var pwmhttp = new XMLHttpRequest();
+	  pwmhttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				var parts = String(this.responseText || "").split("|");
+				PwmUiEnabled = (parts[0] === "1");
+				PwmMaxDuty = Number(parts[1] || 255);
+				PwmActualDuty = Number(parts[2] || 0);
+				updatePwmControl();
+	    }
+	  };
+	  pwmhttp.open("GET", "readPwmUi", true);
+	  pwmhttp.send();
 	}
 
 	//---------------------------------------------------------------
