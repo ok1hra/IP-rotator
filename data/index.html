@@ -85,12 +85,59 @@
 			box-sizing: border-box;
 			display: none;
 		}
+		.dxccsearch{
+			position: absolute;
+			right: 16px;
+			top: 16px;
+			z-index: 6;
+			width: 96px;
+			padding: 7px 10px 8px 10px;
+			border-radius: 9px;
+			background: rgba(6, 8, 11, 0.58);
+			border: 1px solid rgba(160, 170, 175, 0.12);
+			box-sizing: border-box;
+			display: none;
+		}
+		.dxccsearchlabel{
+			display: block;
+			font-size: 11px;
+			line-height: 1.1;
+			color: rgba(188, 196, 202, 0.72);
+			margin-bottom: 6px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+		}
+		.dxccsearchinput{
+			width: 100%;
+			padding: 6px 8px;
+			border-radius: 7px;
+			border: 1px solid rgba(186, 193, 198, 0.18);
+			background: rgba(10, 14, 18, 0.82);
+			color: rgba(244, 247, 249, 0.95);
+			box-sizing: border-box;
+			outline: none;
+			font-size: 12px;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+		}
+		.dxccsearchinput::placeholder{
+			color: rgba(176, 184, 190, 0.5);
+		}
+		.dxccsearchstatus{
+			min-height: 14px;
+			margin-top: 5px;
+			color: rgba(188, 196, 202, 0.58);
+			font-size: 10px;
+			line-height: 1.2;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+		}
 		.maptoggle{
 			position: absolute;
 			left: 16px;
 			top: 572px;
 			z-index: 6;
-			width: 156px;
+			width: 184px;
 			padding: 7px 10px 8px 10px;
 			border-radius: 9px;
 			background: rgba(6, 8, 11, 0.58);
@@ -109,6 +156,9 @@
 			letter-spacing: 0.08em;
 			cursor: pointer;
 			user-select: none;
+		}
+		.togglelabel + .togglelabel{
+			margin-top: 6px;
 		}
 		.togglelabel input{
 			margin: 0;
@@ -177,10 +227,20 @@
 			</div>
 			<input class="zoomslider" type="range" id="MapZoomSlider" min="1000" max="20000" step="250" value="20000">
 		</div>
+		<div class="dxccsearch" id="MapDxccSearchControl">
+			<label class="dxccsearchlabel" for="MapDxccSearchInput">DXCC rotate</label>
+			<input class="dxccsearchinput" type="text" id="MapDxccSearchInput" list="MapDxccSearchList" placeholder="e.g. OK, DL, JA" autocomplete="off" spellcheck="false">
+			<datalist id="MapDxccSearchList"></datalist>
+			<div class="dxccsearchstatus" id="MapDxccSearchStatus"></div>
+		</div>
 		<div class="maptoggle" id="MapBordersControl">
 			<label class="togglelabel" for="MapBordersToggle">
 				<input type="checkbox" id="MapBordersToggle">
 				<span>State borders</span>
+			</label>
+			<label class="togglelabel" for="MapDxccToggle">
+				<input type="checkbox" id="MapDxccToggle">
+				<span>DXCC prefixes</span>
 			</label>
 		</div>
 		<div class="maphint" id="MapHint"></div>
@@ -214,6 +274,7 @@
 	var MapLocator = "JO60UC";
 	var MapZoomKm = 5000;
 	var MapBordersEnabled = false;
+	var MapDxccEnabled = false;
 	var MapTheme = 1;
 	var GraylineDarkness = 80;
 	var GraylineEpoch = 0;
@@ -226,6 +287,7 @@
 	var FirmwareRev = "";
 	var LatestReleaseTag = "";
 	var ReleaseCheckDone = false;
+	var DxccPrefixIndex = null;
 	
 	var Xcenter = BoxSize/2;
 	var Ycenter = BoxSize/2;
@@ -287,13 +349,32 @@
 		}
 	}
 
+	function updateMapDxccSearchControl(){
+		var wrap = document.getElementById("MapDxccSearchControl");
+		if(!wrap){ return; }
+		if(Number(MapSource) === 1 && Number(Elevation) !== 1){
+			wrap.style.display = "block";
+			if(MapDatasetReady){
+				updateDxccSearchSuggestions();
+			}else{
+				ensureMapDataset(function(){
+					updateDxccSearchSuggestions();
+				});
+			}
+		}else{
+			wrap.style.display = "none";
+		}
+	}
+
 	function updateMapBordersControl(){
 		var wrap = document.getElementById("MapBordersControl");
 		var toggle = document.getElementById("MapBordersToggle");
-		if(!wrap || !toggle){ return; }
+		var dxccToggle = document.getElementById("MapDxccToggle");
+		if(!wrap || !toggle || !dxccToggle){ return; }
 		if(Number(MapSource) === 1 && Number(Elevation) !== 1){
 			wrap.style.display = "block";
 			toggle.checked = !!MapBordersEnabled;
+			dxccToggle.checked = !!MapDxccEnabled;
 		}else{
 			wrap.style.display = "none";
 		}
@@ -302,6 +383,14 @@
 	function setMapBordersEnabled(enabled){
 		MapBordersEnabled = !!enabled;
 		updateMapBordersControl();
+		updateMapDxccSearchControl();
+		map();
+	}
+
+	function setMapDxccEnabled(enabled){
+		MapDxccEnabled = !!enabled;
+		updateMapBordersControl();
+		updateMapDxccSearchControl();
 		map();
 	}
 
@@ -538,6 +627,7 @@
 				updatePageLayout();
 				updateMapZoomControl();
 				updateMapBordersControl();
+				updateMapDxccSearchControl();
 				updateNtpStatus();
 				if (Number(MapSource) === 1) { getGraylineInfo(); }
 				map();
@@ -610,6 +700,7 @@
 				updatePageLayout();
 				updateMapZoomControl();
 				updateMapBordersControl();
+				updateMapDxccSearchControl();
 				updateNtpStatus();
 				AZ(Azimuth);
 				Static();
@@ -649,6 +740,28 @@
 			bordersToggle.checked = false;
 			bordersToggle.addEventListener("change", function(){
 				setMapBordersEnabled(this.checked);
+			});
+		}
+		var dxccToggle = document.getElementById("MapDxccToggle");
+		if(dxccToggle){
+			dxccToggle.checked = false;
+			dxccToggle.addEventListener("change", function(){
+				setMapDxccEnabled(this.checked);
+			});
+		}
+		var dxccSearchInput = document.getElementById("MapDxccSearchInput");
+		if(dxccSearchInput){
+			dxccSearchInput.addEventListener("input", function(){
+				updateDxccSearchSuggestions(this.value);
+			});
+			dxccSearchInput.addEventListener("change", function(){
+				rotateToDxccPrefix(this.value);
+			});
+			dxccSearchInput.addEventListener("keydown", function(evt){
+				if(evt.key === "Enter"){
+					evt.preventDefault();
+					rotateToDxccPrefix(this.value);
+				}
 			});
 		}
 	}
@@ -875,19 +988,11 @@
 	    }
 	    // alert(mousePos.x + ',' + mousePos.y);
 			AZtarget = getAzimuthForMousePos(mousePos);
-			// alert( AZtarget + '°');
-
-			var http = new XMLHttpRequest();
-			var url = '/';
-			var params = "ROT="+AZtarget;
-			http.open('POST', url, true);
-			http.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-			http.onreadystatechange = function() {//Call a function when the state changes.
-			    if(http.readyState == 4 && http.status == 200) {
-			        alert(http.responseText);
-			    }
-			}
-			http.send(params);
+			rotateToAzimuth(AZtarget, function(ok, responseText){
+				if(ok){
+					alert(responseText);
+				}
+			});
 
 	}, false);
 
@@ -906,11 +1011,32 @@
 
 var LAND_OUTLINES = [];
 	var COUNTRY_BORDERS = [];
+	var DXCC_PREFIX_LABELS = [];
+	var STATE_ABBR_LABELS = [
+		[6340,-15200,"AK",80],[3200,-11100,"AZ",24],[3500,-9200,"AR",18],[3700,-11950,"CA",55],
+		[3900,-10550,"CO",20],[4150,-7250,"CT",8],[3900,-7550,"DE",6],[2800,-8200,"FL",32],
+		[3280,-8350,"GA",20],[2020,-15750,"HI",8],[4450,-11450,"ID",22],[4010,-8900,"IL",24],
+		[4000,-8650,"IN",16],[4200,-9350,"IA",18],[3840,-9850,"KS",18],[3770,-8500,"KY",18],
+		[3100,-9200,"LA",18],[4520,-6900,"ME",14],[3900,-7650,"MD",8],[4220,-7150,"MA",10],
+		[4420,-8500,"MI",22],[4620,-9400,"MN",24],[3270,-8950,"MS",18],[3840,-9220,"MO",20],
+		[4700,-11050,"MT",28],[4150,-9950,"NE",18],[3900,-11700,"NV",22],[4350,-7150,"NH",8],
+		[4030,-7450,"NJ",8],[3430,-10600,"NM",20],[4290,-7550,"NY",26],[3550,-7900,"NC",20],
+		[4720,-10000,"ND",20],[4030,-8250,"OH",18],[3520,-9750,"OK",18],[4400,-12050,"OR",24],
+		[4100,-7750,"PA",18],[4170,-7150,"RI",6],[3380,-8100,"SC",16],[4420,-10000,"SD",18],
+		[3570,-8650,"TN",18],[3120,-9950,"TX",60],[3920,-11150,"UT",18],[4400,-7250,"VT",8],
+		[3730,-7850,"VA",18],[4710,-12050,"WA",24],[3870,-8050,"WV",10],[4420,-8950,"WI",18],
+		[4300,-10750,"WY",18],[3890,-7700,"DC",6],
+		[5400,-11500,"BC",45],[5300,-9800,"AB",26],[5300,-10600,"SK",24],[5500,-9800,"MB",22],
+		[5050,-8500,"ON",32],[5250,-7150,"QC",34],[4700,-6400,"NB",12],[4620,-6350,"NS",10],
+		[5300,-6300,"NL",16],[4660,-6300,"PE",8],[6400,-13600,"YT",16],[6450,-11900,"NT",24],
+		[6600,-9600,"NU",28]
+	];
 	var MapDatasetReady = false;
 	var MapDatasetLoading = false;
 
 	function ensureMapDataset(onReady){
 		if(MapDatasetReady){
+			DxccPrefixIndex = null;
 			onReady();
 			return;
 		}
@@ -926,6 +1052,7 @@ var LAND_OUTLINES = [];
 			cleanup();
 			MapDatasetLoading = false;
 			MapDatasetReady = true;
+			DxccPrefixIndex = null;
 			onReady();
 		}
 		function handleError(evt){
@@ -1135,6 +1262,237 @@ var LAND_OUTLINES = [];
 				ctx.stroke();
 			}
 		}
+	}
+
+	function labelRectsOverlap(a, b){
+		return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+	}
+
+	function setDxccSearchStatus(message, isError){
+		var status = document.getElementById("MapDxccSearchStatus");
+		if(!status){ return; }
+		status.style.color = isError ? "#ff9b8f" : "rgba(188, 196, 202, 0.58)";
+		status.innerHTML = message || "";
+	}
+
+	function normalizePrefixQuery(value){
+		var text = String(value || "").trim().toUpperCase();
+		if(!text){
+			return "";
+		}
+		var firstToken = text.split(/\s+/)[0];
+		var cleaned = firstToken.replace(/[^A-Z0-9\/]/g, "");
+		return cleaned || text.replace(/[^A-Z0-9\/]/g, "");
+	}
+
+	function ensureDxccPrefixIndex(){
+		if(DxccPrefixIndex){ return DxccPrefixIndex; }
+		DxccPrefixIndex = {};
+		for(var i=0; i<DXCC_PREFIX_LABELS.length; i++){
+			var row = DXCC_PREFIX_LABELS[i];
+			var prefix = String(row[2] || "").toUpperCase();
+			if(!prefix){ continue; }
+			var area = Number(row[3] || 0);
+			if(!DxccPrefixIndex[prefix] || area > Number(DxccPrefixIndex[prefix].area || 0)){
+				DxccPrefixIndex[prefix] = {
+					label: prefix,
+					lat: row[0] / 100,
+					lon: row[1] / 100,
+					area: area,
+					name: row[4] || prefix
+				};
+			}
+		}
+		return DxccPrefixIndex;
+	}
+
+	function updateDxccSearchSuggestions(query){
+		var list = document.getElementById("MapDxccSearchList");
+		if(!list || !MapDatasetReady){ return; }
+		var normalized = normalizePrefixQuery(query);
+		var prefixIndex = ensureDxccPrefixIndex();
+		var prefixes = Object.keys(prefixIndex).sort();
+		var limit = normalized ? 16 : 12;
+		var html = [];
+		for(var i=0; i<prefixes.length; i++){
+			var prefix = prefixes[i];
+			if(normalized && prefix.indexOf(normalized) !== 0){
+				continue;
+			}
+			html.push("<option value='" + prefix + "'>");
+			if(html.length >= limit){
+				break;
+			}
+		}
+		list.innerHTML = html.join("");
+		if(normalized){
+			setDxccSearchStatus(html.length > 0 ? "Select prefix and press Enter" : "No prefix match", html.length === 0);
+		}else{
+			setDxccSearchStatus("");
+		}
+	}
+
+	function getMapCenterLatLon(){
+		var center = maidenheadToLatLon(MapLocator);
+		if(!center){
+			center = maidenheadToLatLon("JO60UC");
+		}
+		return center;
+	}
+
+	function bearingDegrees(lat1Deg, lon1Deg, lat2Deg, lon2Deg){
+		var lat1 = degToRad(lat1Deg);
+		var lat2 = degToRad(lat2Deg);
+		var dLon = degToRad(lon2Deg - lon1Deg);
+		var y = Math.sin(dLon) * Math.cos(lat2);
+		var x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+		var bearing = Math.atan2(y, x) * 180 / Math.PI;
+		while(bearing < 0){ bearing += 360; }
+		while(bearing >= 360){ bearing -= 360; }
+		return Math.round(bearing);
+	}
+
+	function rotateToAzimuth(targetAzimuth, onDone){
+		var azimuth = Math.round(Number(targetAzimuth));
+		if(!isFinite(azimuth)){
+			if(onDone){ onDone(false); }
+			return;
+		}
+		var http = new XMLHttpRequest();
+		http.open('POST', '/', true);
+		http.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+		http.onreadystatechange = function() {
+			if(http.readyState !== 4){
+				return;
+			}
+			if(http.status === 200){
+				if(onDone){ onDone(true, http.responseText); }
+			}else{
+				if(onDone){ onDone(false); }
+			}
+		};
+		http.send("ROT=" + azimuth);
+	}
+
+	function rotateToDxccPrefix(query){
+		if(Number(MapSource) !== 1 || Number(Elevation) === 1){
+			return;
+		}
+		if(!MapDatasetReady){
+			ensureMapDataset(function(){
+				rotateToDxccPrefix(query);
+			});
+			return;
+		}
+		var normalized = normalizePrefixQuery(query);
+		if(!normalized){
+			setDxccSearchStatus("Type DXCC prefix", true);
+			return;
+		}
+		var prefixIndex = ensureDxccPrefixIndex();
+		var entry = prefixIndex[normalized];
+		if(!entry){
+			updateDxccSearchSuggestions(normalized);
+			return;
+		}
+		var center = getMapCenterLatLon();
+		if(!center){
+			setDxccSearchStatus("Map center unavailable", true);
+			return;
+		}
+		var azimuth = bearingDegrees(center.lat, center.lon, entry.lat, entry.lon);
+		var entryName = entry.name ? " " + entry.name : "";
+		setDxccSearchStatus("Rotating to " + normalized + entryName + " (" + azimuth + "°)");
+		rotateToAzimuth(azimuth, function(ok){
+			if(ok){
+				setDxccSearchStatus("Rotating to " + normalized + entryName + " (" + azimuth + "°)");
+			}else{
+				setDxccSearchStatus("Rotate request failed", true);
+			}
+		});
+	}
+
+	function drawDxccPrefixes(ctx, centerLat, centerLon, mapRadiusPx, zoomKm){
+		if(!MapDxccEnabled || !DXCC_PREFIX_LABELS || DXCC_PREFIX_LABELS.length === 0){
+			return;
+		}
+		var fontSize = zoomKm <= 3500 ? 12 : (zoomKm <= 8000 ? 11 : 10);
+		var maxLabels = zoomKm <= 3500 ? 82 : (zoomKm <= 8000 ? 68 : (zoomKm <= 14000 ? 34 : 22));
+		var candidates = [];
+		for(var i=0; i<DXCC_PREFIX_LABELS.length; i++){
+			var row = DXCC_PREFIX_LABELS[i];
+			var p = projectAzimuthal(row[0] / 100, row[1] / 100, centerLat, centerLon, mapRadiusPx, zoomKm);
+			if(!p){
+				continue;
+			}
+			candidates.push({
+				x: p.x,
+				y: p.y,
+				label: row[2],
+				area: Number(row[3] || 0)
+			});
+		}
+		if(zoomKm <= 8000){
+			for(var s=0; s<STATE_ABBR_LABELS.length; s++){
+				var stateRow = STATE_ABBR_LABELS[s];
+				var sp = projectAzimuthal(stateRow[0] / 100, stateRow[1] / 100, centerLat, centerLon, mapRadiusPx, zoomKm);
+				if(!sp){
+					continue;
+				}
+				candidates.push({
+					x: sp.x,
+					y: sp.y,
+					label: stateRow[2],
+					area: Number(stateRow[3] || 0),
+					isState: true
+				});
+			}
+		}
+		candidates.sort(function(a, b){
+			if(b.area !== a.area){ return b.area - a.area; }
+			return String(a.label).length - String(b.label).length;
+		});
+
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
+		ctx.clip();
+		ctx.font = "600 " + String(fontSize) + "px 'Roboto Condensed',sans-serif";
+		ctx.textAlign = "center";
+		ctx.textBaseline = "middle";
+
+		var placed = [];
+		for(var j=0; j<candidates.length; j++){
+			if(placed.length >= maxLabels){
+				break;
+			}
+			var item = candidates[j];
+			var metrics = ctx.measureText(item.label);
+			var boxW = Math.ceil(metrics.width) + 8;
+			var boxH = fontSize + 6;
+			var rect = {
+				left: item.x - boxW / 2,
+				top: item.y - boxH / 2,
+				right: item.x + boxW / 2,
+				bottom: item.y + boxH / 2
+			};
+			var collides = false;
+			for(var k=0; k<placed.length; k++){
+				if(labelRectsOverlap(rect, placed[k])){
+					collides = true;
+					break;
+				}
+			}
+			if(collides){
+				continue;
+			}
+			placed.push(rect);
+			ctx.fillStyle = item.isState ? "#ffd36a" : "rgba(5, 8, 11, 0.62)";
+			ctx.fillRect(rect.left, rect.top, boxW, boxH);
+			ctx.fillStyle = item.isState ? "rgba(8, 10, 12, 0.94)" : "#ffd36a";
+			ctx.fillText(item.label, item.x, item.y + 0.5);
+		}
+		ctx.restore();
 	}
 
 	var locatorSvgImg = null;
@@ -1812,6 +2170,7 @@ var LAND_OUTLINES = [];
 				drawGeoLineCollection(ctx, COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm, theme.borderStroke, theme.borderWidth || 1.0);
 			}
 			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawDxccPrefixes(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawOutsideCircleMask(ctx, mapRadiusPx);
 
 			ctx.strokeStyle = theme.ring;
@@ -1840,6 +2199,7 @@ var LAND_OUTLINES = [];
 				drawGeoLineCollection(ctx, COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm, theme.borderStroke, theme.borderWidth || 1.0);
 			}
 			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawDxccPrefixes(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			ctx.restore();
 		}
 	}
@@ -1873,6 +2233,7 @@ var LAND_OUTLINES = [];
 			ctx.clearRect(0, 0, BoxSize, BoxSize);
 			ctx.drawImage(locatorSvgImg, 0, 0, BoxSize, BoxSize);
 			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
+			drawDxccPrefixes(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			return;
 		}
 		if(locatorSvgLoadingKey === key){
@@ -1889,6 +2250,7 @@ var LAND_OUTLINES = [];
 			ctx.clearRect(0, 0, BoxSize, BoxSize);
 			ctx.drawImage(img, 0, 0, BoxSize, BoxSize);
 			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
+			drawDxccPrefixes(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 		};
 		img.onerror = function(){
 			locatorSvgLoadingKey = "";

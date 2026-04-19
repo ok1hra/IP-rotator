@@ -5,6 +5,8 @@ import struct
 import gzip
 
 LAND_IN_PATH = Path('tools/map-data/countries-50m.json')
+DXCC_PREFIXES_PATH = Path('tools/map-data/dxcc_prefixes.json')
+DXCC_EXTRA_ENTITIES_PATH = Path('tools/map-data/dxcc_extra_entities.json')
 ADMIN0_LINES_SHP = Path('tools/map-data/ne/ne_10m_admin_0_boundary_lines_land/ne_10m_admin_0_boundary_lines_land.shp')
 ADMIN1_LINES_SHP = Path('tools/map-data/ne/ne_10m_admin_1_states_provinces_lines/ne_10m_admin_1_states_provinces_lines.shp')
 OUT_PATH = Path('tools/map-data/map50_dataset.js')
@@ -37,6 +39,8 @@ def load_topo(path):
 
 
 land_obj, land_arcs = load_topo(LAND_IN_PATH)
+dxcc_prefix_map = json.loads(DXCC_PREFIXES_PATH.read_text())
+dxcc_extra_entities = json.loads(DXCC_EXTRA_ENTITIES_PATH.read_text())
 
 
 def arc_points(idx):
@@ -114,6 +118,63 @@ def simplify_dp(points, epsilon):
     return [p for p, k in zip(points, keep) if k]
 
 
+def polygon_area(points):
+    if len(points) < 3:
+        return 0.0
+    area = 0.0
+    prev_lon = points[0][1]
+    unwrapped = []
+    for lat, lon in points:
+        while lon - prev_lon > 180:
+            lon -= 360
+        while lon - prev_lon < -180:
+            lon += 360
+        unwrapped.append((lat, lon))
+        prev_lon = lon
+    for i in range(len(unwrapped)):
+        lat1, lon1 = unwrapped[i]
+        lat2, lon2 = unwrapped[(i + 1) % len(unwrapped)]
+        area += lon1 * lat2 - lon2 * lat1
+    return area * 0.5
+
+
+def polygon_centroid(points):
+    if len(points) < 3:
+        lat_avg = sum(lat for lat, _ in points) / max(1, len(points))
+        lon_avg = sum(lon for _, lon in points) / max(1, len(points))
+        return lat_avg, lon_avg
+    prev_lon = points[0][1]
+    unwrapped = []
+    for lat, lon in points:
+        while lon - prev_lon > 180:
+            lon -= 360
+        while lon - prev_lon < -180:
+            lon += 360
+        unwrapped.append((lat, lon))
+        prev_lon = lon
+    area2 = 0.0
+    cx = 0.0
+    cy = 0.0
+    for i in range(len(unwrapped)):
+        lat1, lon1 = unwrapped[i]
+        lat2, lon2 = unwrapped[(i + 1) % len(unwrapped)]
+        cross = lon1 * lat2 - lon2 * lat1
+        area2 += cross
+        cx += (lon1 + lon2) * cross
+        cy += (lat1 + lat2) * cross
+    if abs(area2) < 1e-9:
+        lat_avg = sum(lat for lat, _ in unwrapped) / len(unwrapped)
+        lon_avg = sum(lon for _, lon in unwrapped) / len(unwrapped)
+    else:
+        lon_avg = cx / (3 * area2)
+        lat_avg = cy / (3 * area2)
+    while lon_avg > 180:
+        lon_avg -= 360
+    while lon_avg < -180:
+        lon_avg += 360
+    return lat_avg, lon_avg
+
+
 # Land outlines from "land" object
 active_arcs = land_arcs
 land_lines = []
@@ -168,6 +229,52 @@ def process(lines, epsilon, min_points):
 land_q = process(land_lines, LAND_EPSILON_DEG, LAND_MIN_POINTS)
 country_q = process(country_border_lines, BORDER_EPSILON_DEG, BORDER_MIN_POINTS)
 
+dxcc_labels = []
+active_arcs = land_arcs
+for geom in land_obj['objects']['countries']['geometries']:
+    name = geom.get('properties', {}).get('name')
+    prefix = dxcc_prefix_map.get(name)
+    if not prefix:
+        continue
+    polygons = []
+    arcs_spec = geom.get('arcs', [])
+    if geom.get('type') == 'Polygon':
+        polygons = [arcs_spec]
+    elif geom.get('type') == 'MultiPolygon':
+        polygons = arcs_spec
+    else:
+        continue
+    best_ring = None
+    best_area = 0.0
+    for poly in polygons:
+        rings = list(iter_rings(poly))
+        if not rings:
+            continue
+        outer = stitch_ring(rings[0])
+        area = abs(polygon_area(outer))
+        if area > best_area:
+            best_area = area
+            best_ring = outer
+    if not best_ring or best_area <= 0:
+        continue
+    lat, lon = polygon_centroid(best_ring)
+    dxcc_labels.append([
+        int(round(lat * SCALE)),
+        int(round(lon * SCALE)),
+        prefix,
+        int(round(best_area * 100)),
+        name
+    ])
+for entity in dxcc_extra_entities:
+    dxcc_labels.append([
+        int(round(float(entity['lat']) * SCALE)),
+        int(round(float(entity['lon']) * SCALE)),
+        str(entity['prefix']),
+        int(entity.get('area', 1)),
+        str(entity.get('name', entity['prefix']))
+    ])
+dxcc_labels.sort(key=lambda row: (-row[3], row[2]))
+
 def emit_array(name, lines):
     out = [f"var {name} = ["]
     for line in lines:
@@ -183,11 +290,14 @@ js = (
     + "\n"
     + emit_array("COUNTRY_BORDERS_Q", country_q)
     + "\n"
+    + emit_array("DXCC_PREFIX_LABELS_Q", dxcc_labels)
+    + "\n"
 )
 OUT_PATH.write_text(js)
 
 js_c = js.replace("var LAND_OUTLINES_Q =", "var LAND_OUTLINES =")
 js_c = js_c.replace("var COUNTRY_BORDERS_Q =", "var COUNTRY_BORDERS =")
+js_c = js_c.replace("var DXCC_PREFIX_LABELS_Q =", "var DXCC_PREFIX_LABELS =")
 WEB_BOOTSTRAP_PATH.write_text(
     "(function(){\n"
     "  function mapDatasetError(message){\n"
@@ -197,15 +307,21 @@ WEB_BOOTSTRAP_PATH.write_text(
     "      console.error(message);\n"
     "    }\n"
     "  }\n"
-    "  if (typeof DecompressionStream !== 'function') {\n"
-    "    mapDatasetError('Browser does not support gzip map loading.');\n"
-    "    return;\n"
-    "  }\n"
     "  fetch('/map50.js.gz').then(function(response){\n"
-    "    if(!response.ok || !response.body){\n"
+    "    if(!response.ok){\n"
     "      throw new Error('Map dataset request failed.');\n"
     "    }\n"
-    "    var stream = response.body.pipeThrough(new DecompressionStream('gzip'));\n"
+    "    return response.arrayBuffer();\n"
+    "  }).then(function(buffer){\n"
+    "    var bytes = new Uint8Array(buffer);\n"
+    "    var isGzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;\n"
+    "    if(!isGzip){\n"
+    "      return new TextDecoder('utf-8').decode(bytes);\n"
+    "    }\n"
+    "    if (typeof DecompressionStream !== 'function') {\n"
+    "      throw new Error('Browser does not support gzip map loading.');\n"
+    "    }\n"
+    "    var stream = new Response(buffer).body.pipeThrough(new DecompressionStream('gzip'));\n"
     "    return new Response(stream).text();\n"
     "  }).then(function(source){\n"
     "    (0, eval)(source);\n"
@@ -220,4 +336,5 @@ WEB_OUT_GZ_PATH.write_bytes(gzip.compress(js_c.encode('utf-8'), compresslevel=9,
 
 print('land_lines', len(land_q), 'country_lines', len(country_q))
 print('land_pts', sum(len(x) for x in land_q), 'country_pts', sum(len(x) for x in country_q))
+print('dxcc_labels', len(dxcc_labels))
 print('dataset_bytes', len(js))

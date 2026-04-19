@@ -3,8 +3,9 @@
 3D printed IP rotator
 ----------------------
 1. Compile for HARDWARE ESP32-POE + Tools/Partition Scheme:"Default" | export bin or upload
-2. ~/inst/IP-rotator$ tools/build_spiffs_image.sh | generate map
-3. Tools/ESP32 Sketch Data Upload | upload map or use OTA
+2. $ python3 tools/generate_map_dataset.py
+3. ~/inst/IP-rotator$ tools/build_spiffs_image.sh | generate bin
+4. Tools/ESP32 Sketch Data Upload | upload map or use OTA
 
  ___               _        ___ _____ _  _
 | _ \___ _ __  ___| |_ ___ / _ \_   _| || |  __ ___ _ __
