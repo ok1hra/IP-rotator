@@ -278,6 +278,10 @@
 			accent-color: #8f969a;
 			opacity: 0.9;
 		}
+		.kbdhint{
+			text-decoration: underline;
+			text-underline-offset: 2px;
+		}
 		.zoomlabel{
 			display: flex;
 			justify-content: space-between;
@@ -388,7 +392,7 @@
 			</div>
 		</div>
 		<div class="dxccsearch" id="MapDxccSearchControl">
-			<label class="dxccsearchlabel" for="MapDxccSearchInput">TO DXCC</label>
+			<label class="dxccsearchlabel" for="MapDxccSearchInput"><span class="kbdhint">T</span>O DXCC</label>
 			<input class="dxccsearchinput" type="text" id="MapDxccSearchInput" list="MapDxccSearchList" placeholder="e.g. OK, DL, JA" autocomplete="off" spellcheck="false">
 			<datalist id="MapDxccSearchList"></datalist>
 			<div class="dxccsearchstatus" id="MapDxccSearchStatus"></div>
@@ -396,15 +400,15 @@
 		<div class="maptoggle" id="MapBordersControl">
 			<label class="togglelabel" for="MapGraylineToggle">
 				<input type="checkbox" id="MapGraylineToggle">
-				<span>Grayline</span>
+				<span><span class="kbdhint">G</span>rayline</span>
 			</label>
 			<label class="togglelabel" for="MapBordersToggle">
 				<input type="checkbox" id="MapBordersToggle">
-				<span>State borders</span>
+				<span><span class="kbdhint">S</span>tate borders</span>
 			</label>
 			<label class="togglelabel" for="MapDxccToggle">
 				<input type="checkbox" id="MapDxccToggle">
-				<span>DXCC prefixes</span>
+				<span><span class="kbdhint">D</span>XCC prefixes</span>
 			</label>
 		</div>
 		<div class="maphint" id="MapHint"></div>
@@ -444,6 +448,8 @@
 	var MapTheme = 1;
 	var GraylineDarkness = 80;
 	var GraylineEpoch = 0;
+	var KeyboardPrefixKey = "F8";
+	var KeyboardPrefixArmedUntil = 0;
 	var LastDxccRotateRequest = "";
 	var LastDxccRotateAt = 0;
 	var GraylineNtpOk = false;
@@ -738,6 +744,163 @@
 		return true;
 	}
 
+	function isPlusKey(evt){
+		if(!evt){ return false; }
+		return evt.key === "+" || evt.code === "NumpadAdd" || (evt.key === "=" && evt.shiftKey);
+	}
+
+	function isMinusKey(evt){
+		if(!evt){ return false; }
+		return evt.key === "-" || evt.key === "_" || evt.code === "NumpadSubtract";
+	}
+
+	function stepRangeFromPlusMinus(evt, onValueChanged){
+		if(!evt || !evt.currentTarget){
+			return;
+		}
+		var stepDir = 0;
+		if(isPlusKey(evt)){
+			stepDir = 1;
+		}else if(isMinusKey(evt)){
+			stepDir = -1;
+		}
+		if(stepDir === 0){
+			return;
+		}
+		evt.preventDefault();
+		var slider = evt.currentTarget;
+		var before = Number(slider.value);
+		if(stepDir > 0){
+			slider.stepUp();
+		}else{
+			slider.stepDown();
+		}
+		if(Number(slider.value) === before){
+			return;
+		}
+		if(typeof onValueChanged === "function"){
+			onValueChanged.call(slider);
+		}
+	}
+
+	function isEditableElement(el){
+		if(!el){ return false; }
+		var tag = String(el.tagName || "").toUpperCase();
+		return tag === "INPUT" || tag === "TEXTAREA" || !!el.isContentEditable;
+	}
+
+	function consumeKeyboardPrefix(){
+		KeyboardPrefixArmedUntil = 0;
+	}
+
+	function armKeyboardPrefix(){
+		KeyboardPrefixArmedUntil = new Date().getTime() + 1500;
+	}
+
+	function isKeyboardPrefixArmed(){
+		return new Date().getTime() <= Number(KeyboardPrefixArmedUntil || 0);
+	}
+
+	function getPlusMinusStepDir(evt){
+		if(isPlusKey(evt)){ return 1; }
+		if(isMinusKey(evt)){ return -1; }
+		return 0;
+	}
+
+	function changeMapZoomByStep(stepDir){
+		if(stepDir === 0){ return false; }
+		var slider = document.getElementById("MapZoomSlider");
+		var step = slider ? Number(slider.step || 250) : 250;
+		if(!(step > 0)){ step = 250; }
+		return applyMapZoom(Number(MapZoomKm) - stepDir * step, true);
+	}
+
+	function changePwmByStep(stepDir){
+		if(stepDir === 0 || !PwmUiEnabled){
+			return false;
+		}
+		var slider = document.getElementById("PwmMaxSlider");
+		if(!slider){
+			return false;
+		}
+		var step = Number(slider.step || 5);
+		var min = Number(slider.min || 0);
+		var max = Number(slider.max || 255);
+		if(!(step > 0)){ step = 5; }
+		var next = Clamp(Number(PwmMaxDuty) + stepDir * step, min, max);
+		if(next === Number(PwmMaxDuty)){
+			return false;
+		}
+		PwmMaxDuty = next;
+		updatePwmControl();
+		persistPwmMaxDuty();
+		return true;
+	}
+
+	function toggleShortcutOption(keyLower){
+		if(Number(MapSource) !== 1 || Number(Elevation) === 1){
+			return false;
+		}
+		if(keyLower === "g"){
+			setMapGraylineEnabled(!MapGraylineEnabled);
+			return true;
+		}
+		if(keyLower === "s"){
+			setMapBordersEnabled(!MapBordersEnabled);
+			return true;
+		}
+		if(keyLower === "d"){
+			setMapDxccEnabled(!MapDxccEnabled);
+			return true;
+		}
+		if(keyLower === "t"){
+			var dxccSearchInput = document.getElementById("MapDxccSearchInput");
+			if(!dxccSearchInput || dxccSearchInput.offsetParent === null){
+				return false;
+			}
+			if(document.activeElement === dxccSearchInput){
+				dxccSearchInput.blur();
+			}else{
+				dxccSearchInput.focus();
+				dxccSearchInput.select();
+			}
+			return true;
+		}
+		return false;
+	}
+
+	function handleGlobalKeyboardShortcuts(evt){
+		if(!evt || evt.ctrlKey || evt.metaKey || evt.altKey){
+			return;
+		}
+		var key = String(evt.key || "");
+		if(key === KeyboardPrefixKey){
+			evt.preventDefault();
+			armKeyboardPrefix();
+			return;
+		}
+		var keyLower = key.toLowerCase();
+		var stepDir = getPlusMinusStepDir(evt);
+		if(isKeyboardPrefixArmed()){
+			consumeKeyboardPrefix();
+			if(stepDir !== 0){
+				if(changePwmByStep(stepDir)){
+					evt.preventDefault();
+				}
+				return;
+			}
+			if(toggleShortcutOption(keyLower)){
+				evt.preventDefault();
+			}
+			return;
+		}
+		if(stepDir !== 0 && !isEditableElement(evt.target)){
+			if(changeMapZoomByStep(stepDir)){
+				evt.preventDefault();
+			}
+		}
+	}
+
 	function updateNtpStatus(){
 		var info = document.getElementById("NtpStatus");
 		if(!info){ return; }
@@ -995,6 +1158,11 @@
 			zoomSlider.addEventListener("change", function(){
 				applyMapZoom(sliderValueToMapZoomKm(this.value), true);
 			});
+			zoomSlider.addEventListener("keydown", function(evt){
+				stepRangeFromPlusMinus(evt, function(){
+					applyMapZoom(sliderValueToMapZoomKm(this.value), true);
+				});
+			});
 		}
 		var graylineToggle = document.getElementById("MapGraylineToggle");
 		if(graylineToggle){
@@ -1042,7 +1210,15 @@
 				updatePwmControl();
 				persistPwmMaxDuty();
 			});
+			pwmSlider.addEventListener("keydown", function(evt){
+				stepRangeFromPlusMinus(evt, function(){
+					PwmMaxDuty = Number(this.value);
+					updatePwmControl();
+					persistPwmMaxDuty();
+				});
+			});
 		}
+		document.addEventListener("keydown", handleGlobalKeyboardShortcuts);
 	}
 
 	function getData() {
@@ -1692,9 +1868,14 @@ var LAND_OUTLINES = [];
 		var list = document.getElementById("MapDxccSearchList");
 		if(!list || !MapDatasetReady){ return; }
 		var normalized = normalizePrefixQuery(query);
+		if(!normalized){
+			list.innerHTML = "";
+			setDxccSearchStatus("");
+			return;
+		}
 		var prefixIndex = ensureDxccPrefixIndex();
 		var prefixes = Object.keys(prefixIndex).sort();
-		var limit = normalized ? 16 : 12;
+		var limit = 16;
 		var html = [];
 		for(var i=0; i<prefixes.length; i++){
 			var prefix = prefixes[i];
@@ -1707,11 +1888,7 @@ var LAND_OUTLINES = [];
 			}
 		}
 		list.innerHTML = html.join("");
-		if(normalized){
-			setDxccSearchStatus(html.length > 0 ? "Select prefix or press Enter" : "No prefix match", html.length === 0);
-		}else{
-			setDxccSearchStatus("");
-		}
+		setDxccSearchStatus(html.length > 0 ? "Select prefix or press Enter" : "No prefix match", html.length === 0);
 	}
 
 	function getMapCenterLatLon(){
