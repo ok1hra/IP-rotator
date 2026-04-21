@@ -455,6 +455,9 @@
 	var GraylineNtpOk = false;
 	var GraylineMinuteKey = "";
 	var AzimuthPulseStart = 0;
+	var DisplayedAzimuth = 0;
+	var AzimuthAnimLastTs = 0;
+	var AzimuthAnimInitialized = false;
 	var OnlineTimeStamp = 0;
 	var Elevation = 0; 
 	var MapZoomSaveTimer = 0;
@@ -477,12 +480,12 @@
 	setInterval(function() { CheckOnline();}, 2000); //mSeconds update rate
 	setInterval(function() { getGraylineInfo();}, 30000); // update UTC/NTP status for grayline
 	setInterval(function() { checkLatestRelease();}, 21600000); // 6h release check
-	setInterval(function() { if (AzimuthPulseStart > 0) { AZ(Azimuth); } }, 40); // short pulse animation after azimuth change
 	getSet();
 //	setTimeout(() => { map(); }, 1000);
 	Static();
 	StaticBot();
 	var AZtarget = null;
+	requestAnimationFrame(animateAzimuthFrame);
 
 	function CheckOnline() {
 		if( new Date().getTime() - Number(OnlineTimeStamp) > 1500){
@@ -901,6 +904,69 @@
 		}
 	}
 
+	function isCircularAzimuthValue(value){
+		var n = Number(value);
+		return isFinite(n) && n >= 0 && n <= 359;
+	}
+
+	function wrapAzimuth360(value){
+		var n = Number(value);
+		if(!isFinite(n)){
+			return 0;
+		}
+		while(n < 0){ n += 360; }
+		while(n >= 360){ n -= 360; }
+		return n;
+	}
+
+	function shortestAzimuthDelta(fromValue, toValue){
+		var from = wrapAzimuth360(fromValue);
+		var to = wrapAzimuth360(toValue);
+		return ((to - from + 540) % 360) - 180;
+	}
+
+	function animateAzimuthFrame(ts){
+		if(!AzimuthAnimInitialized){
+			DisplayedAzimuth = Number(Azimuth);
+			AzimuthAnimInitialized = true;
+			AzimuthAnimLastTs = ts;
+			AZ(DisplayedAzimuth);
+			requestAnimationFrame(animateAzimuthFrame);
+			return;
+		}
+		var dt = (ts - AzimuthAnimLastTs) / 1000;
+		AzimuthAnimLastTs = ts;
+		if(!(dt > 0 && dt < 1.0)){
+			dt = 1 / 60;
+		}
+
+		var target = Number(Azimuth);
+		if(!isFinite(target)){
+			target = 0;
+		}
+		var tau = 0.14;
+		var k = 1 - Math.exp(-dt / tau);
+		var delta = 0;
+
+		if(isCircularAzimuthValue(target)){
+			if(!isCircularAzimuthValue(DisplayedAzimuth)){
+				DisplayedAzimuth = wrapAzimuth360(DisplayedAzimuth);
+			}
+			delta = shortestAzimuthDelta(DisplayedAzimuth, target);
+			DisplayedAzimuth = wrapAzimuth360(DisplayedAzimuth + delta * k);
+		}else{
+			delta = target - Number(DisplayedAzimuth);
+			DisplayedAzimuth = Number(DisplayedAzimuth) + delta * k;
+		}
+
+		if(Math.abs(delta) < 0.05){
+			DisplayedAzimuth = target;
+		}
+
+		AZ(DisplayedAzimuth);
+		requestAnimationFrame(animateAzimuthFrame);
+	}
+
 	function updateNtpStatus(){
 		var info = document.getElementById("NtpStatus");
 		if(!info){ return; }
@@ -999,7 +1065,7 @@
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				AzRange = this.responseText;
 				// console.log ('AzRange ' + AzRange);
-				AZ(Azimuth);
+				AZ(AzimuthAnimInitialized ? DisplayedAzimuth : Azimuth);
 				Static();
 				StaticBot();
 	    }
@@ -1126,7 +1192,7 @@
 				updateMapBordersControl();
 				updateMapDxccSearchControl();
 				updateNtpStatus();
-				AZ(Azimuth);
+				AZ(AzimuthAnimInitialized ? DisplayedAzimuth : Azimuth);
 				Static();
 				StaticBot();
 				map();
@@ -1244,7 +1310,6 @@
 				// if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>1 ){	// || Status != 4
 				if( Number(AzimuthTmp) != Number(Azimuth) ){
 					AzimuthPulseStart = new Date().getTime();
-					AZ(Azimuth);
 					Static();
 					StaticBot();
 					AzimuthTmp=Azimuth;
@@ -1265,7 +1330,6 @@
 					clearTargetAzimuth();
 				}
 				if( Number(StatusTmp)!=Number(Status) ){
-					AZ(Azimuth);
 					Static();
 					StaticBot();
 					StatusTmp=Status;
@@ -1808,7 +1872,7 @@ var LAND_OUTLINES = [];
 		while(azimuth < 0){ azimuth += 360; }
 		while(azimuth >= 360){ azimuth -= 360; }
 		AZtarget = azimuth;
-		AZ(Azimuth);
+		AZ(AzimuthAnimInitialized ? DisplayedAzimuth : Azimuth);
 	}
 
 	function clearTargetAzimuth(){
@@ -1816,7 +1880,7 @@ var LAND_OUTLINES = [];
 			return;
 		}
 		AZtarget = null;
-		AZ(Azimuth);
+		AZ(AzimuthAnimInitialized ? DisplayedAzimuth : Azimuth);
 	}
 
 	function hasTargetAzimuthValue(){
