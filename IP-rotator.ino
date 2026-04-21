@@ -358,7 +358,7 @@ String HTTP_req;
 #if defined(OTAWEB)
   #include <AsyncTCP.h>
   #include <ESPAsyncWebServer.h>
-  #include <AsyncElegantOTA.h>
+  #include "src/AsyncElegantOTA_IPR/AsyncElegantOTA_IPR.h"
   AsyncWebServer OTAserver(82);
 #endif
 
@@ -1097,7 +1097,7 @@ void setup() {
     OTAserver.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/plain", "PSE QSY to /update");
     });
-    AsyncElegantOTA.begin(&OTAserver);    // Start ElegantOTA
+    AsyncElegantOTA_IPR.begin(&OTAserver);    // Start OTA
     OTAserver.begin();
   #endif
 
@@ -1178,7 +1178,7 @@ void loop() {
    //     request->send(200, "text/plain", "ok");
    //     Serial.println(request->client()->remoteIP());
    // });
-   AsyncElegantOTA.loop();
+   AsyncElegantOTA_IPR.loop();
   #endif
 
 
