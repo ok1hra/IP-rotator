@@ -2818,6 +2818,62 @@ void http(){
           webClient.println(F("              alphabeticalSort: true,"));
           webClient.println(F("              qos: 0"));
           webClient.println(F("          };"));
+          #if defined(OTAWEB)
+            webClient.print(F("          var FirmwareRev = \""));
+            webClient.print(REV);
+            webClient.println(F("\";"));
+            webClient.println(F("          var LatestReleaseTag = \"\";"));
+            webClient.println(F("          function normalizeVersionDigits(versionText){"));
+            webClient.println(F("            var digits = String(versionText || \"\").replace(/[^0-9]/g, \"\");"));
+            webClient.println(F("            return digits.length ? digits : \"\";"));
+            webClient.println(F("          }"));
+            webClient.println(F("          function updateFirmwareActions(){"));
+            webClient.println(F("            var wrap = document.getElementById(\"firmware-actions\");"));
+            webClient.println(F("            var help = document.getElementById(\"firmware-update-help\");"));
+            webClient.println(F("            var download = document.getElementById(\"firmware-download-btn\");"));
+            webClient.println(F("            var upload = document.getElementById(\"firmware-upload-btn\");"));
+            webClient.println(F("            var status = document.getElementById(\"firmware-up-to-date\");"));
+            webClient.println(F("            if(!wrap || !help || !download || !upload || !status){ return; }"));
+            webClient.println(F("            wrap.style.display = \"block\";"));
+            webClient.println(F("            help.style.display = \"none\";"));
+            webClient.println(F("            download.style.display = \"none\";"));
+            webClient.println(F("            upload.style.display = \"none\";"));
+            webClient.println(F("            status.style.display = \"none\";"));
+            webClient.println(F("            if(!FirmwareRev || !LatestReleaseTag){"));
+            webClient.println(F("              wrap.style.display = \"none\";"));
+            webClient.println(F("              return;"));
+            webClient.println(F("            }"));
+            webClient.println(F("            var currentDigits = normalizeVersionDigits(FirmwareRev);"));
+            webClient.println(F("            var latestDigits = normalizeVersionDigits(LatestReleaseTag);"));
+            webClient.println(F("            if(!currentDigits || !latestDigits){"));
+            webClient.println(F("              wrap.style.display = \"none\";"));
+            webClient.println(F("              return;"));
+            webClient.println(F("            }"));
+            webClient.println(F("            if(Number(latestDigits) > Number(currentDigits)){"));
+            webClient.println(F("              help.style.display = \"block\";"));
+            webClient.println(F("              download.style.display = \"inline-block\";"));
+            webClient.println(F("              upload.style.display = \"inline-block\";"));
+            webClient.println(F("            }else{"));
+            webClient.println(F("              status.style.display = \"inline-block\";"));
+            webClient.println(F("            }"));
+            webClient.println(F("          }"));
+            webClient.println(F("          function checkLatestRelease(){"));
+            webClient.println(F("            if(!FirmwareRev){ return; }"));
+            webClient.println(F("            var rhttp = new XMLHttpRequest();"));
+            webClient.println(F("            rhttp.onreadystatechange = function() {"));
+            webClient.println(F("              if (this.readyState == 4 && this.status == 200) {"));
+            webClient.println(F("                try{"));
+            webClient.println(F("                  var data = JSON.parse(this.responseText);"));
+            webClient.println(F("                  LatestReleaseTag = String(data.tag_name || \"\");"));
+            webClient.println(F("                  updateFirmwareActions();"));
+            webClient.println(F("                }catch(e){}"));
+            webClient.println(F("              }"));
+            webClient.println(F("            };"));
+            webClient.println(F("            rhttp.open(\"GET\", \"https://api.github.com/repos/ok1hra/IP-rotator/releases/latest\", true);"));
+            webClient.println(F("            rhttp.send();"));
+            webClient.println(F("          }"));
+            webClient.println(F("          window.addEventListener(\"load\", function(){ checkLatestRelease(); });"));
+          #endif
           webClient.println(F("          </script>"));
           // END TOPIC
           webClient.println(F("      </head>"));
@@ -2875,19 +2931,27 @@ void http(){
           }else{
             webClient.print(F("<span style='color: #F00; font-weight: bold;'>DISABLE</span>"));
           }
-          #if defined(OTAWEB)
-            webClient.print(F("&nbsp;| <a href=\"http://"));
-            webClient.println(ETH.localIP());
-            webClient.print(F(":82/update\" target=_blank>Upload&nbsp;FW</a>&nbsp;| <a href=\"https://github.com/ok1hra/IP-rotator/releases\" target=_blank>Releases</a><br><a href=\"http://"));
-            webClient.println(ETH.localIP());
-            if(ELEVATION==false){
-              webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Azimuth Map Control</button></a>"));
-            }else{
-              webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=570,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} :hover {background-color: orange;} '>Elevation Map Control</button></a>"));
-            }
-          #endif
           // END STATUS
           webClient.println(F("              </p>"));
+          #if defined(OTAWEB)
+            webClient.println(F("              <div id=\"firmware-actions\" style=\"display:none; text-align:center; margin: 10px 0 0 0;\">"));
+            webClient.println(F("                  <div id=\"firmware-update-help\" style=\"display:none; color:#333; font-size:100%; line-height:1.5; margin:10px auto 4px auto; max-width:720px;\">Download the latest two firmware files from the release page, then upload them on the web update page in the correct order: first firmware, then filesystem.</div>"));
+            webClient.println(F("                  <a id=\"firmware-download-btn\" href=\"https://github.com/ok1hra/IP-rotator/releases/latest\" target=\"_blank\" style=\"display:none; color:#fff; background-color:#f57c00; padding:10px 22px; margin:15px 8px 0 8px; border:none; border-radius:6px; text-decoration:none; font-weight:bold; font-size:110%;\">Download release</a>"));
+            webClient.print(F("                  <a id=\"firmware-upload-btn\" href=\"http://"));
+            webClient.print(ETH.localIP());
+            webClient.println(F(":82/update\" target=\"_blank\" style=\"display:none; color:#fff; background-color:#f57c00; padding:10px 22px; margin:15px 8px 0 8px; border:none; border-radius:6px; text-decoration:none; font-weight:bold; font-size:110%;\">Upload</a>"));
+            webClient.println(F("                  <span id=\"firmware-up-to-date\" style=\"display:none; color:#333; font-weight:bold; font-size:110%;\">Firmware is up to date</span>"));
+            webClient.println(F("              </div>"));
+          #endif
+          webClient.print(F("              <div style=\"text-align:center;\">"));
+          webClient.print(F("                  <a href=\"http://"));
+          webClient.println(ETH.localIP());
+          if(ELEVATION==false){
+            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Azimuth Map Control</button></a>"));
+          }else{
+            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=570,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Elevation Map Control</button></a>"));
+          }
+          webClient.println(F("              </div>"));
           webClient.println(F("              </div>"));
           webClient.println(F("              <div id=\"header\">"));
           webClient.println(F("                  <div id=\"topic-box\">"));

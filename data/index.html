@@ -112,6 +112,11 @@
 			box-sizing: border-box;
 			display: none;
 		}
+		.pwmctl.bitmapoverlay{
+			background: rgba(6, 8, 11, 0.74);
+			border-color: rgba(200, 208, 214, 0.2);
+			box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+		}
 		.pwmbarwrap{
 			position: relative;
 			width: 100%;
@@ -530,6 +535,14 @@
 		}
 	}
 
+	function isBitmapAzimuthMode(){
+		return Number(MapSource) === 0 && Number(Elevation) !== 1;
+	}
+
+	function shouldShowPwmControl(){
+		return !!PwmUiEnabled && Number(Elevation) !== 1 && Number(MapSource) !== -1;
+	}
+
 	function Clamp(value, min, max) {
 		if (value < min) { return min; }
 		if (value > max) { return max; }
@@ -562,8 +575,13 @@
 		var barMask = document.getElementById("PwmBarMask");
 		var barFill = document.getElementById("PwmBarFill");
 		if(!wrap || !slider || !valueLabel || !barMask || !barFill){ return; }
-		if(PwmUiEnabled){
+		if(shouldShowPwmControl()){
 			wrap.style.display = "block";
+			if(isBitmapAzimuthMode()){
+				wrap.classList.add("bitmapoverlay");
+			}else{
+				wrap.classList.remove("bitmapoverlay");
+			}
 			slider.value = Number(PwmMaxDuty);
 			valueLabel.innerHTML = String(dutyToPercent(PwmMaxDuty)) + "%";
 			var totalWidthPx = barMask.parentElement ? Number(barMask.parentElement.clientWidth || 0) : 0;
@@ -581,6 +599,7 @@
 			barFill.style.width = String(actualWithinMax) + "%";
 		}else{
 			wrap.style.display = "none";
+			wrap.classList.remove("bitmapoverlay");
 		}
 	}
 
