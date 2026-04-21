@@ -122,7 +122,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260419";
+const char* REV = "20260416";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -169,6 +169,7 @@ bool AzimuthControlInit = false;
 float AzimuthNoiseDeg = 0.2;
 float PwmSlowWindowDeg = 12.0;
 byte PwmTuneAggressiveness = 2;
+bool SkipBrakeLearningOnManualStop = false;
 long PwmTuneSaveTimer = 0;
 long StatusWatchdogTimer = 0;
 long RotateWatchdogTimer = 0;
@@ -551,6 +552,7 @@ void PersistAutoSlowWindowIfNeeded();
 float GetPwmTuneAggressionFactor();
 float GetPwmTuneLeadOffsetDeg();
 bool ShouldForceStopFromPwmStall(int directionSign, byte currentDuty, float rawAzimuthDeg, byte maxDuty);
+void RequestStopRamp(bool suppressBrakeLearning);
 
 //-------------------------------------------------------------------------------------------------------
 
@@ -1285,13 +1287,8 @@ void Watchdog(){
       }
       // RunTimer();
     }else if(RunByKey==true){
-      if(Status==-2){
-        Status=-3;
-        RunByKey=false;
-      }else if(Status==2){
-        Status=3;
-        RunByKey=false;
-      }
+      RequestStopRamp(true);
+      RunByKey=false;
     }
   }else{
     // pulse
@@ -1855,6 +1852,20 @@ void UpdateAutoSlowWindow(float brakeStartDistance, float finalDistance){
   PersistAutoSlowWindowIfNeeded();
 }
 
+void RequestStopRamp(bool suppressBrakeLearning){
+  if(Status<0){
+    if(suppressBrakeLearning){
+      SkipBrakeLearningOnManualStop = true;
+    }
+    Status=-3;
+  }else if(Status>0){
+    if(suppressBrakeLearning){
+      SkipBrakeLearningOnManualStop = true;
+    }
+    Status=3;
+  }
+}
+
 void PersistAutoSlowWindowIfNeeded(){
   static unsigned int LastSavedTenths = 0;
   unsigned int currentTenths = (unsigned int)round(PwmSlowWindowDeg * 10.0);
@@ -1894,9 +1905,12 @@ void RunByStatus(){
               digitalWrite(ReversePin, LOW);
               Status=0;
               if(BrakeLearningActive){
-                UpdateAutoSlowWindow(BrakeStartDistance, ReadRemainingDistanceDeg(BrakeLearningDirection, ReadRawAzimuthDeg()));
+                if(!SkipBrakeLearningOnManualStop){
+                  UpdateAutoSlowWindow(BrakeStartDistance, ReadRemainingDistanceDeg(BrakeLearningDirection, ReadRawAzimuthDeg()));
+                }
                 BrakeLearningActive = false;
               }
+              SkipBrakeLearningOnManualStop = false;
               AzimuthTarget=-1;
               UiTargetAzimuth=-1;
               AzimuthControlDeg=AzimuthRawDeg;
@@ -1911,6 +1925,7 @@ void RunByStatus(){
             // digitalWrite(ACcwPin, LOW);
             Status=0;
             BrakeLearningActive = false;
+            SkipBrakeLearningOnManualStop = false;
             AzimuthTarget=-1;
             UiTargetAzimuth=-1;
           }
@@ -1922,6 +1937,7 @@ void RunByStatus(){
           digitalWrite(BrakePin, LOW);
           Status=0;
           BrakeLearningActive = false;
+          SkipBrakeLearningOnManualStop = false;
         }
         ; break; }
       case -2: {
@@ -1979,6 +1995,7 @@ void RunByStatus(){
         ReverseProcedure(true);
         RunTimer();
         BrakeLearningActive = false;
+        SkipBrakeLearningOnManualStop = false;
         ShouldForceStopFromPwmStall(0, PwmMaxDuty, ReadRawAzimuthDeg(), PwmMaxDuty);
         Status=-11;
         OneTimeSend = false;
@@ -1986,6 +2003,7 @@ void RunByStatus(){
         ; break; }
       case  0: {
         BrakeLearningActive = false;
+        SkipBrakeLearningOnManualStop = false;
         LedStatusErr();
         if(OneTimeSend==false){
           MqttPubString("AzimuthStop", String(Azimuth), false);
@@ -1997,6 +2015,7 @@ void RunByStatus(){
         ReverseProcedure(false);
         RunTimer();
         BrakeLearningActive = false;
+        SkipBrakeLearningOnManualStop = false;
         ShouldForceStopFromPwmStall(0, PwmMaxDuty, ReadRawAzimuthDeg(), PwmMaxDuty);
         Status=11;
         OneTimeSend = false;
@@ -2065,9 +2084,12 @@ void RunByStatus(){
               digitalWrite(ReversePin, LOW);
               Status=0;
               if(BrakeLearningActive){
-                UpdateAutoSlowWindow(BrakeStartDistance, ReadRemainingDistanceDeg(BrakeLearningDirection, ReadRawAzimuthDeg()));
+                if(!SkipBrakeLearningOnManualStop){
+                  UpdateAutoSlowWindow(BrakeStartDistance, ReadRemainingDistanceDeg(BrakeLearningDirection, ReadRawAzimuthDeg()));
+                }
                 BrakeLearningActive = false;
               }
+              SkipBrakeLearningOnManualStop = false;
               AzimuthTarget=-1;
               UiTargetAzimuth=-1;
               AzimuthControlDeg=AzimuthRawDeg;
@@ -2082,6 +2104,7 @@ void RunByStatus(){
             // digitalWrite(ACcwPin, LOW);
             Status=0;
             BrakeLearningActive = false;
+            SkipBrakeLearningOnManualStop = false;
             AzimuthTarget=-1;
             UiTargetAzimuth=-1;
           }
@@ -2093,6 +2116,7 @@ void RunByStatus(){
           digitalWrite(BrakePin, LOW);
           Status=0;
           BrakeLearningActive = false;
+          SkipBrakeLearningOnManualStop = false;
         }
         ; break; }
     }
@@ -2245,11 +2269,7 @@ long RawTmp = 0;
   // A 65 CW/CCW Rotation Stop
   //   S 83 All Stop
   }else if(incomingByte==65||incomingByte==83){
-    if(Status<0){
-      Status=-3;
-    }else if(Status>0){
-      Status=3;
-    }
+    RequestStopRamp(true);
     Prn(OUT, 1, "Rotation Stop" );
 
   // C 67 Antenna Direction Value
@@ -2797,7 +2817,38 @@ void http(){
           webClient.println(F("          <meta name='apple-mobile-web-app-capable' content='yes'>"));
           webClient.println(F("          <meta name='mobile-web-app-capable' content='yes'>"));
           webClient.println(F("          <meta name=\"msapplication-config\" content=\"style/browserconfig.xml\">"));
-          webClient.println(F("          <meta name=\"theme-color\" content=\"#ffffff\">"));
+          webClient.println(F("          <meta name=\"theme-color\" content=\"#111827\">"));
+          webClient.println(F("          <style type=\"text/css\">"));
+          webClient.println(F("            :root { color-scheme: dark; }"));
+          webClient.println(F("            body { background: radial-gradient(circle at top, #1f2937 0%, #111827 48%, #030712 100%) !important; color: #e5e7eb !important; }"));
+          webClient.println(F("            a { color: #fbbf24; }"));
+          webClient.println(F("            a:hover { color: #fdba74; }"));
+          webClient.println(F("            #frame { background: rgba(17, 24, 39, 0.88) !important; color: #e5e7eb !important; border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 18px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45); }"));
+          webClient.println(F("            #header { position: static !important; top: auto !important; z-index: auto !important; width: auto !important; margin: 0 0 14px 0; padding: 12px 14px !important; background: linear-gradient(180deg, rgba(51, 65, 85, 0.96) 0%, rgba(30, 41, 59, 0.96) 100%) !important; border: 1px solid rgba(148, 163, 184, 0.24); border-radius: 14px; box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22); }"));
+          webClient.println(F("            #footer { background: transparent !important; }"));
+          webClient.println(F("            #header #topic-box { background: rgba(15, 23, 42, 0.82) !important; border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 10px; padding: 4px 8px; }"));
+          webClient.println(F("            .messages { margin-top: 0 !important; padding-top: 0 !important; background: rgba(15, 23, 42, 0.72) !important; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 14px; overflow: hidden; }"));
+          webClient.println(F("            .messages article, .messages .message, .messages li { background: rgba(30, 41, 59, 0.78) !important; color: #e5e7eb !important; border-color: rgba(148, 163, 184, 0.18) !important; }"));
+          webClient.println(F("            .messages .message header { color: #f8fafc !important; font-weight: 400; }"));
+          webClient.println(F("            .messages .message header h2 { color: #f8fafc !important; font-weight: 400; }"));
+          webClient.println(F("            .messages .message header .mark { background: rgba(148, 163, 184, 0.28) !important; color: #e5e7eb !important; }"));
+          webClient.println(F("            .messages .message header .mark.retain { background: #dc2626 !important; color: #fff !important; }"));
+          webClient.println(F("            .messages .message header .mark.qos[data-qos=\"1\"] { background: #475569 !important; color: #fff !important; }"));
+          webClient.println(F("            .messages .message header .mark.qos[data-qos=\"2\"] { background: #0f172a !important; color: #fff !important; }"));
+          webClient.println(F("            .messages .message p { color: #f8fafc !important; background: linear-gradient(180deg, rgba(51, 65, 85, 0.96) 0%, rgba(30, 41, 59, 0.98) 100%) !important; border: 1px solid rgba(148, 163, 184, 0.24); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }"));
+          webClient.println(F("            .status, .status a, .status em, .status span, #footer, #footer p, #footer a { color: #d1d5db !important; }"));
+          webClient.println(F("            code { background: rgba(15, 23, 42, 0.95) !important; border-radius: 6px; padding: 2px 6px; }"));
+          webClient.println(F("            #topic { background: transparent !important; color: #f9fafb !important; border: none !important; border-radius: 8px; font-weight: 700; letter-spacing: 0.03em; }"));
+          webClient.println(F("            #topic::placeholder { color: #94a3b8; }"));
+          webClient.println(F("            button { box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28); }"));
+          webClient.println(F("            #firmware-actions { display:none; max-width: 760px; margin: 14px auto 0 auto; padding: 18px 20px 20px 20px; text-align:center; background: linear-gradient(180deg, rgba(251, 191, 36, 0.18) 0%, rgba(249, 115, 22, 0.18) 100%); border: 1px solid rgba(251, 191, 36, 0.34); border-radius: 16px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.30); }"));
+          webClient.println(F("            #firmware-update-help { display:none; color:#ffedd5 !important; font-size:100%; line-height:1.6; margin:0 auto; max-width:640px; }"));
+          webClient.println(F("            #firmware-up-to-date { display:none; color:#fde68a !important; font-weight:bold; font-size:110%; }"));
+          webClient.println(F("            .firmware-actions-row { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; margin-top:16px; }"));
+          webClient.println(F("            .firmware-cta, .firmware-cta:link, .firmware-cta:visited, .firmware-cta:hover, .firmware-cta:active, #firmware-download-btn, #firmware-download-btn:link, #firmware-download-btn:visited, #firmware-download-btn:hover, #firmware-download-btn:active, #firmware-upload-btn, #firmware-upload-btn:link, #firmware-upload-btn:visited, #firmware-upload-btn:hover, #firmware-upload-btn:active { display:none; color:#000 !important; text-decoration:none; }"));
+          webClient.println(F("            .firmware-cta { background:#fb923c; padding:10px 22px; border:none; border-radius:6px; font-weight:400; font-size:110%; box-shadow: 0 12px 24px rgba(124, 45, 18, 0.22); }"));
+          webClient.println(F("            .firmware-cta:hover, #firmware-download-btn:hover, #firmware-upload-btn:hover { background:#fdba74; color:#000 !important; }"));
+          webClient.println(F("          </style>"));
           webClient.println(F("          <script type=\"text/javascript\">"));
           webClient.println(F("          var config = {"));
           webClient.println(F("              server: {"));
@@ -2946,22 +2997,24 @@ void http(){
           // END STATUS
           webClient.println(F("              </p>"));
           #if defined(OTAWEB)
-            webClient.println(F("              <div id=\"firmware-actions\" style=\"display:none; text-align:center; margin: 10px 0 0 0;\">"));
-            webClient.println(F("                  <div id=\"firmware-update-help\" style=\"display:none; color:#333; font-size:100%; line-height:1.5; margin:10px auto 4px auto; max-width:720px;\">Download the latest two firmware files from the release page, then upload them on the web update page in the correct order: first firmware, then filesystem.</div>"));
-            webClient.println(F("                  <a id=\"firmware-download-btn\" href=\"https://github.com/ok1hra/IP-rotator/releases/latest\" target=\"_blank\" style=\"display:none; color:#fff; background-color:#f57c00; padding:10px 22px; margin:15px 8px 0 8px; border:none; border-radius:6px; text-decoration:none; font-weight:bold; font-size:110%;\">Download release</a>"));
+            webClient.println(F("              <div id=\"firmware-actions\">"));
+            webClient.println(F("                  <div id=\"firmware-update-help\">Download the latest two firmware files from the release page, then upload them on the web update page in the correct order: first firmware, then filesystem.</div>"));
+            webClient.println(F("                  <div class=\"firmware-actions-row\">"));
+            webClient.println(F("                      <a id=\"firmware-download-btn\" class=\"firmware-cta\" href=\"https://github.com/ok1hra/IP-rotator/releases/latest\" target=\"_blank\">Download release</a>"));
             webClient.print(F("                  <a id=\"firmware-upload-btn\" href=\"http://"));
             webClient.print(ETH.localIP());
-            webClient.println(F(":82/update\" target=\"_blank\" style=\"display:none; color:#fff; background-color:#f57c00; padding:10px 22px; margin:15px 8px 0 8px; border:none; border-radius:6px; text-decoration:none; font-weight:bold; font-size:110%;\">Upload</a>"));
-            webClient.println(F("                  <span id=\"firmware-up-to-date\" style=\"display:none; color:#333; font-weight:bold; font-size:110%;\">Firmware is up to date</span>"));
+            webClient.println(F(":82/update\" target=\"_blank\" class=\"firmware-cta\">Upload firmware</a>"));
+            webClient.println(F("                  </div>"));
+            webClient.println(F("                  <span id=\"firmware-up-to-date\">Firmware is up to date</span>"));
             webClient.println(F("              </div>"));
           #endif
           webClient.print(F("              <div style=\"text-align:center;\">"));
           webClient.print(F("                  <a href=\"http://"));
           webClient.println(ETH.localIP());
           if(ELEVATION==false){
-            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Azimuth Map Control</button></a>"));
+            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=750,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color:#fff; background-color:#060; padding:10px 22px; margin:15px 8px 0 8px; border:none; border-radius:6px; font-weight:bold; font-size:110%;'>Azimuth Map Control</button></a>"));
           }else{
-            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=570,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color: #fff; background-color: #060; padding: 5px 20px 5px 20px; margin:15px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;'>Elevation Map Control</button></a>"));
+            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=610,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color:#fff; background-color:#060; padding:10px 22px; margin:15px 8px 0 8px; border:none; border-radius:6px; font-weight:bold; font-size:110%;'>Elevation Map Control</button></a>"));
           }
           webClient.println(F("              </div>"));
           webClient.println(F("              </div>"));
@@ -3258,11 +3311,7 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
       if(EnableSerialDebug>0){
         Prn(3, 1, "/stop ");
       }
-      if(Status<0){
-        Status=-3;
-      }else if(Status>0){
-        Status=3;
-      }
+      RequestStopRamp(true);
     }
 
     CheckTopicBase = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/get";
@@ -3628,11 +3677,7 @@ void handlePostRot() {
    RotCalculate();
    ajaxserver.send(200, "text/plain", "ROTATE REQUEST ACCEPTED");
  }else{
-   if(Status<0){
-     Status=-3;
-   }else{
-     Status=3;
-   }
+   RequestStopRamp(true);
    ajaxserver.send(409, "text/plain", "ROTATE REQUEST FAILED");
   }
 }
@@ -4919,11 +4964,7 @@ switch (PwmTuneAggressiveness) {
 void handleCal() {
 
   if ( ajaxserver.hasArg("stop")==1 ){
-    if(Status<0){
-      Status=-3;
-    }else if(Status>0){
-      Status=3;
-    }
+    RequestStopRamp(true);
   }
 
   if ( ajaxserver.hasArg("cw")==1 ){

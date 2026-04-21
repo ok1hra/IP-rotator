@@ -29,7 +29,7 @@
 		body {
 			width: 600px;
 			margin: 0 auto;
-			min-height: 710px;
+			min-height: 730px;
 		}
 		.mouse{
 			margin: auto;
@@ -254,8 +254,8 @@
 			position: absolute;
 			left: 16px;
 			top: 550px;
-			z-index: 6;
-			width: 184px;
+			z-index: 8;
+			width: 154px;
 			padding: 7px 10px 8px 10px;
 			border-radius: 9px;
 			background: rgba(6, 8, 11, 0.58);
@@ -286,6 +286,7 @@
 		.kbdhint{
 			text-decoration: underline;
 			text-underline-offset: 2px;
+			cursor: help;
 		}
 		.zoomlabel{
 			display: flex;
@@ -392,7 +393,7 @@
 				<input class="pwmslider" type="range" id="PwmMaxSlider" min="40" max="255" step="5" value="255">
 			</div>
 			<div class="zoomlabel" style="margin-bottom: 0;">
-				<span>SPEED</span>
+				<span>S<span class="kbdhint" data-shortcut="p slower / P faster">P</span>EED</span>
 				<span class="zoomvalue" id="PwmValue">100%</span>
 			</div>
 		</div>
@@ -403,17 +404,21 @@
 			<div class="dxccsearchstatus" id="MapDxccSearchStatus"></div>
 		</div>
 		<div class="maptoggle" id="MapBordersControl">
-			<label class="togglelabel" for="MapGraylineToggle">
+			<label class="togglelabel" for="MapDegToggle">
+				<input type="checkbox" id="MapDegToggle" checked>
+				<span><span class="kbdhint">D</span>EG</span>
+			</label>
+			<label class="togglelabel" for="MapGraylineToggle" id="MapGraylineToggleLabel">
 				<input type="checkbox" id="MapGraylineToggle">
 				<span><span class="kbdhint">G</span>rayline</span>
 			</label>
-			<label class="togglelabel" for="MapBordersToggle">
+			<label class="togglelabel" for="MapBordersToggle" id="MapBordersToggleLabel">
 				<input type="checkbox" id="MapBordersToggle">
 				<span><span class="kbdhint">S</span>tate borders</span>
 			</label>
-			<label class="togglelabel" for="MapDxccToggle">
+			<label class="togglelabel" for="MapDxccToggle" id="MapDxccToggleLabel">
 				<input type="checkbox" id="MapDxccToggle">
-				<span><span class="kbdhint">D</span>XCC prefixes</span>
+				<span>D<span class="kbdhint">X</span>CC prefixes</span>
 			</label>
 		</div>
 		<div class="maphint" id="MapHint"></div>
@@ -421,7 +426,7 @@
 			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
 				<span class="statuspill">
 					<span class="statuspillmain">
-						<span style="color: #fff;" id="AntName2"> </span> | POE
+						<span style="color: #fff;" id="AntName2"> </span>&nbsp;| POE
 						<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V |
 						 raw <span style="font-weight: bold;" id="AZValue">0</span>&deg; |
 					</span>
@@ -450,19 +455,15 @@
 	var MapGraylineEnabled = true;
 	var MapBordersEnabled = false;
 	var MapDxccEnabled = false;
+	var DegOverlayEnabled = true;
 	var MapTheme = 1;
 	var GraylineDarkness = 80;
 	var GraylineEpoch = 0;
-	var KeyboardPrefixKey = "F8";
-	var KeyboardPrefixArmedUntil = 0;
 	var LastDxccRotateRequest = "";
 	var LastDxccRotateAt = 0;
 	var GraylineNtpOk = false;
 	var GraylineMinuteKey = "";
 	var AzimuthPulseStart = 0;
-	var DisplayedAzimuth = 0;
-	var AzimuthAnimLastTs = 0;
-	var AzimuthAnimInitialized = false;
 	var OnlineTimeStamp = 0;
 	var Elevation = 0; 
 	var MapZoomSaveTimer = 0;
@@ -490,7 +491,6 @@
 	Static();
 	StaticBot();
 	var AZtarget = null;
-	requestAnimationFrame(animateAzimuthFrame);
 
 	function CheckOnline() {
 		if( new Date().getTime() - Number(OnlineTimeStamp) > 1500){
@@ -510,16 +510,16 @@
 		return Number(MapSource) === 1 && Number(Elevation) === 1;
 	}
 
-	function updatePageLayout(){
-		var statusWrap = document.querySelector(".second");
-		if(isElevationVectorMode()){
-			document.body.style.minHeight = "560px";
-			if(statusWrap){ statusWrap.style.top = "452px"; }
-		}else{
-			document.body.style.minHeight = "710px";
-			if(statusWrap){ statusWrap.style.top = "620px"; }
+		function updatePageLayout(){
+			var statusWrap = document.querySelector(".second");
+			if(isElevationVectorMode()){
+				document.body.style.minHeight = "580px";
+				if(statusWrap){ statusWrap.style.top = "452px"; }
+			}else{
+				document.body.style.minHeight = "730px";
+				if(statusWrap){ statusWrap.style.top = "620px"; }
+			}
 		}
-	}
 
 	function updateMapZoomControl(){
 		var wrap = document.getElementById("MapZoomControl");
@@ -641,18 +641,33 @@
 
 	function updateMapBordersControl(){
 		var wrap = document.getElementById("MapBordersControl");
+		var degToggle = document.getElementById("MapDegToggle");
 		var graylineToggle = document.getElementById("MapGraylineToggle");
+		var graylineLabel = document.getElementById("MapGraylineToggleLabel");
 		var toggle = document.getElementById("MapBordersToggle");
+		var bordersLabel = document.getElementById("MapBordersToggleLabel");
 		var dxccToggle = document.getElementById("MapDxccToggle");
-		if(!wrap || !graylineToggle || !toggle || !dxccToggle){ return; }
-		if(Number(MapSource) === 1 && Number(Elevation) !== 1){
+		var dxccLabel = document.getElementById("MapDxccToggleLabel");
+		if(!wrap || !degToggle || !graylineToggle || !graylineLabel || !toggle || !bordersLabel || !dxccToggle || !dxccLabel){ return; }
+		if(Number(Elevation) !== 1){
 			wrap.style.display = "block";
+			degToggle.checked = !!DegOverlayEnabled;
+			var mapOptionsVisible = Number(MapSource) === 1;
+			graylineLabel.style.display = mapOptionsVisible ? "flex" : "none";
+			bordersLabel.style.display = mapOptionsVisible ? "flex" : "none";
+			dxccLabel.style.display = mapOptionsVisible ? "flex" : "none";
 			graylineToggle.checked = !!MapGraylineEnabled;
 			toggle.checked = !!MapBordersEnabled;
 			dxccToggle.checked = !!MapDxccEnabled;
 		}else{
 			wrap.style.display = "none";
 		}
+	}
+
+	function setDegOverlayEnabled(enabled){
+		DegOverlayEnabled = !!enabled;
+		updateMapBordersControl();
+		AZ(Azimuth);
 	}
 
 	function setMapGraylineEnabled(enabled){
@@ -811,21 +826,25 @@
 		return tag === "INPUT" || tag === "TEXTAREA" || !!el.isContentEditable;
 	}
 
-	function consumeKeyboardPrefix(){
-		KeyboardPrefixArmedUntil = 0;
-	}
-
-	function armKeyboardPrefix(){
-		KeyboardPrefixArmedUntil = new Date().getTime() + 1500;
-	}
-
-	function isKeyboardPrefixArmed(){
-		return new Date().getTime() <= Number(KeyboardPrefixArmedUntil || 0);
-	}
-
 	function getPlusMinusStepDir(evt){
 		if(isPlusKey(evt)){ return 1; }
 		if(isMinusKey(evt)){ return -1; }
+		return 0;
+	}
+
+	function isPwmIncreaseKey(evt){
+		if(!evt){ return false; }
+		return evt.key === "]" || evt.key === "}" || evt.code === "BracketRight";
+	}
+
+	function isPwmDecreaseKey(evt){
+		if(!evt){ return false; }
+		return evt.key === "[" || evt.key === "{" || evt.code === "BracketLeft";
+	}
+
+	function getPwmStepDir(evt){
+		if(isPwmIncreaseKey(evt)){ return 1; }
+		if(isPwmDecreaseKey(evt)){ return -1; }
 		return 0;
 	}
 
@@ -860,7 +879,14 @@
 	}
 
 	function toggleShortcutOption(keyLower){
-		if(Number(MapSource) !== 1 || Number(Elevation) === 1){
+		if(Number(Elevation) === 1){
+			return false;
+		}
+		if(keyLower === "d"){
+			setDegOverlayEnabled(!DegOverlayEnabled);
+			return true;
+		}
+		if(Number(MapSource) !== 1){
 			return false;
 		}
 		if(keyLower === "g"){
@@ -871,7 +897,7 @@
 			setMapBordersEnabled(!MapBordersEnabled);
 			return true;
 		}
-		if(keyLower === "d"){
+		if(keyLower === "x"){
 			setMapDxccEnabled(!MapDxccEnabled);
 			return true;
 		}
@@ -896,94 +922,54 @@
 			return;
 		}
 		var key = String(evt.key || "");
-		if(key === KeyboardPrefixKey){
-			evt.preventDefault();
-			armKeyboardPrefix();
+		var keyLower = key.toLowerCase();
+		if(isEditableElement(evt.target)){
 			return;
 		}
-		var keyLower = key.toLowerCase();
-		var stepDir = getPlusMinusStepDir(evt);
-		if(isKeyboardPrefixArmed()){
-			consumeKeyboardPrefix();
-			if(stepDir !== 0){
-				if(changePwmByStep(stepDir)){
-					evt.preventDefault();
-				}
-				return;
-			}
-			if(toggleShortcutOption(keyLower)){
+		if(key === "p"){
+			if(changePwmByStep(-1)){
 				evt.preventDefault();
 			}
 			return;
 		}
-		if(stepDir !== 0 && !isEditableElement(evt.target)){
+		if(key === "P"){
+			if(changePwmByStep(1)){
+				evt.preventDefault();
+			}
+			return;
+		}
+		var pwmStepDir = getPwmStepDir(evt);
+		if(pwmStepDir !== 0){
+			if(changePwmByStep(pwmStepDir)){
+				evt.preventDefault();
+			}
+			return;
+		}
+		if(toggleShortcutOption(keyLower)){
+			evt.preventDefault();
+			return;
+		}
+		var stepDir = getPlusMinusStepDir(evt);
+		if(stepDir !== 0){
 			if(changeMapZoomByStep(stepDir)){
 				evt.preventDefault();
 			}
 		}
 	}
 
-	function isCircularAzimuthValue(value){
-		var n = Number(value);
-		return isFinite(n) && n >= 0 && n <= 359;
-	}
-
-	function wrapAzimuth360(value){
-		var n = Number(value);
-		if(!isFinite(n)){
-			return 0;
-		}
-		while(n < 0){ n += 360; }
-		while(n >= 360){ n -= 360; }
-		return n;
-	}
-
-	function shortestAzimuthDelta(fromValue, toValue){
-		var from = wrapAzimuth360(fromValue);
-		var to = wrapAzimuth360(toValue);
-		return ((to - from + 540) % 360) - 180;
-	}
-
-	function animateAzimuthFrame(ts){
-		if(!AzimuthAnimInitialized){
-			DisplayedAzimuth = Number(Azimuth);
-			AzimuthAnimInitialized = true;
-			AzimuthAnimLastTs = ts;
-			AZ(DisplayedAzimuth);
-			requestAnimationFrame(animateAzimuthFrame);
-			return;
-		}
-		var dt = (ts - AzimuthAnimLastTs) / 1000;
-		AzimuthAnimLastTs = ts;
-		if(!(dt > 0 && dt < 1.0)){
-			dt = 1 / 60;
-		}
-
-		var target = Number(Azimuth);
-		if(!isFinite(target)){
-			target = 0;
-		}
-		var tau = 0.14;
-		var k = 1 - Math.exp(-dt / tau);
-		var delta = 0;
-
-		if(isCircularAzimuthValue(target)){
-			if(!isCircularAzimuthValue(DisplayedAzimuth)){
-				DisplayedAzimuth = wrapAzimuth360(DisplayedAzimuth);
+	function initKeyboardShortcutHints(){
+		var hints = document.querySelectorAll(".kbdhint");
+		for(var i = 0; i < hints.length; i++){
+			var el = hints[i];
+			var explicitShortcut = String(el.getAttribute("data-shortcut") || "").trim();
+			var keyText = String(el.textContent || "").trim().toUpperCase();
+			if(!keyText && !explicitShortcut){
+				continue;
 			}
-			delta = shortestAzimuthDelta(DisplayedAzimuth, target);
-			DisplayedAzimuth = wrapAzimuth360(DisplayedAzimuth + delta * k);
-		}else{
-			delta = target - Number(DisplayedAzimuth);
-			DisplayedAzimuth = Number(DisplayedAzimuth) + delta * k;
+			var shortcutText = explicitShortcut || keyText;
+			el.setAttribute("title", "Shortcut: " + shortcutText);
+			el.setAttribute("aria-label", "Keyboard shortcut " + shortcutText);
 		}
-
-		if(Math.abs(delta) < 0.05){
-			DisplayedAzimuth = target;
-		}
-
-		AZ(DisplayedAzimuth);
-		requestAnimationFrame(animateAzimuthFrame);
 	}
 
 	function updateNtpStatus(){
@@ -1084,7 +1070,7 @@
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				AzRange = this.responseText;
 				// console.log ('AzRange ' + AzRange);
-				AZ(AzimuthAnimInitialized ? DisplayedAzimuth : Azimuth);
+				AZ(Azimuth);
 				Static();
 				StaticBot();
 	    }
@@ -1211,7 +1197,7 @@
 				updateMapBordersControl();
 				updateMapDxccSearchControl();
 				updateNtpStatus();
-				AZ(AzimuthAnimInitialized ? DisplayedAzimuth : Azimuth);
+				AZ(Azimuth);
 				Static();
 				StaticBot();
 				map();
@@ -1250,6 +1236,13 @@
 			});
 		}
 		var graylineToggle = document.getElementById("MapGraylineToggle");
+		var degToggle = document.getElementById("MapDegToggle");
+		if(degToggle){
+			degToggle.checked = true;
+			degToggle.addEventListener("change", function(){
+				setDegOverlayEnabled(this.checked);
+			});
+		}
 		if(graylineToggle){
 			graylineToggle.checked = true;
 			graylineToggle.addEventListener("change", function(){
@@ -1304,6 +1297,7 @@
 			});
 		}
 		document.addEventListener("keydown", handleGlobalKeyboardShortcuts);
+		initKeyboardShortcutHints();
 	}
 
 	function getData() {
@@ -1329,6 +1323,7 @@
 				// if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>1 ){	// || Status != 4
 				if( Number(AzimuthTmp) != Number(Azimuth) ){
 					AzimuthPulseStart = new Date().getTime();
+					AZ(Azimuth);
 					Static();
 					StaticBot();
 					AzimuthTmp=Azimuth;
@@ -1345,10 +1340,11 @@
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("StatValue").innerHTML = this.responseText;
 				Status = this.responseText;
-				if(Number(Status) === 0 && Number(StatusTmp) !== 0){
+				if(Number(Status) === 4 && Number(StatusTmp) !== 4){
 					clearTargetAzimuth();
 				}
 				if( Number(StatusTmp)!=Number(Status) ){
+					AZ(Azimuth);
 					Static();
 					StaticBot();
 					StatusTmp=Status;
@@ -1551,11 +1547,7 @@
 	    }
 	    // alert(mousePos.x + ',' + mousePos.y);
 			setTargetAzimuth(getAzimuthForMousePos(mousePos));
-			rotateToAzimuth(AZtarget, function(ok, responseText){
-				if(!ok && responseText){
-					alert(responseText);
-				}
-			});
+			rotateToAzimuth(AZtarget);
 
 	}, false);
 
@@ -1900,7 +1892,7 @@ var LAND_OUTLINES = [];
 		while(azimuth < 0){ azimuth += 360; }
 		while(azimuth >= 360){ azimuth -= 360; }
 		AZtarget = azimuth;
-		AZ(AzimuthAnimInitialized ? DisplayedAzimuth : Azimuth);
+		AZ(Azimuth);
 	}
 
 	function clearTargetAzimuth(){
@@ -1908,7 +1900,7 @@ var LAND_OUTLINES = [];
 			return;
 		}
 		AZtarget = null;
-		AZ(AzimuthAnimInitialized ? DisplayedAzimuth : Azimuth);
+		AZ(Azimuth);
 	}
 
 	function syncTargetAzimuthFromUi(targetText){
@@ -1917,7 +1909,7 @@ var LAND_OUTLINES = [];
 			setTargetAzimuth(targetAzimuth);
 			return;
 		}
-		if(Number(Status) === 0){
+		if(Number(Status) === 4){
 			clearTargetAzimuth();
 		}
 	}
@@ -2717,6 +2709,14 @@ var LAND_OUTLINES = [];
 		ctx.drawImage(graylineCacheCanvas, 0, 0);
 		ctx.filter = "none";
 		ctx.restore();
+	}
+
+	function drawSunMoonOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm){
+		if(!GraylineNtpOk || GraylineEpoch <= 0){
+			return;
+		}
+		var minuteEpoch = Math.floor(GraylineEpoch / 60) * 60;
+		var subsolar = getSubsolarPoint(minuteEpoch);
 		drawSubsolarPoint(ctx, subsolar, centerLat, centerLon, mapRadiusPx, zoomKm);
 		drawMoonPoint(ctx, getSublunarPoint(minuteEpoch), centerLat, centerLon, mapRadiusPx, zoomKm);
 	}
@@ -2861,6 +2861,7 @@ var LAND_OUTLINES = [];
 				drawGeoLineCollection(ctx, COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm, theme.borderStroke, theme.borderWidth || 1.0);
 			}
 			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawSunMoonOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawOutsideCircleMask(ctx, mapRadiusPx);
 
@@ -2890,6 +2891,7 @@ var LAND_OUTLINES = [];
 				drawGeoLineCollection(ctx, COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm, theme.borderStroke, theme.borderWidth || 1.0);
 			}
 			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawSunMoonOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			ctx.restore();
 		}
@@ -2924,6 +2926,7 @@ var LAND_OUTLINES = [];
 			ctx.clearRect(0, 0, BoxSize, BoxSize);
 			ctx.drawImage(locatorSvgImg, 0, 0, BoxSize, BoxSize);
 			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
+			drawSunMoonOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			return;
 		}
@@ -2941,6 +2944,7 @@ var LAND_OUTLINES = [];
 			ctx.clearRect(0, 0, BoxSize, BoxSize);
 			ctx.drawImage(img, 0, 0, BoxSize, BoxSize);
 			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
+			drawSunMoonOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 		};
 		img.onerror = function(){
@@ -3038,7 +3042,7 @@ var LAND_OUTLINES = [];
 		if(Number(AzimuthMapTmp) > 360){
 			AzimuthMapTmp=Number(AzimuthMapTmp)-360;
 		}
-			if(hasTargetAzimuth && Math.abs(Number(AZtargetTmp) - Number(AzimuthMapTmp)) > Number(AntRadiationAngle)/2 ){	// || Status != 4
+			if(hasTargetAzimuth && Math.abs(Number(AZtargetTmp) - Number(AzimuthMapTmp)) > Number(AntRadiationAngle)/2 ){
 				az.moveTo(BoxSize/2, BoxSize/2);
 			  az.lineTo(Xcoordinate(Number(AZtarget), BoxSize/2*0.9), Ycoordinate(Number(AZtarget), BoxSize/2*0.9));
 			}
@@ -3119,17 +3123,19 @@ var LAND_OUTLINES = [];
 				}else{
 				az.fillStyle = "#00aa00";
 				}
-				var pulseFont = 100 + Math.round(pulseGain * 10);
-				az.font = "bold " + String(pulseFont) + "px Arial";
-				az.shadowColor = "rgba(0,0,0," + String((0.56 + pulseGain * 0.16).toFixed(2)) + ")";
-				az.shadowBlur = 10 + pulseGain * 10;
-				az.shadowOffsetX = 0;
-				az.shadowOffsetY = 4;
-				az.fillText(ShowAzimuth+String.fromCharCode(176), Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
-				az.shadowBlur = 0;
-				az.shadowColor = "transparent";
-				az.shadowOffsetX = 0;
-				az.shadowOffsetY = 0;
+				if(DegOverlayEnabled){
+					var pulseFont = 100 + Math.round(pulseGain * 10);
+					az.font = "bold " + String(pulseFont) + "px Arial";
+					az.shadowColor = "rgba(0,0,0," + String((0.56 + pulseGain * 0.16).toFixed(2)) + ")";
+					az.shadowBlur = 10 + pulseGain * 10;
+					az.shadowOffsetX = 0;
+					az.shadowOffsetY = 4;
+					az.fillText(ShowAzimuth+String.fromCharCode(176), Xcoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2), Ycoordinate(Number(Azimuth) + Number(AzShift) + 180, BoxSize*0.2));
+					az.shadowBlur = 0;
+					az.shadowColor = "transparent";
+					az.shadowOffsetX = 0;
+					az.shadowOffsetY = 0;
+				}
 			}
 		az.beginPath();
 			az.moveTo(BoxSize/2, BoxSize/2);

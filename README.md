@@ -8,7 +8,17 @@
 
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/control-zoom0.png" height="400"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/control-zoom1.png" height="400"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/control-zoom2.png" height="400">
 
-Keyboard shortcuts on the main control page: use `+` / `-` to change map zoom, and use `F8` as a prefix key for secondary actions. After pressing `F8`, use `+` / `-` to change SPEED, `G` to toggle Grayline, `S` to toggle State borders, `D` to toggle DXCC prefixes, and `T` to focus/unfocus the **TO DXCC** input.
+Keyboard shortcuts on the main control page:
+
+| Key | Action |
+| --- | --- |
+| `+` / `-` | Change map zoom |
+| `p` | Decrease SPEED |
+| `P` | Increase SPEED |
+| `G` | Toggle Grayline |
+| `S` | Toggle State borders |
+| `D` | Toggle DXCC prefixes |
+| `T` | Focus or unfocus the **TO DXCC** input |
 
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/setup.png" height="600"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/calibrate.png" height="600">
 
