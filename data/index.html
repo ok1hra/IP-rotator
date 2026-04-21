@@ -1370,6 +1370,15 @@
 	  };
 	  pwmhttp.open("GET", "readPwmUi", true);
 	  pwmhttp.send();
+
+	  var targethttp = new XMLHttpRequest();
+	  targethttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				syncTargetAzimuthFromUi(this.responseText);
+	    }
+	  };
+	  targethttp.open("GET", "readTargetUi", true);
+	  targethttp.send();
 	}
 
 	//---------------------------------------------------------------
@@ -1900,6 +1909,17 @@ var LAND_OUTLINES = [];
 		}
 		AZtarget = null;
 		AZ(AzimuthAnimInitialized ? DisplayedAzimuth : Azimuth);
+	}
+
+	function syncTargetAzimuthFromUi(targetText){
+		var targetAzimuth = Math.round(Number(targetText));
+		if(isFinite(targetAzimuth) && targetAzimuth >= 0 && targetAzimuth <= 359){
+			setTargetAzimuth(targetAzimuth);
+			return;
+		}
+		if(Number(Status) === 0){
+			clearTargetAzimuth();
+		}
 	}
 
 	function hasTargetAzimuthValue(){

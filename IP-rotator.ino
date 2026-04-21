@@ -198,6 +198,7 @@ const int AzimuthPin    = 39;  // analog
 float AzimuthValue      = 0.0;
 int Azimuth             = 0;
 int AzimuthTarget       = -1;
+int UiTargetAzimuth     = -1;
 int RxAzimuth           = 0;
 int Status              = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
 const int VoltagePin    = 35;  // analog
@@ -506,6 +507,7 @@ void handleAZ();
 void handleFrontAZ();
 void handleAZadc();
 void handleStat();
+void handleTargetUi();
 void handleStart();
 void handleElevation();
 void handleMax();
@@ -1126,6 +1128,7 @@ void setup() {
    ajaxserver.on("/readFrontAZ", handleFrontAZ);
    ajaxserver.on("/readAZadc", handleAZadc);
    ajaxserver.on("/readStat", handleStat);
+   ajaxserver.on("/readTargetUi", handleTargetUi);
    ajaxserver.on("/readStart", handleStart);
    ajaxserver.on("/readElevation", handleElevation);
    ajaxserver.on("/readMax", handleMax);
@@ -1453,16 +1456,19 @@ void Watchdog(){
   if( Status==0 && abs(AZmaster-AZmasterTmp)>3 && Run==false){
     AZmasterTmp=AZmaster;
     Run = true;
+    UiTargetAzimuth = AZmaster;
     AZmasterChangeTimer=millis();
     // MqttPubString("AZmasterStart", String(AZmaster), false);
   }
   if( Status==0 && abs(AZmaster-AZmasterTmp)>3 && Run==true){
     AZmasterChangeTimer=millis();
     AZmasterTmp=AZmaster;
+    UiTargetAzimuth = AZmaster;
     // MqttPubString("AZmasterRun", String(AZmaster), false);
   }
   if( Status==0 && millis()-AZmasterChangeTimer >2000 && abs(AZmaster-AZmasterTmp)<=3 && Run==true){
     AZmasterTmp=AZmaster;
+    UiTargetAzimuth = AZmaster;
     AzimuthTarget = AZmaster - StartAzimuth;
     if(AzimuthTarget<0){
         AzimuthTarget = 360+AzimuthTarget;
@@ -1537,6 +1543,7 @@ void LedStatusErr(){
 void RotCalculate(){
   if(VoltageValue < VoltageLimit){
     AzimuthTarget=-1;
+    UiTargetAzimuth=-1;
     MqttPubString("Debug", "Target ignore by under voltage 11,5V POE", false);
   }else{
     // overlap detect
@@ -1568,6 +1575,7 @@ void RotCalculate(){
       // RunTimer();
     }else{
       AzimuthTarget=-1;
+      UiTargetAzimuth=-1;
     }
   }
 }
@@ -1890,6 +1898,7 @@ void RunByStatus(){
                 BrakeLearningActive = false;
               }
               AzimuthTarget=-1;
+              UiTargetAzimuth=-1;
               AzimuthControlDeg=AzimuthRawDeg;
             }
           }else{
@@ -1903,6 +1912,7 @@ void RunByStatus(){
             Status=0;
             BrakeLearningActive = false;
             AzimuthTarget=-1;
+            UiTargetAzimuth=-1;
           }
         }else{
           //AC
@@ -2059,6 +2069,7 @@ void RunByStatus(){
                 BrakeLearningActive = false;
               }
               AzimuthTarget=-1;
+              UiTargetAzimuth=-1;
               AzimuthControlDeg=AzimuthRawDeg;
             }
           }else{
@@ -2072,6 +2083,7 @@ void RunByStatus(){
             Status=0;
             BrakeLearningActive = false;
             AzimuthTarget=-1;
+            UiTargetAzimuth=-1;
           }
         }else{
           //AC
@@ -3279,6 +3291,10 @@ void MqttRx(char *topic, byte *payload, unsigned int length) {
           exp = exp*10;
         }
       }
+      UiTargetAzimuth = AzimuthTarget + StartAzimuth;
+      if(UiTargetAzimuth > 359){
+        UiTargetAzimuth = UiTargetAzimuth - 360;
+      }
       RotCalculate();
     }
 
@@ -3607,6 +3623,7 @@ void handlePostRot() {
    if(AzimuthTarget<0){
        AzimuthTarget = 360+AzimuthTarget;
    }
+   UiTargetAzimuth = requestedAzimuth;
    MqttPubString("AzimuthTarget", String(AzimuthTarget), false);
    RotCalculate();
    ajaxserver.send(200, "text/plain", "ROTATE REQUEST ACCEPTED");
@@ -5140,6 +5157,9 @@ void handleAZadc() {
 }
 void handleStat() {
   ajaxserver.send(200, "text/plane", String(Status+4) );
+}
+void handleTargetUi() {
+  ajaxserver.send(200, "text/plane", String(UiTargetAzimuth) );
 }
 void handleStart() {
   ajaxserver.send(200, "text/plane", String(StartAzimuth) );
