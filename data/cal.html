@@ -14,10 +14,191 @@
 	var AzRange = 0;
 	var Uptime = 0;
 	var UptimeTmp = 0;
+	var NoEndstopLowZone = 0.5;
+	var NoEndstopHighZone = 2.8;
+	var Elevation = 0;
+	var DragState = null;
+	var IsSavingEndstops = false;
+	var StaticInitialized = false;
+	var LowZoneMin = 0.2;
+	var LowZoneMax = 1.5;
+	var HighZoneMin = 1.6;
+	var HighZoneMax = 3.1;
+	var EndstopWarningText = "";
 
 	setInterval(function() { getData();}, 200); //mSeconds update rate
 	getSet();
-	setTimeout(() => { Static(); }, 1000);
+	setTimeout(() => { renderCanvas(); attachEndstopDrag(); }, 1000);
+
+	function voltageToCanvas(voltage){
+		return (Number(BoxSize)-60)/3.3 * Number(voltage) + 30;
+	}
+
+	function adcToCanvas(rawValue){
+		return (Number(BoxSize)-60)/33 * Number(rawValue) / 100 + 30;
+	}
+
+	function clamp(value, minValue, maxValue){
+		return Math.min(maxValue, Math.max(minValue, value));
+	}
+
+	function normalizeZoneValue(value, minValue, maxValue){
+		return clamp(Math.round(Number(value) * 10) / 10, minValue, maxValue);
+	}
+
+	function renderCanvas(){
+		var canvas = document.getElementById("Azimuth");
+		if(!canvas){
+			return;
+		}
+		updateEndstopWarning();
+		var context = canvas.getContext("2d");
+		context.clearRect(0, 0, BoxSize, 140);
+		Static();
+		POINTER(AzimuthADC);
+		StaticInitialized = true;
+	}
+
+	function updateEndstopWarning(){
+		if(Endstop != 0){
+			EndstopWarningText = "";
+			return;
+		}
+		if(Number(NoEndstopLowZone) < 0.5 || Number(NoEndstopHighZone) > 2.8){
+			EndstopWarningText = "Warning: Braking space may be too small and the rotator may be physically damaged.";
+		}else{
+			EndstopWarningText = "";
+		}
+	}
+
+	function updateCanvasCursor(pointerX, pointerY){
+		var canvas = document.getElementById("Azimuth");
+		if(!canvas){
+			return;
+		}
+		if(Endstop != 0){
+			canvas.style.cursor = "default";
+			return;
+		}
+		var handle = getHandleAtPosition(pointerX, pointerY);
+		canvas.style.cursor = handle ? "ew-resize" : "default";
+	}
+
+	function getCanvasPoint(event){
+		var canvas = document.getElementById("Azimuth");
+		var rect = canvas.getBoundingClientRect();
+		var source = event.touches && event.touches.length ? event.touches[0] : event;
+		return {
+			x: (source.clientX - rect.left) * (canvas.width / rect.width),
+			y: (source.clientY - rect.top) * (canvas.height / rect.height)
+		};
+	}
+
+	function getHandleAtPosition(pointerX, pointerY){
+		if(Endstop != 0){
+			return null;
+		}
+		var lowX = voltageToCanvas(NoEndstopLowZone);
+		var highX = voltageToCanvas(NoEndstopHighZone);
+		if(pointerY <= 48 && Math.abs(pointerX - lowX) <= 14){
+			return "low";
+		}
+		if(pointerY <= 48 && Math.abs(pointerX - highX) <= 14){
+			return "high";
+		}
+		return null;
+	}
+
+	function updateDraggedEndstop(pointerX){
+		if(!DragState){
+			return;
+		}
+		var voltage = (pointerX - 30) * 3.3 / (Number(BoxSize) - 60);
+		if(DragState === "low"){
+			NoEndstopLowZone = normalizeZoneValue(voltage, LowZoneMin, LowZoneMax);
+		}else if(DragState === "high"){
+			NoEndstopHighZone = normalizeZoneValue(voltage, HighZoneMin, HighZoneMax);
+		}
+		renderCanvas();
+	}
+
+	function saveEndstopZones(){
+		if(IsSavingEndstops){
+			return;
+		}
+		IsSavingEndstops = true;
+		var request = new XMLHttpRequest();
+		request.onreadystatechange = function() {
+			if (this.readyState == 4) {
+				IsSavingEndstops = false;
+				if (this.status != 200) {
+					getSet();
+				}
+			}
+		};
+		request.open("GET", "setEndstopZones?low=" + Math.round(Number(NoEndstopLowZone) * 10) + "&high=" + Math.round(Number(NoEndstopHighZone) * 10), true);
+		request.send();
+	}
+
+	function attachEndstopDrag(){
+		var canvas = document.getElementById("Azimuth");
+		if(!canvas){
+			return;
+		}
+
+		canvas.addEventListener("mousedown", function(event){
+			var point = getCanvasPoint(event);
+			var handle = getHandleAtPosition(point.x, point.y);
+			if(handle){
+				DragState = handle;
+				updateDraggedEndstop(point.x);
+				event.preventDefault();
+			}
+		});
+
+		canvas.addEventListener("mousemove", function(event){
+			var point = getCanvasPoint(event);
+			if(DragState){
+				updateDraggedEndstop(point.x);
+				event.preventDefault();
+			}else{
+				updateCanvasCursor(point.x, point.y);
+			}
+		});
+
+		canvas.addEventListener("touchstart", function(event){
+			var point = getCanvasPoint(event);
+			var handle = getHandleAtPosition(point.x, point.y);
+			if(handle){
+				DragState = handle;
+				updateDraggedEndstop(point.x);
+				event.preventDefault();
+			}
+		}, { passive: false });
+
+		canvas.addEventListener("touchmove", function(event){
+			if(!DragState){
+				return;
+			}
+			var point = getCanvasPoint(event);
+			updateDraggedEndstop(point.x);
+			event.preventDefault();
+		}, { passive: false });
+
+		window.addEventListener("mouseup", function(){
+			if(DragState){
+				DragState = null;
+				saveEndstopZones();
+			}
+		});
+
+		window.addEventListener("touchend", function(){
+			if(DragState){
+				DragState = null;
+				saveEndstopZones();
+			}
+		});
+	}
 
 	function getSet() {
 	  var ghttp = new XMLHttpRequest();
@@ -26,6 +207,7 @@
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				Elevation = this.responseText;
 				// console.log ('Elevation ' + Elevation);
+				renderCanvas();
 	    }
 	  };
 	  ghttp.open("GET", "readElevation", true);
@@ -37,6 +219,7 @@
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				AzShift = this.responseText;
 				// console.log ('AzShift ' + AzShift);
+				renderCanvas();
 	    }
 	  };
 	  ghttp.open("GET", "readStart", true);
@@ -48,6 +231,7 @@
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				AzRange = this.responseText;
 				// console.log ('AzRange ' + AzRange);
+				renderCanvas();
 	    }
 	  };
 	  hhttp.open("GET", "readMax", true);
@@ -59,7 +243,7 @@
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				Endstop = this.responseText;
 				// console.log ('Endstop ' + Endstop);
-				// Static();
+				renderCanvas();
 	    }
 	  };
 	  ihttp.open("GET", "readEndstop", true);
@@ -69,9 +253,9 @@
 	  lhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
-				NoEndstopLowZone = this.responseText;
+				NoEndstopLowZone = normalizeZoneValue(this.responseText, LowZoneMin, LowZoneMax);
 				// console.log ('Endstop ' + Endstop);
-				// Static();
+				renderCanvas();
 	    }
 	  };
 	  lhttp.open("GET", "readEndstopLowZone", true);
@@ -81,9 +265,9 @@
 	  mhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
-				NoEndstopHighZone = this.responseText;
+				NoEndstopHighZone = normalizeZoneValue(this.responseText, HighZoneMin, HighZoneMax);
 				// console.log ('Endstop ' + Endstop);
-				// Static();
+				renderCanvas();
 	    }
 	  };
 	  mhttp.open("GET", "readEndstopHighZone", true);
@@ -95,7 +279,7 @@
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				CcwRaw = this.responseText;
 				// console.log ('Endstop ' + Endstop);
-				// Static();
+				renderCanvas();
 	    }
 	  };
 	  jhttp.open("GET", "readCcwraw", true);
@@ -107,7 +291,7 @@
 	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				CwRaw = this.responseText;
 				// console.log ('Endstop ' + Endstop);
-				// Static();
+				renderCanvas();
 	    }
 	  };
 	  khttp.open("GET", "readCwraw", true);
@@ -130,7 +314,9 @@
 	    if (this.readyState == 4 && this.status == 200) {
 	      // document.getElementById("AZadcValue").innerHTML = this.responseText;
 				AzimuthADC = this.responseText;
-				POINTER(AzimuthADC);
+				if(StaticInitialized){
+					POINTER(AzimuthADC);
+				}
 				// Static();
 				// StaticBot();
 				// console.log ('getData.Azimuth ' + Azimuth);
@@ -155,7 +341,9 @@
 	      // document.getElementById("StatValue").innerHTML = this.responseText;
 				Status = this.responseText;
 				if( Number(StatusTmp)!=Number(Status) ){
-					POINTER(AzimuthADC);
+					if(StaticInitialized){
+						POINTER(AzimuthADC);
+					}
 				// 	AZ(Azimuth);
 				// 	Static();
 				// 	StaticBot();
@@ -181,8 +369,8 @@
 
 		pointer.beginPath();
 			pointer.fillStyle = "#303030";
-			var CWpos = (Number(BoxSize)-60)/33* Number(CwRaw)/100+30;
-			var CCWpos = (Number(BoxSize)-60)/33* Number(CcwRaw)/100+30;
+			var CWpos = adcToCanvas(CwRaw);
+			var CCWpos = adcToCanvas(CcwRaw);
 			// console.log ('CcwRaw ' + CcwRaw);
 			// console.log ('CwRaw ' + CwRaw);
 			// console.log ('Ccw ' + CCWpos );
@@ -203,7 +391,7 @@
 				}
 		pointer.fill();
 
-		var Position = (Number(BoxSize)-60)/33* Number(PointerValue)/100+30;
+		var Position = adcToCanvas(PointerValue);
 		// console.log ('Position ' + Position);
 	  pointer.beginPath();
 			pointer.moveTo( Number(Position), 55);
@@ -227,7 +415,7 @@
 			UptimeTmp=TimeOutSec-Uptime;
 			pointer.font = "12px Arial";
 			pointer.fillStyle = "#303030";
-			pointer.fillText( "Please calibrate after the parameter has stabilized ("+convertStoMs(UptimeTmp)+" recommended coutdown)", Number(BoxSize/2), 130);
+			pointer.fillText( "Please calibrate after the parameter has stabilized", Number(BoxSize/2), 130);
 		}
 	}
 
@@ -241,7 +429,6 @@
 
 	function Static(){
 	  var con = document.getElementById("Azimuth");
-	  var angle = con.getContext("2d");
 
 	  // endstop
 		if(Endstop==0){
@@ -251,11 +438,11 @@
 			endstop.lineWidth = 8;
 			endstop.strokeStyle = 'orange';
 			// endstop.moveTo(30, 45);
-			endstop.moveTo((Number(BoxSize)-60)/3.3*0.142+30, 45);
-			endstop.lineTo((Number(BoxSize)-60)/3.3*Number(NoEndstopLowZone)+30, 45);
+			endstop.moveTo(voltageToCanvas(0.142), 45);
+			endstop.lineTo(voltageToCanvas(NoEndstopLowZone), 45);
 			// endstop.moveTo(BoxSize-30, 45);
-			endstop.moveTo((Number(BoxSize)-60)/3.3*3.155+30, 45);
-			endstop.lineTo((Number(BoxSize)-60)/3.3*Number(NoEndstopHighZone)+30, 45);
+			endstop.moveTo(voltageToCanvas(3.155), 45);
+			endstop.lineTo(voltageToCanvas(NoEndstopHighZone), 45);
 			// endstop.lineTo( (Number(BoxSize)-30)-(Number(BoxSize)-60)/3.3*Number(NoEndstopHighZone), 45);
 			endstop.fillStyle = "orange";
 			endstop.font = "bold 10px Arial";
@@ -264,6 +451,17 @@
 			endstop.fillText( "SW endstop", 70, 20);
 			endstop.fillText( "endstop", 550, 20);
 			endstop.stroke();
+
+			drawEndstopHandle(endstop, voltageToCanvas(NoEndstopLowZone), NoEndstopLowZone, "low");
+			drawEndstopHandle(endstop, voltageToCanvas(NoEndstopHighZone), NoEndstopHighZone, "high");
+			if(EndstopWarningText !== ""){
+				endstop.font = "bold 13px Arial";
+				endstop.fillStyle = "#990000";
+				endstop.textAlign = "center";
+				endstop.textBaseline = "top";
+				endstop.fillText("Warning: Braking space may be too small", Number(BoxSize/2), 0);
+				endstop.fillText("and the rotator may be physically damaged.", Number(BoxSize/2), 13);
+			}
 		}
 
 	  // scale
@@ -288,6 +486,25 @@
 	  		}
 	    }
 	  scale.stroke();
+	}
+
+	function drawEndstopHandle(ctx, xPos, voltageValue, side){
+		ctx.beginPath();
+		ctx.lineWidth = 2;
+		ctx.strokeStyle = "orange";
+		ctx.moveTo(xPos, 41);
+		ctx.lineTo(xPos, 16);
+		ctx.stroke();
+
+		ctx.beginPath();
+		ctx.fillStyle = "orange";
+		ctx.arc(xPos, 11, 5, 0, 2 * Math.PI);
+		ctx.fill();
+
+		ctx.font = "bold 12px Arial";
+		ctx.textAlign = side === "low" ? "left" : "right";
+		ctx.textBaseline = "middle";
+		ctx.fillText(Number(voltageValue).toFixed(1) + "V", side === "low" ? xPos + 10 : xPos - 10, 28);
 	}
 
 

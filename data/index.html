@@ -99,6 +99,78 @@
 			box-sizing: border-box;
 			display: none;
 		}
+		.locctl{
+			position: absolute;
+			right: 16px;
+			top: 498px;
+			z-index: 6;
+			width: 96px;
+			padding: 5px 8px 6px 8px;
+			border-radius: 9px;
+			background: rgba(6, 8, 11, 0.58);
+			border: 1px solid rgba(160, 170, 175, 0.12);
+			box-sizing: border-box;
+			display: none;
+		}
+		.loclabel{
+			display: flex;
+			justify-content: flex-end;
+			align-items: center;
+			font-size: 11px;
+			line-height: 1.1;
+			color: rgba(188, 196, 202, 0.72);
+			margin-bottom: 4px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+		}
+		.locinputwrap{
+			display: flex;
+			align-items: center;
+			gap: 6px;
+		}
+		.locinput{
+			flex: 1 1 auto;
+			width: 100%;
+			min-width: 0;
+			height: 24px;
+			padding: 0 6px;
+			color: rgba(242, 246, 248, 0.96);
+			background: rgba(10, 14, 18, 0.88);
+			border: 1px solid rgba(170, 178, 184, 0.24);
+			border-radius: 4px;
+			box-sizing: border-box;
+			font-size: 13px;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			outline: none;
+		}
+		.locinput::placeholder{
+			color: rgba(168, 176, 182, 0.4);
+			letter-spacing: 0.04em;
+			text-transform: none;
+		}
+		.locinput:focus{
+			border-color: rgba(208, 216, 220, 0.45);
+			box-shadow: 0 0 0 1px rgba(208, 216, 220, 0.12);
+		}
+		.locclear{
+			flex: 0 0 auto;
+			width: 18px;
+			height: 18px;
+			padding: 0;
+			border: 0;
+			border-radius: 50%;
+			background: rgba(120, 128, 134, 0.22);
+			color: rgba(236, 240, 242, 0.88);
+			font-size: 13px;
+			line-height: 18px;
+			text-align: center;
+			cursor: pointer;
+			display: none;
+		}
+		.locclear:hover{
+			background: rgba(154, 162, 168, 0.34);
+		}
 		.pwmctl{
 			position: absolute;
 			left: 8px;
@@ -223,6 +295,7 @@
 			margin-bottom: 6px;
 			text-transform: uppercase;
 			letter-spacing: 0.08em;
+			text-align: right;
 		}
 		.dxccsearchinput{
 			width: 100%;
@@ -253,9 +326,9 @@
 		.maptoggle{
 			position: absolute;
 			left: 16px;
-			top: 550px;
+			top: 518px;
 			z-index: 8;
-			width: 154px;
+			width: 132px;
 			padding: 7px 10px 8px 10px;
 			border-radius: 9px;
 			background: rgba(6, 8, 11, 0.58);
@@ -385,6 +458,13 @@
 			</div>
 			<input class="zoomslider" type="range" id="MapZoomSlider" min="1000" max="20000" step="250" value="20000">
 		</div>
+		<div class="locctl" id="MapLocatorTargetControl">
+			<div class="loclabel"><span class="kbdhint">L</span>OC</div>
+			<div class="locinputwrap">
+				<input class="locinput" type="text" id="MapLocatorTargetInput" maxlength="6" placeholder="JO70" autocomplete="off" spellcheck="false">
+				<button class="locclear" type="button" id="MapLocatorTargetClear" aria-label="Clear locator">&times;</button>
+			</div>
+		</div>
 		<div class="pwmctl" id="PwmControl">
 			<div class="pwmbarwrap">
 				<div class="pwmbarmask" id="PwmBarMask">
@@ -407,6 +487,10 @@
 			<label class="togglelabel" for="MapDegToggle">
 				<input type="checkbox" id="MapDegToggle" checked>
 				<span><span class="kbdhint">D</span>EG</span>
+			</label>
+			<label class="togglelabel" for="MapAntToggle" id="MapAntToggleLabel">
+				<input type="checkbox" id="MapAntToggle" checked>
+				<span><span class="kbdhint">A</span>NT</span>
 			</label>
 			<label class="togglelabel" for="MapGraylineToggle" id="MapGraylineToggleLabel">
 				<input type="checkbox" id="MapGraylineToggle">
@@ -455,6 +539,10 @@
 	var MapGraylineEnabled = true;
 	var MapBordersEnabled = false;
 	var MapDxccEnabled = false;
+	var AntOverlayEnabled = true;
+	var LocatorTargetPreview = "";
+	var LastLocatorRotateRequest = "";
+	var LastLocatorRotateAt = 0;
 	var DegOverlayEnabled = true;
 	var MapTheme = 1;
 	var GraylineDarkness = 80;
@@ -532,6 +620,20 @@
 			value.innerHTML = String(MapZoomKm) + " km";
 		}else{
 			wrap.style.display = "none";
+		}
+	}
+
+	function updateMapLocatorTargetControl(){
+		var wrap = document.getElementById("MapLocatorTargetControl");
+		if(!wrap){ return; }
+		if(Number(MapSource) === 1 && Number(Elevation) !== 1){
+			wrap.style.display = "block";
+		}else{
+			wrap.style.display = "none";
+		}
+		updateLocatorTargetClearButton();
+		if(wrap.style.display === "none"){
+			updateLocatorTargetPreview("");
 		}
 	}
 
@@ -639,19 +741,64 @@
 		}
 	}
 
+	function normalizeMaidenheadLocator(locator){
+		var loc = String(locator || "").trim().toUpperCase();
+		if(/^[A-R]{2}[0-9]{2}$/.test(loc)){ return loc; }
+		if(/^[A-R]{2}[0-9]{2}[A-X]{2}$/.test(loc)){ return loc; }
+		return "";
+	}
+
+	function updateLocatorTargetClearButton(){
+		var input = document.getElementById("MapLocatorTargetInput");
+		var clearBtn = document.getElementById("MapLocatorTargetClear");
+		if(!input || !clearBtn){ return; }
+		clearBtn.style.display = input.value ? "inline-block" : "none";
+	}
+
+	function getLocatorTargetPreviewValue(value){
+		var raw = String(value || "").trim().toUpperCase();
+		if(raw.length < 4){
+			return "";
+		}
+		var firstFour = raw.slice(0, 4);
+		if(/^[A-R]{2}[0-9]{2}$/.test(firstFour)){
+			if(raw.length >= 6){
+				var firstSix = raw.slice(0, 6);
+				if(/^[A-R]{2}[0-9]{2}[A-X]{2}$/.test(firstSix)){
+					return firstSix;
+				}
+			}
+			return firstFour;
+		}
+		return "";
+	}
+
+	function updateLocatorTargetPreview(value){
+		var nextPreview = getLocatorTargetPreviewValue(value);
+		if(LocatorTargetPreview === nextPreview){
+			return;
+		}
+		LocatorTargetPreview = nextPreview;
+		Static();
+	}
+
 	function updateMapBordersControl(){
 		var wrap = document.getElementById("MapBordersControl");
 		var degToggle = document.getElementById("MapDegToggle");
+		var antToggle = document.getElementById("MapAntToggle");
+		var antLabel = document.getElementById("MapAntToggleLabel");
 		var graylineToggle = document.getElementById("MapGraylineToggle");
 		var graylineLabel = document.getElementById("MapGraylineToggleLabel");
 		var toggle = document.getElementById("MapBordersToggle");
 		var bordersLabel = document.getElementById("MapBordersToggleLabel");
 		var dxccToggle = document.getElementById("MapDxccToggle");
 		var dxccLabel = document.getElementById("MapDxccToggleLabel");
-		if(!wrap || !degToggle || !graylineToggle || !graylineLabel || !toggle || !bordersLabel || !dxccToggle || !dxccLabel){ return; }
+		if(!wrap || !degToggle || !antToggle || !antLabel || !graylineToggle || !graylineLabel || !toggle || !bordersLabel || !dxccToggle || !dxccLabel){ return; }
 		if(Number(Elevation) !== 1){
 			wrap.style.display = "block";
 			degToggle.checked = !!DegOverlayEnabled;
+			antLabel.style.display = "flex";
+			antToggle.checked = !!AntOverlayEnabled;
 			var mapOptionsVisible = Number(MapSource) === 1;
 			graylineLabel.style.display = mapOptionsVisible ? "flex" : "none";
 			bordersLabel.style.display = mapOptionsVisible ? "flex" : "none";
@@ -666,6 +813,12 @@
 
 	function setDegOverlayEnabled(enabled){
 		DegOverlayEnabled = !!enabled;
+		updateMapBordersControl();
+		AZ(Azimuth);
+	}
+
+	function setAntOverlayEnabled(enabled){
+		AntOverlayEnabled = !!enabled;
 		updateMapBordersControl();
 		AZ(Azimuth);
 	}
@@ -914,6 +1067,15 @@
 			}
 			return true;
 		}
+		if(keyLower === "l"){
+			var locatorTargetInput = document.getElementById("MapLocatorTargetInput");
+			if(!locatorTargetInput || locatorTargetInput.offsetParent === null){
+				return false;
+			}
+			locatorTargetInput.focus();
+			locatorTargetInput.select();
+			return true;
+		}
 		return false;
 	}
 
@@ -1121,6 +1283,7 @@
 				updateMapModeInfo();
 				updatePageLayout();
 				updateMapZoomControl();
+				updateMapLocatorTargetControl();
 				updateMapBordersControl();
 				updateMapDxccSearchControl();
 				updateNtpStatus();
@@ -1148,6 +1311,7 @@
 				MapZoomKm = this.responseText;
 				updateMapModeInfo();
 				updateMapZoomControl();
+				updateMapLocatorTargetControl();
 				updateMapBordersControl();
 				if (Number(MapSource) === 1) { map(); }
 	    }
@@ -1194,6 +1358,7 @@
 				// console.log ('Elevation ' + Elevation);
 				updatePageLayout();
 				updateMapZoomControl();
+				updateMapLocatorTargetControl();
 				updateMapBordersControl();
 				updateMapDxccSearchControl();
 				updateNtpStatus();
@@ -1222,6 +1387,8 @@
 		getGraylineInfo();
 
 		var zoomSlider = document.getElementById("MapZoomSlider");
+		var locatorTargetInput = document.getElementById("MapLocatorTargetInput");
+		var locatorTargetClear = document.getElementById("MapLocatorTargetClear");
 		if(zoomSlider){
 			zoomSlider.addEventListener("input", function(){
 				applyMapZoom(sliderValueToMapZoomKm(this.value), false);
@@ -1235,12 +1402,50 @@
 				});
 			});
 		}
+		if(locatorTargetInput){
+			locatorTargetInput.addEventListener("input", function(){
+				this.value = String(this.value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+				updateLocatorTargetClearButton();
+				updateLocatorTargetPreview(this.value);
+			});
+			locatorTargetInput.addEventListener("keydown", function(evt){
+				if(evt.key !== "Enter"){
+					return;
+				}
+				var normalized = normalizeMaidenheadLocator(this.value);
+				if(!normalized){
+					return;
+				}
+				evt.preventDefault();
+				this.value = normalized;
+				updateLocatorTargetClearButton();
+				updateLocatorTargetPreview(this.value);
+				rotateToLocator(normalized);
+			});
+		}
+		if(locatorTargetClear){
+			locatorTargetClear.addEventListener("click", function(){
+				if(locatorTargetInput){
+					locatorTargetInput.value = "";
+					locatorTargetInput.focus();
+				}
+				updateLocatorTargetClearButton();
+				updateLocatorTargetPreview("");
+			});
+		}
 		var graylineToggle = document.getElementById("MapGraylineToggle");
+		var antToggle = document.getElementById("MapAntToggle");
 		var degToggle = document.getElementById("MapDegToggle");
 		if(degToggle){
 			degToggle.checked = true;
 			degToggle.addEventListener("change", function(){
 				setDegOverlayEnabled(this.checked);
+			});
+		}
+		if(antToggle){
+			antToggle.checked = true;
+			antToggle.addEventListener("change", function(){
+				setAntOverlayEnabled(this.checked);
 			});
 		}
 		if(graylineToggle){
@@ -1654,17 +1859,21 @@ var LAND_OUTLINES = [];
 	}
 
 	function maidenheadToLatLon(locator){
-		if(!locator){ return null; }
-		var loc = String(locator).trim().toUpperCase();
-		if(!/^[A-R]{2}[0-9]{2}[A-X]{2}$/.test(loc)){ return null; }
+		var loc = normalizeMaidenheadLocator(locator);
+		if(!loc){ return null; }
 		var lon = (loc.charCodeAt(0) - 65) * 20 - 180;
 		lon += (loc.charCodeAt(2) - 48) * 2;
-		lon += (loc.charCodeAt(4) - 65) * (5/60);
-		lon += 2.5/60;
 		var lat = (loc.charCodeAt(1) - 65) * 10 - 90;
 		lat += (loc.charCodeAt(3) - 48) * 1;
-		lat += (loc.charCodeAt(5) - 65) * (2.5/60);
-		lat += 1.25/60;
+		if(loc.length >= 6){
+			lon += (loc.charCodeAt(4) - 65) * (5/60);
+			lon += 2.5/60;
+			lat += (loc.charCodeAt(5) - 65) * (2.5/60);
+			lat += 1.25/60;
+		}else{
+			lon += 1;
+			lat += 0.5;
+		}
 		return {lat: lat, lon: lon};
 	}
 
@@ -1923,9 +2132,19 @@ var LAND_OUTLINES = [];
 		return normalized === LastDxccRotateRequest && (now - LastDxccRotateAt) < 800;
 	}
 
+	function isDuplicateLocatorRotate(normalized){
+		var now = Date.now();
+		return normalized === LastLocatorRotateRequest && (now - LastLocatorRotateAt) < 800;
+	}
+
 	function rememberDxccRotate(normalized){
 		LastDxccRotateRequest = normalized;
 		LastDxccRotateAt = Date.now();
+	}
+
+	function rememberLocatorRotate(normalized){
+		LastLocatorRotateRequest = normalized;
+		LastLocatorRotateAt = Date.now();
 	}
 
 	function normalizePrefixQuery(value){
@@ -2006,6 +2225,18 @@ var LAND_OUTLINES = [];
 		return Math.round(bearing);
 	}
 
+	function greatCircleDistanceKm(lat1Deg, lon1Deg, lat2Deg, lon2Deg){
+		var lat1 = degToRad(lat1Deg);
+		var lat2 = degToRad(lat2Deg);
+		var dLat = lat2 - lat1;
+		var dLon = degToRad(lon2Deg - lon1Deg);
+		var sinLat = Math.sin(dLat / 2);
+		var sinLon = Math.sin(dLon / 2);
+		var a = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+		var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+		return Math.round(EARTH_RADIUS_KM * c);
+	}
+
 	function rotateToAzimuth(targetAzimuth, onDone){
 		var azimuth = Math.round(Number(targetAzimuth));
 		if(!isFinite(azimuth)){
@@ -2026,6 +2257,25 @@ var LAND_OUTLINES = [];
 			}
 		};
 		http.send("ROT=" + azimuth);
+	}
+
+	function rotateToLocator(locator){
+		if(Number(MapSource) !== 1 || Number(Elevation) === 1){
+			return;
+		}
+		var normalized = normalizeMaidenheadLocator(locator);
+		if(!normalized || isDuplicateLocatorRotate(normalized)){
+			return;
+		}
+		var center = getMapCenterLatLon();
+		var target = maidenheadToLatLon(normalized);
+		if(!center || !target){
+			return;
+		}
+		var azimuth = bearingDegrees(center.lat, center.lon, target.lat, target.lon);
+		rememberLocatorRotate(normalized);
+		setTargetAzimuth(azimuth);
+		rotateToAzimuth(azimuth);
 	}
 
 	function maybeRotateToDxccPrefixFromSuggestion(evt){
@@ -2737,6 +2987,81 @@ var LAND_OUTLINES = [];
 		drawCelestialPoint(ctx, getSublunarPoint(minuteEpoch), center.lat, center.lon, BoxSize / 2 * 0.9, 20000, "#a8adb3", "rgba(248, 250, 255, 0.96)", 4.5, "rgba(196, 206, 224, 0.65)");
 	}
 
+	function drawLocatorTargetPreviewLine(ctx){
+		if(Number(MapSource) !== 1 || Number(Elevation) === 1){
+			return;
+		}
+		if(!LocatorTargetPreview){
+			return;
+		}
+		var center = getMapCenterLatLon();
+		var target = maidenheadToLatLon(LocatorTargetPreview);
+		if(!center || !target){
+			return;
+		}
+		var azimuth = bearingDegrees(center.lat, center.lon, target.lat, target.lon);
+		var distanceKm = greatCircleDistanceKm(center.lat, center.lon, target.lat, target.lon);
+		var mapRadiusPx = BoxSize / 2 * 0.9;
+		var zoomKm = Number(MapZoomKm);
+		if(!(zoomKm >= 1000 && zoomKm <= 20000)){
+			zoomKm = 5000;
+		}
+		var projected = projectAzimuthalRaw(target.lat, target.lon, center.lat, center.lon, mapRadiusPx, zoomKm);
+		if(!projected){
+			return;
+		}
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
+		ctx.clip();
+		ctx.beginPath();
+		ctx.moveTo(Xcenter, Ycenter);
+		ctx.lineTo(projected.x, projected.y);
+		ctx.lineWidth = 2;
+		ctx.strokeStyle = "#2cff7a";
+		ctx.shadowColor = "rgba(44, 255, 122, 0.3)";
+		ctx.shadowBlur = 3;
+		ctx.stroke();
+		ctx.shadowBlur = 0;
+		ctx.fillStyle = "#2cff7a";
+		ctx.beginPath();
+		ctx.arc(Xcenter, Ycenter, 3.5, 0, 2 * Math.PI);
+		ctx.fill();
+		ctx.beginPath();
+		ctx.arc(projected.x, projected.y, 3.5, 0, 2 * Math.PI);
+		ctx.fill();
+		var midX = (Xcenter + projected.x) / 2;
+		var midY = (Ycenter + projected.y) / 2;
+		var dx = projected.x - Xcenter;
+		var dy = projected.y - Ycenter;
+		var length = Math.hypot(dx, dy) || 1;
+		var lineAngle = Math.atan2(dy, dx);
+		var readableAngle = lineAngle;
+		if(readableAngle > Math.PI / 2 || readableAngle < -Math.PI / 2){
+			readableAngle += Math.PI;
+		}
+		var normalX = -dy / length;
+		var normalY = dx / length;
+		var azimuthText = String(azimuth) + "\u00b0";
+		var distanceText = String(distanceKm) + "km";
+		var labelOffset = 14;
+		ctx.font = "12px Roboto Condensed, Arial, sans-serif";
+		ctx.textAlign = "center";
+		ctx.textBaseline = "middle";
+		ctx.fillStyle = "rgba(44, 255, 122, 0.95)";
+		ctx.save();
+		ctx.translate(midX + normalX * labelOffset, midY + normalY * labelOffset);
+		ctx.rotate(readableAngle);
+		ctx.fillText(azimuthText, 0, 0);
+		ctx.restore();
+		ctx.save();
+		ctx.translate(midX - normalX * labelOffset, midY - normalY * labelOffset);
+		ctx.rotate(readableAngle);
+		ctx.fillText(distanceText, 0, 0);
+		ctx.restore();
+		ctx.restore();
+	}
+
 	function drawOutsideCircleMask(ctx, mapRadiusPx){
 		ctx.beginPath();
 		ctx.rect(0, 0, BoxSize, BoxSize);
@@ -2960,6 +3285,7 @@ var LAND_OUTLINES = [];
 		if (Number(MapSource) === -1) {
 			return;
 		}
+		Static();
 		if (Number(MapSource) === 1) {
 			if (Number(Elevation) === 1) {
 				drawElevationSkyMap();
@@ -3137,24 +3463,26 @@ var LAND_OUTLINES = [];
 					az.shadowOffsetY = 0;
 				}
 			}
-		az.beginPath();
-			az.moveTo(BoxSize/2, BoxSize/2);
-			var CcwAngle = Number(AntRadiationAngle)/2;
-			for(var i=0;i<17;i++){
-				az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)-Number(CcwAngle)+Number(AntRadiationAngle)/16*i, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)-Number(CcwAngle)+Number(AntRadiationAngle)/16*i, Number(BoxSize)/2*0.9));
-			}
-			if (Number(Azimuth) < 0 || Number(Azimuth) > Number(AzRange) ) {
-				az.fillStyle = "rgba(255, 255, 255, 0.10)";
-			}else{
-				if (Status != 4) {
-					az.fillStyle = "rgba(255, 0, 0, 0.25)";
-				}else if (Azimuth > 359) {
-				 az.fillStyle = "rgba(255, 165, 0, 0.25)";
-				}else{
-					az.fillStyle = "rgba(255, 255, 255, 0.25)";
+		if(AntOverlayEnabled && Number(AntRadiationAngle) > 0){
+			az.beginPath();
+				az.moveTo(BoxSize/2, BoxSize/2);
+				var CcwAngle = Number(AntRadiationAngle)/2;
+				for(var i=0;i<17;i++){
+					az.lineTo(Xcoordinate(Number(Azimuth) + Number(AzShift)-Number(CcwAngle)+Number(AntRadiationAngle)/16*i, Number(BoxSize)/2*0.9), Ycoordinate(Number(Azimuth) + Number(AzShift)-Number(CcwAngle)+Number(AntRadiationAngle)/16*i, Number(BoxSize)/2*0.9));
 				}
-			}
-		az.fill();
+				if (Number(Azimuth) < 0 || Number(Azimuth) > Number(AzRange) ) {
+					az.fillStyle = "rgba(255, 255, 255, 0.10)";
+				}else{
+					if (Status != 4) {
+						az.fillStyle = "rgba(255, 0, 0, 0.25)";
+					}else if (Azimuth > 359) {
+					 az.fillStyle = "rgba(255, 165, 0, 0.25)";
+					}else{
+						az.fillStyle = "rgba(255, 255, 255, 0.25)";
+					}
+				}
+			az.fill();
+		}
 	}
 
 	function Static(){
@@ -3252,6 +3580,7 @@ var LAND_OUTLINES = [];
 				direction.fill();
 			}
 		}
+		drawLocatorTargetPreviewLine(direction);
 
 	}
 

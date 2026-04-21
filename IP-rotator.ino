@@ -122,7 +122,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260416";
+const char* REV = "20260421";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -533,6 +533,7 @@ void handleFontBold();
 void handleEndstop();
 void handleEndstopLowZone();
 void handleEndstopHighZone();
+void handleSetEndstopZones();
 void handleCwraw();
 void handleCcwraw();
 void handleMAC();
@@ -1157,6 +1158,7 @@ void setup() {
   ajaxserver.on("/readEndstop", handleEndstop);
   ajaxserver.on("/readEndstopLowZone", handleEndstopLowZone);
   ajaxserver.on("/readEndstopHighZone", handleEndstopHighZone);
+  ajaxserver.on("/setEndstopZones", handleSetEndstopZones);
   ajaxserver.on("/readCwraw", handleCwraw);
   ajaxserver.on("/readCcwraw", handleCcwraw);
   ajaxserver.on("/readMAC", handleMAC);
@@ -2842,12 +2844,14 @@ void http(){
           webClient.println(F("            #topic::placeholder { color: #94a3b8; }"));
           webClient.println(F("            button { box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28); }"));
           webClient.println(F("            #firmware-actions { display:none; max-width: 760px; margin: 14px auto 0 auto; padding: 18px 20px 20px 20px; text-align:center; background: linear-gradient(180deg, rgba(251, 191, 36, 0.18) 0%, rgba(249, 115, 22, 0.18) 100%); border: 1px solid rgba(251, 191, 36, 0.34); border-radius: 16px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.30); }"));
+          webClient.println(F("            #firmware-actions.firmware-actions-current { background: rgba(15, 23, 42, 0.18); border-color: rgba(148, 163, 184, 0.08); box-shadow: none; }"));
           webClient.println(F("            #firmware-update-help { display:none; color:#ffedd5 !important; font-size:100%; line-height:1.6; margin:0 auto; max-width:640px; }"));
-          webClient.println(F("            #firmware-up-to-date { display:none; color:#fde68a !important; font-weight:bold; font-size:110%; }"));
+          webClient.println(F("            #firmware-actions.firmware-actions-current #firmware-update-help { color:#9ca3af !important; }"));
           webClient.println(F("            .firmware-actions-row { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; margin-top:16px; }"));
           webClient.println(F("            .firmware-cta, .firmware-cta:link, .firmware-cta:visited, .firmware-cta:hover, .firmware-cta:active, #firmware-download-btn, #firmware-download-btn:link, #firmware-download-btn:visited, #firmware-download-btn:hover, #firmware-download-btn:active, #firmware-upload-btn, #firmware-upload-btn:link, #firmware-upload-btn:visited, #firmware-upload-btn:hover, #firmware-upload-btn:active { display:none; color:#000 !important; text-decoration:none; }"));
-          webClient.println(F("            .firmware-cta { background:#fb923c; padding:10px 22px; border:none; border-radius:6px; font-weight:400; font-size:110%; box-shadow: 0 12px 24px rgba(124, 45, 18, 0.22); }"));
+          webClient.println(F("            .firmware-cta { background:#fb923c; padding:10px 22px; border:1px solid rgba(251, 146, 60, 0.55); border-radius:6px; font-weight:400; font-size:110%; box-shadow: 0 12px 24px rgba(124, 45, 18, 0.22); transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease; }"));
           webClient.println(F("            .firmware-cta:hover, #firmware-download-btn:hover, #firmware-upload-btn:hover { background:#fdba74; color:#000 !important; }"));
+          webClient.println(F("            #firmware-actions.firmware-actions-current .firmware-cta, #firmware-actions.firmware-actions-current .firmware-cta:link, #firmware-actions.firmware-actions-current .firmware-cta:visited, #firmware-actions.firmware-actions-current .firmware-cta:hover, #firmware-actions.firmware-actions-current .firmware-cta:active { background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.08); color:#9ca3af !important; box-shadow:none; }"));
           webClient.println(F("          </style>"));
           webClient.println(F("          <script type=\"text/javascript\">"));
           webClient.println(F("          var config = {"));
@@ -2895,13 +2899,12 @@ void http(){
             webClient.println(F("            var help = document.getElementById(\"firmware-update-help\");"));
             webClient.println(F("            var download = document.getElementById(\"firmware-download-btn\");"));
             webClient.println(F("            var upload = document.getElementById(\"firmware-upload-btn\");"));
-            webClient.println(F("            var status = document.getElementById(\"firmware-up-to-date\");"));
-            webClient.println(F("            if(!wrap || !help || !download || !upload || !status){ return; }"));
+            webClient.println(F("            if(!wrap || !help || !download || !upload){ return; }"));
             webClient.println(F("            wrap.style.display = \"block\";"));
+            webClient.println(F("            wrap.classList.remove(\"firmware-actions-current\");"));
             webClient.println(F("            help.style.display = \"none\";"));
             webClient.println(F("            download.style.display = \"none\";"));
             webClient.println(F("            upload.style.display = \"none\";"));
-            webClient.println(F("            status.style.display = \"none\";"));
             webClient.println(F("            if(!FirmwareRev || !LatestReleaseTag){"));
             webClient.println(F("              wrap.style.display = \"none\";"));
             webClient.println(F("              return;"));
@@ -2913,11 +2916,16 @@ void http(){
             webClient.println(F("              return;"));
             webClient.println(F("            }"));
             webClient.println(F("            if(Number(latestDigits) > Number(currentDigits)){"));
+            webClient.println(F("              help.innerHTML = \"Download the latest two firmware files from the release page, then upload them on the web update page in the correct order: first firmware, then filesystem.\";"));
             webClient.println(F("              help.style.display = \"block\";"));
             webClient.println(F("              download.style.display = \"inline-block\";"));
             webClient.println(F("              upload.style.display = \"inline-block\";"));
             webClient.println(F("            }else{"));
-            webClient.println(F("              status.style.display = \"inline-block\";"));
+            webClient.println(F("              help.innerHTML = \"Firmware is up to date\";"));
+            webClient.println(F("              help.style.display = \"block\";"));
+            webClient.println(F("              download.style.display = \"inline-block\";"));
+            webClient.println(F("              upload.style.display = \"inline-block\";"));
+            webClient.println(F("              wrap.classList.add(\"firmware-actions-current\");"));
             webClient.println(F("            }"));
             webClient.println(F("          }"));
             webClient.println(F("          function checkLatestRelease(){"));
@@ -3005,7 +3013,6 @@ void http(){
             webClient.print(ETH.localIP());
             webClient.println(F(":82/update\" target=\"_blank\" class=\"firmware-cta\">Upload firmware</a>"));
             webClient.println(F("                  </div>"));
-            webClient.println(F("                  <span id=\"firmware-up-to-date\">Firmware is up to date</span>"));
             webClient.println(F("              </div>"));
           #endif
           webClient.print(F("              <div style=\"text-align:center;\">"));
@@ -5351,6 +5358,43 @@ void handleEndstopLowZone() {
 }
 void handleEndstopHighZone() {
   ajaxserver.send(200, "text/plane", String(NoEndstopHighZone) );
+}
+void handleSetEndstopZones() {
+  if(!ajaxserver.hasArg("low") || !ajaxserver.hasArg("high")){
+    ajaxserver.send(400, "text/plain", "Missing low/high");
+    return;
+  }
+
+  int lowTenth = ajaxserver.arg("low").toInt();
+  int highTenth = ajaxserver.arg("high").toInt();
+  if(lowTenth < 2 || lowTenth > 15 || highTenth < 16 || highTenth > 31){
+    ajaxserver.send(400, "text/plain", "Out of range");
+    return;
+  }
+
+  float newLowZone = float(lowTenth) / 10.0;
+  float newHighZone = float(highTenth) / 10.0;
+  bool changed = false;
+
+  if(NoEndstopLowZone != newLowZone){
+    NoEndstopLowZone = newLowZone;
+    EEPROM.writeByte(36, lowTenth);
+    MqttPubString("NoEndstopLowZone", String(NoEndstopLowZone), true);
+    changed = true;
+  }
+
+  if(NoEndstopHighZone != newHighZone){
+    NoEndstopHighZone = newHighZone;
+    EEPROM.writeByte(222, highTenth);
+    MqttPubString("NoEndstopHighZone", String(NoEndstopHighZone), true);
+    changed = true;
+  }
+
+  if(changed){
+    EEPROM.commit();
+  }
+
+  ajaxserver.send(200, "text/plain", "OK");
 }
 void handleCwraw() {
   ajaxserver.send(200, "text/plane", String(CwRaw) );
