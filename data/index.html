@@ -4,7 +4,6 @@
 
 	<head>
 	<title id="AntName">IP rotator</title>
-	<meta http-equiv="refresh" content="1800">
 	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 	<style type="text/css">
 		@font-face {
@@ -517,7 +516,7 @@
 					<a class="setupbtn" href="/set" onclick="window.open( this.href, this.href, 'width=700,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;">SETUP</a>
 				</span>
 				<br>
-				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="NtpStatus" style="color: #666; font-size: 73%"></span><span id="ReleaseStatus" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
+				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="NtpStatus" style="color: #666; font-size: 73%"></span><span id="ReleaseStatus" style="color: #666; font-size: 73%"></span><span id="FsDiagStatus" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
 			</p>
 		</div>
 	</div>
@@ -556,6 +555,10 @@
 	var Elevation = 0; 
 	var MapZoomSaveTimer = 0;
 	var FirmwareRev = "";
+	var FilesystemRev = "";
+	var FilesystemDiagStatus = "";
+	var FilesystemDiagTotalBytes = 0;
+	var FilesystemDiagUsedBytes = 0;
 	var LatestReleaseTag = "";
 	var ReleaseCheckDone = false;
 	var DxccPrefixIndex = null;
@@ -568,8 +571,7 @@
 	var Ycenter = BoxSize/2;
 
 
-	// setInterval(function.reload(){ map();}, 600000); //mSeconds update rate
-	setInterval(function() { map();}, 600000); //mSeconds update rate
+	setInterval(function() { refreshBitmapMap();}, 1800000); // refresh only URL bitmap background
 	setInterval(function() { getData();}, 500); //mSeconds update rate
 	setInterval(function() { CheckOnline();}, 2000); //mSeconds update rate
 	setInterval(function() { getGraylineInfo();}, 30000); // update UTC/NTP status for grayline
@@ -1173,6 +1175,32 @@
 		}
 	}
 
+	function updateFilesystemStatus(){
+		var info = document.getElementById("FsDiagStatus");
+		if(!info){ return; }
+		if(!FilesystemDiagStatus){
+			info.innerHTML = "";
+			return;
+		}
+		if(FilesystemDiagStatus === "ok"){
+			info.innerHTML = " | FW/FS OK";
+			return;
+		}
+		if(FilesystemDiagStatus === "mismatch"){
+			info.innerHTML = " | <span style='color:#ffd36a;'>FW/FS mismatch (" + FilesystemRev + ")</span>";
+			return;
+		}
+		if(FilesystemDiagStatus === "missing"){
+			info.innerHTML = " | <span style='color:#ffd36a;'>FS build info missing</span>";
+			return;
+		}
+		if(FilesystemDiagStatus === "mount-failed"){
+			info.innerHTML = " | <span style='color:#ff8d7a;'>SPIFFS mount failed</span>";
+			return;
+		}
+		info.innerHTML = "";
+	}
+
 	function checkLatestRelease(){
 		if(!FirmwareRev){
 			return;
@@ -1383,6 +1411,20 @@
 	  };
 	  revhttp.open("GET", "readRev", true);
 	  revhttp.send();
+
+	  var fshttp = new XMLHttpRequest();
+	  fshttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				var parts = String(this.responseText || "").split("|");
+				FilesystemDiagStatus = String(parts[0] || "");
+				FilesystemRev = String(parts[2] || "").trim();
+				FilesystemDiagTotalBytes = Number(parts[5] || 0);
+				FilesystemDiagUsedBytes = Number(parts[6] || 0);
+				updateFilesystemStatus();
+	    }
+	  };
+	  fshttp.open("GET", "readFsDiag", true);
+	  fshttp.send();
 
 		getGraylineInfo();
 
@@ -3043,22 +3085,36 @@ var LAND_OUTLINES = [];
 		var normalX = -dy / length;
 		var normalY = dx / length;
 		var azimuthText = String(azimuth) + "\u00b0";
-		var distanceText = String(distanceKm) + "km";
+		var distanceText = String(distanceKm) + " km";
 		var labelOffset = 14;
 		ctx.font = "12px Roboto Condensed, Arial, sans-serif";
 		ctx.textAlign = "center";
 		ctx.textBaseline = "middle";
-		ctx.fillStyle = "rgba(44, 255, 122, 0.95)";
-		ctx.save();
-		ctx.translate(midX + normalX * labelOffset, midY + normalY * labelOffset);
-		ctx.rotate(readableAngle);
-		ctx.fillText(azimuthText, 0, 0);
-		ctx.restore();
-		ctx.save();
-		ctx.translate(midX - normalX * labelOffset, midY - normalY * labelOffset);
-		ctx.rotate(readableAngle);
-		ctx.fillText(distanceText, 0, 0);
-		ctx.restore();
+		function drawLocatorLineLabel(text, x, y){
+			var metrics = ctx.measureText(text);
+			var textWidth = metrics.width;
+			var textHeight = Math.max(
+				(metrics.actualBoundingBoxAscent || 6) + (metrics.actualBoundingBoxDescent || 4),
+				12
+			);
+			var padX = 4;
+			var padY = 2;
+			ctx.save();
+			ctx.translate(x, y);
+			ctx.rotate(readableAngle);
+			ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+			ctx.fillRect(
+				-textWidth / 2 - padX,
+				-textHeight / 2 - padY,
+				textWidth + padX * 2,
+				textHeight + padY * 2
+			);
+			ctx.fillStyle = "rgba(44, 255, 122, 0.95)";
+			ctx.fillText(text, 0, 0);
+			ctx.restore();
+		}
+		drawLocatorLineLabel(azimuthText, midX + normalX * labelOffset, midY + normalY * labelOffset);
+		drawLocatorLineLabel(distanceText, midX - normalX * labelOffset, midY - normalY * labelOffset);
 		ctx.restore();
 	}
 
@@ -3285,8 +3341,8 @@ var LAND_OUTLINES = [];
 		if (Number(MapSource) === -1) {
 			return;
 		}
-		Static();
 		if (Number(MapSource) === 1) {
+			Static();
 			if (Number(Elevation) === 1) {
 				drawElevationSkyMap();
 				return;
@@ -3301,37 +3357,45 @@ var LAND_OUTLINES = [];
 			ensureMapDataset(drawLocatorMap);
 			return;
 		}
+		refreshBitmapMap();
+	}
+
+	function refreshBitmapMap(){
+		if (Number(MapSource) !== 0 || Number(Elevation) === 1) {
+			return;
+		}
+		Static();
 
 		// If MapUrl is not ready yet, retry later
 		if (!MapUrl || MapUrl === "0") {
-			setTimeout(map, 1000);   // retry in 1 second
+			setTimeout(refreshBitmapMap, 1000);   // retry in 1 second
 			return;
 		}
 
 		var c = document.getElementById('Map');
-		if (c.getContext) {
+		if (c && c.getContext) {
 			var ctx = c.getContext('2d');
 			var img1 = new Image();
 
-				// Draw the map once the image is fully loaded
-				img1.onload = function () {
+			// Draw the map once the image is fully loaded
+			img1.onload = function () {
 				if (Number(MapSource) !== 0) {
 					return;
 				}
 				ctx.drawImage(img1, 0, 0, BoxSize, BoxSize);
 				drawBitmapSunOverlay(ctx);
-				};
+			};
 
 			// If loading fails (slow internet, temporary outage), retry later
 			img1.onerror = function () {
-			setTimeout(map, 2000); // retry in 2 seconds
+				setTimeout(refreshBitmapMap, 2000); // retry in 2 seconds
 			};
 
 			// Cache-busting to avoid loading a broken or outdated cached image
 			img1.src =
-			String(MapUrl) +
-			(String(MapUrl).includes("?") ? "&" : "?") +
-			"t=" + Date.now();
+				String(MapUrl) +
+				(String(MapUrl).includes("?") ? "&" : "?") +
+				"t=" + Date.now();
 		}
 	}
 

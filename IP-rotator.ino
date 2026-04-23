@@ -123,6 +123,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 */
 //-------------------------------------------------------------------------------------------------------
 const char* REV = "20260421";
+const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
 float NoEndstopHighZone = 0;
@@ -148,6 +149,14 @@ unsigned int MapZoomKm = 20000;
 String GraylineNtpServer = "pool.ntp.org";
 byte GraylineDarkness = 80;
 byte MapTheme = 1;
+bool FsMounted = false;
+bool FsBuildInfoPresent = false;
+bool FsBuildMatchesFirmware = false;
+size_t FsTotalBytes = 0;
+size_t FsUsedBytes = 0;
+String FsBuildRev = "";
+String FsBuildOffset = "";
+String FsBuildSize = "";
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -num_times 1 -output ./map.png
                 //$ /usr/bin/xplanet -window -config ./geoconfig -longitude 13.8 -latitude 50.0 -geometry 600x600 -projection azimuthal -radius 500 -num_times 1 -output ./OK500.png
 bool Endstop =  false;
@@ -332,8 +341,12 @@ int i = 0;
 !! Increment EEPROM_SIZE #define !!
 
 */
+#define CONFIG_BACKUP_FORMAT "ip-rotator-config"
+#define CONFIG_BACKUP_VERSION 1
 int Altitude = 0;
 unsigned long WatchdogTimer=0;
+String ConfigBackupUploadBuffer = "";
+String ConfigBackupUploadError = "";
 
 //ajax
 #include <WebServer.h>
@@ -524,12 +537,16 @@ void handleMapTheme();
 void handleGraylineDarkness();
 void handleGraylineInfo();
 void handleRev();
+void handleFsDiag();
 void handlePwmUi();
 void handleSetPwmMaxDuty();
 void handleMap50js();
 void handleMap50jsGz();
 void handleFontRegular();
 void handleFontBold();
+void handleBackupConfigDownload();
+void handleBackupConfigUpload();
+void handleBackupConfigUploadData();
 void handleEndstop();
 void handleEndstopLowZone();
 void handleEndstopHighZone();
@@ -550,7 +567,16 @@ void ApplyDutySlew(byte targetDuty, long &PwmTimer);
 void MaybeBeginBrakeLearning(int directionSign, bool &brakeLearningActive, int &brakeLearningDirection, float &brakeStartDistance);
 void UpdateAutoSlowWindow(float brakeStartDistance, float finalDistance);
 void PersistAutoSlowWindowIfNeeded();
+void RefreshFilesystemDiagnostics();
+bool LoadFilesystemBuildInfo();
 float GetPwmTuneAggressionFactor();
+String JsonEscape(const String& value);
+bool JsonExtractString(const String& json, const char* key, String& value);
+bool JsonExtractLong(const String& json, const char* key, long& value);
+bool JsonExtractFloat(const String& json, const char* key, float& value);
+bool JsonExtractBool(const String& json, const char* key, bool& value);
+String ExportConfigBackupJson();
+String ImportConfigBackupJson(const String& jsonPayload);
 float GetPwmTuneLeadOffsetDeg();
 bool ShouldForceStopFromPwmStall(int directionSign, byte currentDuty, float rawAzimuthDeg, byte maxDuty);
 void RequestStopRamp(bool suppressBrakeLearning);
@@ -1087,9 +1113,7 @@ void setup() {
       //config(IPAddress local_ip, IPAddress gateway, IPAddress subnet, IPAddress dns1 = (uint32_t)0x00000000, IPAddress dns2 = (uint32_t)0x00000000);
     }
   #endif
-    if(!SPIFFS.begin(false)){
-      Serial.println("SPIFFS mount failed");
-    }
+    RefreshFilesystemDiagnostics();
     server.begin();
     UdpCommand.begin(DEFAULT_SWITCH_UDP_PORT);    // incoming udp port
     // chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
@@ -1147,8 +1171,11 @@ void setup() {
   ajaxserver.on("/readGraylineDarkness", handleGraylineDarkness);
   ajaxserver.on("/readGraylineInfo", handleGraylineInfo);
   ajaxserver.on("/readRev", handleRev);
+ ajaxserver.on("/readFsDiag", handleFsDiag);
  ajaxserver.on("/readPwmUi", handlePwmUi);
  ajaxserver.on("/setPwmMaxDuty", handleSetPwmMaxDuty);
+ ajaxserver.on("/backup/config", HTTP_GET, handleBackupConfigDownload);
+ ajaxserver.on("/backup/config", HTTP_POST, handleBackupConfigUpload, handleBackupConfigUploadData);
  ajaxserver.on("/map50.js", handleMap50js);
   ajaxserver.on("/map50.js.gz", handleMap50jsGz);
   ajaxserver.on("/RC-R.ttf", handleFontRegular);
@@ -1812,6 +1839,433 @@ String FormatPwmTotalRampTime(unsigned int stepIntervalMs, byte maxDuty){
     return String(float(totalRampMs) / 1000.0f, 2) + " s total";
   }
   return String(totalRampMs) + " ms total";
+}
+
+String JsonEscape(const String& value){
+  String escaped = "";
+  escaped.reserve(value.length() + 8);
+  for(size_t i = 0; i < value.length(); i++){
+    char c = value[i];
+    switch(c){
+      case '\\': escaped += "\\\\"; break;
+      case '"': escaped += "\\\""; break;
+      case '\n': escaped += "\\n"; break;
+      case '\r': escaped += "\\r"; break;
+      case '\t': escaped += "\\t"; break;
+      default: escaped += c; break;
+    }
+  }
+  return escaped;
+}
+
+static int FindJsonValueStart(const String& json, const char* key){
+  String needle = String("\"") + key + "\"";
+  int keyPos = json.indexOf(needle);
+  if(keyPos < 0){
+    return -1;
+  }
+  int colonPos = json.indexOf(':', keyPos + needle.length());
+  if(colonPos < 0){
+    return -1;
+  }
+  int valuePos = colonPos + 1;
+  while(valuePos < json.length() && isspace(static_cast<unsigned char>(json[valuePos]))){
+    valuePos++;
+  }
+  if(valuePos >= json.length()){
+    return -1;
+  }
+  return valuePos;
+}
+
+bool JsonExtractString(const String& json, const char* key, String& value){
+  int valuePos = FindJsonValueStart(json, key);
+  if(valuePos < 0 || json[valuePos] != '"'){
+    return false;
+  }
+  value = "";
+  for(int i = valuePos + 1; i < json.length(); i++){
+    char c = json[i];
+    if(c == '\\'){
+      if(i + 1 >= json.length()){
+        return false;
+      }
+      char next = json[++i];
+      switch(next){
+        case '"': value += '"'; break;
+        case '\\': value += '\\'; break;
+        case 'n': value += '\n'; break;
+        case 'r': value += '\r'; break;
+        case 't': value += '\t'; break;
+        default: value += next; break;
+      }
+    }else if(c == '"'){
+      return true;
+    }else{
+      value += c;
+    }
+  }
+  return false;
+}
+
+bool JsonExtractLong(const String& json, const char* key, long& value){
+  int valuePos = FindJsonValueStart(json, key);
+  if(valuePos < 0){
+    return false;
+  }
+  int endPos = valuePos;
+  while(endPos < json.length()){
+    char c = json[endPos];
+    if((c >= '0' && c <= '9') || c == '-' || c == '+'){
+      endPos++;
+    }else{
+      break;
+    }
+  }
+  if(endPos == valuePos){
+    return false;
+  }
+  value = json.substring(valuePos, endPos).toInt();
+  return true;
+}
+
+bool JsonExtractFloat(const String& json, const char* key, float& value){
+  int valuePos = FindJsonValueStart(json, key);
+  if(valuePos < 0){
+    return false;
+  }
+  int endPos = valuePos;
+  while(endPos < json.length()){
+    char c = json[endPos];
+    if((c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.'){
+      endPos++;
+    }else{
+      break;
+    }
+  }
+  if(endPos == valuePos){
+    return false;
+  }
+  value = json.substring(valuePos, endPos).toFloat();
+  return true;
+}
+
+bool JsonExtractBool(const String& json, const char* key, bool& value){
+  int valuePos = FindJsonValueStart(json, key);
+  if(valuePos < 0){
+    return false;
+  }
+  if(json.startsWith("true", valuePos)){
+    value = true;
+    return true;
+  }
+  if(json.startsWith("false", valuePos)){
+    value = false;
+    return true;
+  }
+  return false;
+}
+
+String ExportConfigBackupJson(){
+  String json = "{\n";
+  json += "  \"format\": \"" CONFIG_BACKUP_FORMAT "\",\n";
+  json += "  \"version\": " + String(CONFIG_BACKUP_VERSION) + ",\n";
+  json += "  \"fw_rev\": \"" + JsonEscape(String(REV)) + "\",\n";
+  json += "  \"config\": {\n";
+  json += "    \"net_id\": \"" + JsonEscape(NET_ID) + "\",\n";
+  json += "    \"rot_name\": \"" + JsonEscape(RotName) + "\",\n";
+  json += "    \"your_call\": \"" + JsonEscape(YOUR_CALL) + "\",\n";
+  json += "    \"start_azimuth\": " + String(StartAzimuth) + ",\n";
+  json += "    \"max_rotate_degree\": " + String(MaxRotateDegree) + ",\n";
+  json += "    \"ant_radiation_angle\": " + String(AntRadiationAngle) + ",\n";
+  json += "    \"endstop\": " + String(Endstop ? "true" : "false") + ",\n";
+  json += "    \"ac_motor\": " + String(ACmotor ? "true" : "false") + ",\n";
+  json += "    \"ccw_raw\": " + String(CcwRaw) + ",\n";
+  json += "    \"cw_raw\": " + String(CwRaw) + ",\n";
+  json += "    \"reverse\": " + String(Reverse ? "true" : "false") + ",\n";
+  json += "    \"no_endstop_low_zone\": " + String(NoEndstopLowZone, 1) + ",\n";
+  json += "    \"no_endstop_high_zone\": " + String(NoEndstopHighZone, 1) + ",\n";
+  json += "    \"az_source\": " + String(AZsource) + ",\n";
+  json += "    \"pulse_per_degree\": " + String(PulsePerDegree) + ",\n";
+  json += "    \"baud_rate\": " + String(BaudRate) + ",\n";
+  json += "    \"az_two_wire\": " + String(AZtwoWire ? "true" : "false") + ",\n";
+  json += "    \"az_preamp\": " + String(AZpreamp ? "true" : "false") + ",\n";
+  json += "    \"reverse_az\": " + String(ReverseAZ ? "true" : "false") + ",\n";
+  json += "    \"pwm_enable\": " + String(PWMenable ? "true" : "false") + ",\n";
+  json += "    \"pwm_ramp_steps\": " + String(PwmRampSteps) + ",\n";
+  json += "    \"pwm_max_duty\": " + String(PwmMaxDuty) + ",\n";
+  json += "    \"pwm_slow_window_deg\": " + String(PwmSlowWindowDeg, 1) + ",\n";
+  json += "    \"pwm_tune_aggressiveness\": " + String(PwmTuneAggressiveness) + ",\n";
+  json += "    \"mqtt_ip\": \"" + String(mqtt_server_ip[0]) + "." + String(mqtt_server_ip[1]) + "." + String(mqtt_server_ip[2]) + "." + String(mqtt_server_ip[3]) + "\",\n";
+  json += "    \"mqtt_port\": " + String(MQTT_PORT) + ",\n";
+  json += "    \"mqtt_login\": " + String(MQTT_LOGIN ? "true" : "false") + ",\n";
+  json += "    \"mqtt_user\": \"" + JsonEscape(MQTT_USER) + "\",\n";
+  json += "    \"mqtt_pass\": \"" + JsonEscape(MQTT_PASS) + "\",\n";
+  json += "    \"elevation\": " + String(ELEVATION ? "true" : "false") + ",\n";
+  json += "    \"map_url\": \"" + JsonEscape(MapUrl) + "\",\n";
+  json += "    \"map_source\": " + String(MapSource) + ",\n";
+  json += "    \"map_locator\": \"" + JsonEscape(MapLocator) + "\",\n";
+  json += "    \"map_zoom_km\": " + String(MapZoomKm) + ",\n";
+  json += "    \"grayline_ntp_server\": \"" + JsonEscape(GraylineNtpServer) + "\",\n";
+  json += "    \"grayline_darkness\": " + String(GraylineDarkness) + ",\n";
+  json += "    \"map_theme\": " + String(MapTheme) + ",\n";
+  json += "    \"one_turn_limit_sec\": " + String(OneTurnLimitSec) + "\n";
+  json += "  }\n";
+  json += "}\n";
+  return json;
+}
+
+String ImportConfigBackupJson(const String& jsonPayload){
+  String format;
+  long version = 0;
+  if(!JsonExtractString(jsonPayload, "format", format) || format != CONFIG_BACKUP_FORMAT){
+    return "Invalid backup format";
+  }
+  if(!JsonExtractLong(jsonPayload, "version", version) || version != CONFIG_BACKUP_VERSION){
+    return "Unsupported backup version";
+  }
+
+  String newNetId, newRotName, newYourCall, newMapUrl, newMqttUser, newMqttPass, newMapLocator, newGraylineNtp, mqttIpText;
+  long startAzimuthValue = 0, maxRotateValue = 0, antAngleValue = 0, ccwRawValue = 0, cwRawValue = 0;
+  long azSourceValue = 0, pulsePerDegreeValue = 0, baudRateValue = 0, pwmRampStepsValue = 0, pwmMaxDutyValue = 0;
+  long pwmTuneValue = 0, mqttPortValue = 0, mapSourceValue = 0, mapZoomValue = 0, graylineDarknessValue = 0, mapThemeValue = 0, oneTurnLimitValue = 0;
+  float lowZoneValue = 0.0f, highZoneValue = 0.0f, pwmSlowWindowValue = 0.0f;
+  bool endstopValue = false, acMotorValue = false, reverseValue = false, azTwoWireValue = false, azPreampValue = false;
+  bool reverseAzValue = false, pwmEnableValue = false, mqttLoginValue = false, elevationValue = false;
+
+  if(!JsonExtractString(jsonPayload, "net_id", newNetId) || newNetId.length() < 1 || newNetId.length() > 2){
+    return "Invalid net_id";
+  }
+  if(!JsonExtractString(jsonPayload, "rot_name", newRotName) || newRotName.length() < 1 || newRotName.length() > 20){
+    return "Invalid rot_name";
+  }
+  if(!JsonExtractString(jsonPayload, "your_call", newYourCall) || newYourCall.length() < 1 || newYourCall.length() > 20){
+    return "Invalid your_call";
+  }
+  if(!JsonExtractLong(jsonPayload, "start_azimuth", startAzimuthValue) || startAzimuthValue < 0 || startAzimuthValue > 359){
+    return "Invalid start_azimuth";
+  }
+  if(!JsonExtractLong(jsonPayload, "max_rotate_degree", maxRotateValue) || maxRotateValue < 0 || maxRotateValue > 719){
+    return "Invalid max_rotate_degree";
+  }
+  if(!JsonExtractLong(jsonPayload, "ant_radiation_angle", antAngleValue) || antAngleValue < 1 || antAngleValue > 180){
+    return "Invalid ant_radiation_angle";
+  }
+  if(!JsonExtractBool(jsonPayload, "endstop", endstopValue)){
+    return "Invalid endstop";
+  }
+  if(!JsonExtractBool(jsonPayload, "ac_motor", acMotorValue)){
+    return "Invalid ac_motor";
+  }
+  if(!JsonExtractLong(jsonPayload, "ccw_raw", ccwRawValue) || ccwRawValue < 0 || ccwRawValue > 4095){
+    return "Invalid ccw_raw";
+  }
+  if(!JsonExtractLong(jsonPayload, "cw_raw", cwRawValue) || cwRawValue < 0 || cwRawValue > 4095){
+    return "Invalid cw_raw";
+  }
+  if(!JsonExtractBool(jsonPayload, "reverse", reverseValue)){
+    return "Invalid reverse";
+  }
+  if(!JsonExtractFloat(jsonPayload, "no_endstop_low_zone", lowZoneValue) || lowZoneValue < 0.2f || lowZoneValue > 1.5f){
+    return "Invalid no_endstop_low_zone";
+  }
+  if(!JsonExtractFloat(jsonPayload, "no_endstop_high_zone", highZoneValue) || highZoneValue < 1.6f || highZoneValue > 3.1f){
+    return "Invalid no_endstop_high_zone";
+  }
+  if(!JsonExtractLong(jsonPayload, "az_source", azSourceValue) || azSourceValue < 0 || azSourceValue > 2){
+    return "Invalid az_source";
+  }
+  if(!JsonExtractLong(jsonPayload, "pulse_per_degree", pulsePerDegreeValue) || pulsePerDegreeValue < 1 || pulsePerDegreeValue > 100){
+    return "Invalid pulse_per_degree";
+  }
+  if(!JsonExtractLong(jsonPayload, "baud_rate", baudRateValue) || (baudRateValue != 1200 && baudRateValue != 2400 && baudRateValue != 4800 && baudRateValue != 9600 && baudRateValue != 115200)){
+    return "Invalid baud_rate";
+  }
+  if(!JsonExtractBool(jsonPayload, "az_two_wire", azTwoWireValue)){
+    return "Invalid az_two_wire";
+  }
+  if(!JsonExtractBool(jsonPayload, "az_preamp", azPreampValue)){
+    return "Invalid az_preamp";
+  }
+  if(!JsonExtractBool(jsonPayload, "reverse_az", reverseAzValue)){
+    return "Invalid reverse_az";
+  }
+  if(!JsonExtractBool(jsonPayload, "pwm_enable", pwmEnableValue)){
+    return "Invalid pwm_enable";
+  }
+  if(!JsonExtractLong(jsonPayload, "pwm_ramp_steps", pwmRampStepsValue) || pwmRampStepsValue < 1 || pwmRampStepsValue > 200){
+    return "Invalid pwm_ramp_steps";
+  }
+  if(!JsonExtractLong(jsonPayload, "pwm_max_duty", pwmMaxDutyValue) || pwmMaxDutyValue < 40 || pwmMaxDutyValue > 255){
+    return "Invalid pwm_max_duty";
+  }
+  if(!JsonExtractFloat(jsonPayload, "pwm_slow_window_deg", pwmSlowWindowValue) || pwmSlowWindowValue < 3.0f || pwmSlowWindowValue > 60.0f){
+    return "Invalid pwm_slow_window_deg";
+  }
+  if(!JsonExtractLong(jsonPayload, "pwm_tune_aggressiveness", pwmTuneValue) || pwmTuneValue < 0 || pwmTuneValue > 4){
+    return "Invalid pwm_tune_aggressiveness";
+  }
+  if(!JsonExtractString(jsonPayload, "mqtt_ip", mqttIpText)){
+    return "Invalid mqtt_ip";
+  }
+  if(!JsonExtractLong(jsonPayload, "mqtt_port", mqttPortValue) || mqttPortValue < 1 || mqttPortValue > 65535){
+    return "Invalid mqtt_port";
+  }
+  if(!JsonExtractBool(jsonPayload, "mqtt_login", mqttLoginValue)){
+    return "Invalid mqtt_login";
+  }
+  if(!JsonExtractString(jsonPayload, "mqtt_user", newMqttUser) || newMqttUser.length() < 1 || newMqttUser.length() > 10){
+    return "Invalid mqtt_user";
+  }
+  if(!JsonExtractString(jsonPayload, "mqtt_pass", newMqttPass) || newMqttPass.length() < 1 || newMqttPass.length() > 20){
+    return "Invalid mqtt_pass";
+  }
+  if(!JsonExtractBool(jsonPayload, "elevation", elevationValue)){
+    return "Invalid elevation";
+  }
+  if(!JsonExtractString(jsonPayload, "map_url", newMapUrl) || newMapUrl.length() < 1 || newMapUrl.length() > 50){
+    return "Invalid map_url";
+  }
+  if(!JsonExtractLong(jsonPayload, "map_source", mapSourceValue) || mapSourceValue < 0 || mapSourceValue > 1){
+    return "Invalid map_source";
+  }
+  if(!JsonExtractString(jsonPayload, "map_locator", newMapLocator)){
+    return "Invalid map_locator";
+  }
+  newMapLocator.trim();
+  newMapLocator.toUpperCase();
+  if(newMapLocator.length()!=6 || newMapLocator[0]<'A' || newMapLocator[0]>'R' || newMapLocator[1]<'A' || newMapLocator[1]>'R' || newMapLocator[2]<'0' || newMapLocator[2]>'9' || newMapLocator[3]<'0' || newMapLocator[3]>'9' || newMapLocator[4]<'A' || newMapLocator[4]>'X' || newMapLocator[5]<'A' || newMapLocator[5]>'X'){
+    return "Invalid map_locator";
+  }
+  if(!JsonExtractLong(jsonPayload, "map_zoom_km", mapZoomValue) || mapZoomValue < 1000 || mapZoomValue > 20000){
+    return "Invalid map_zoom_km";
+  }
+  if(!JsonExtractString(jsonPayload, "grayline_ntp_server", newGraylineNtp) || newGraylineNtp.length() < 1 || newGraylineNtp.length() > 50){
+    return "Invalid grayline_ntp_server";
+  }
+  if(!JsonExtractLong(jsonPayload, "grayline_darkness", graylineDarknessValue) || graylineDarknessValue < 0 || graylineDarknessValue > 100){
+    return "Invalid grayline_darkness";
+  }
+  if(!JsonExtractLong(jsonPayload, "map_theme", mapThemeValue) || mapThemeValue < 0 || mapThemeValue > 5){
+    return "Invalid map_theme";
+  }
+  if(!JsonExtractLong(jsonPayload, "one_turn_limit_sec", oneTurnLimitValue) || oneTurnLimitValue < 20 || oneTurnLimitValue > 600){
+    return "Invalid one_turn_limit_sec";
+  }
+
+  int mqttIp0 = -1, mqttIp1 = -1, mqttIp2 = -1, mqttIp3 = -1;
+  if(sscanf(mqttIpText.c_str(), "%d.%d.%d.%d", &mqttIp0, &mqttIp1, &mqttIp2, &mqttIp3) != 4){
+    return "Invalid mqtt_ip";
+  }
+  if(mqttIp0 < 0 || mqttIp0 > 255 || mqttIp1 < 0 || mqttIp1 > 255 || mqttIp2 < 0 || mqttIp2 > 255 || mqttIp3 < 0 || mqttIp3 > 255){
+    return "Invalid mqtt_ip";
+  }
+
+  if(elevationValue && maxRotateValue > 180){
+    return "Elevation backup requires max_rotate_degree in range 0-180";
+  }
+
+  int lowZoneTenths = int(lowZoneValue * 10.0f + 0.5f);
+  int highZoneTenths = int(highZoneValue * 10.0f + 0.5f);
+  int pwmSlowWindowTenths = int(pwmSlowWindowValue * 10.0f + 0.5f);
+
+  YOUR_CALL = newYourCall;
+  NET_ID = newNetId;
+  RotName = newRotName;
+  StartAzimuth = startAzimuthValue;
+  MaxRotateDegree = maxRotateValue;
+  AntRadiationAngle = antAngleValue;
+  Endstop = ((azSourceValue == 1 || azSourceValue == 2) ? true : endstopValue);
+  ACmotor = acMotorValue;
+  CcwRaw = ccwRawValue;
+  CwRaw = cwRawValue;
+  Reverse = reverseValue;
+  NoEndstopLowZone = float(lowZoneTenths) / 10.0f;
+  NoEndstopHighZone = float(highZoneTenths) / 10.0f;
+  AZsource = byte(azSourceValue);
+  PulsePerDegree = pulsePerDegreeValue;
+  BaudRate = baudRateValue;
+  AZtwoWire = azTwoWireValue;
+  AZpreamp = azPreampValue;
+  ReverseAZ = reverseAzValue;
+  PWMenable = pwmEnableValue && !ACmotor;
+  PwmRampSteps = pwmRampStepsValue;
+  PwmMaxDuty = pwmMaxDutyValue;
+  PwmSlowWindowDeg = float(pwmSlowWindowTenths) / 10.0f;
+  PwmTuneAggressiveness = pwmTuneValue;
+  mqtt_server_ip[0] = byte(mqttIp0);
+  mqtt_server_ip[1] = byte(mqttIp1);
+  mqtt_server_ip[2] = byte(mqttIp2);
+  mqtt_server_ip[3] = byte(mqttIp3);
+  MQTT_PORT = mqttPortValue;
+  MQTT_LOGIN = mqttLoginValue;
+  MQTT_USER = newMqttUser;
+  MQTT_PASS = newMqttPass;
+  ELEVATION = elevationValue;
+  MapUrl = newMapUrl;
+  MapSource = byte(mapSourceValue);
+  MapLocator = newMapLocator;
+  MapZoomKm = mapZoomValue;
+  GraylineNtpServer = newGraylineNtp;
+  GraylineDarkness = byte(graylineDarknessValue);
+  MapTheme = byte(mapThemeValue);
+  OneTurnLimitSec = oneTurnLimitValue;
+
+  auto writeFixedString = [](int start, int length, const String& text){
+    for(int i = 0; i < length; i++){
+      EEPROM.write(start + i, (i < text.length()) ? text[i] : 0xff);
+    }
+  };
+
+  writeFixedString(0, 2, NET_ID);
+  writeFixedString(2, 20, RotName);
+  EEPROM.writeUShort(23, StartAzimuth);
+  EEPROM.writeUShort(25, MaxRotateDegree);
+  EEPROM.writeUShort(27, AntRadiationAngle);
+  EEPROM.writeBool(29, Endstop);
+  EEPROM.writeBool(30, ACmotor);
+  EEPROM.writeUShort(31, CcwRaw);
+  EEPROM.writeUShort(33, CwRaw);
+  EEPROM.writeBool(35, Reverse);
+  EEPROM.writeByte(36, lowZoneTenths);
+  writeFixedString(141, 20, YOUR_CALL);
+  EEPROM.writeByte(161, mqtt_server_ip[0]);
+  EEPROM.writeByte(162, mqtt_server_ip[1]);
+  EEPROM.writeByte(163, mqtt_server_ip[2]);
+  EEPROM.writeByte(164, mqtt_server_ip[3]);
+  EEPROM.writeUShort(165, MQTT_PORT);
+  EEPROM.writeBool(167, ELEVATION);
+  EEPROM.writeBool(168, MQTT_LOGIN);
+  writeFixedString(169, 50, MapUrl);
+  EEPROM.writeUShort(220, OneTurnLimitSec);
+  EEPROM.writeByte(222, highZoneTenths);
+  EEPROM.writeByte(223, AZsource);
+  EEPROM.writeUShort(224, PulsePerDegree);
+  EEPROM.writeUShort(226, BaudRate);
+  EEPROM.writeBool(228, AZtwoWire);
+  EEPROM.writeBool(229, AZpreamp);
+  EEPROM.writeBool(230, ReverseAZ);
+  EEPROM.writeBool(231, PWMenable);
+  EEPROM.writeUShort(234, PwmRampSteps);
+  writeFixedString(236, 10, MQTT_USER);
+  writeFixedString(246, 20, MQTT_PASS);
+  EEPROM.writeByte(266, MapSource);
+  for(int i = 0; i < 6; i++){
+    EEPROM.write(267 + i, MapLocator[i]);
+  }
+  EEPROM.writeUShort(273, MapZoomKm);
+  writeFixedString(275, 50, GraylineNtpServer);
+  EEPROM.writeByte(325, GraylineDarkness);
+  EEPROM.writeByte(326, MapTheme);
+  EEPROM.writeByte(327, PwmMaxDuty);
+  EEPROM.writeUShort(328, pwmSlowWindowTenths);
+  EEPROM.writeByte(330, PwmTuneAggressiveness);
+  EEPROM.commit();
+
+  digitalWrite(AZtwoWirePin, AZtwoWire);
+  digitalWrite(AZpreampPin, AZpreamp);
+  ApplyGraylineNtpConfig();
+  return "";
 }
 
 void MaybeBeginBrakeLearning(int directionSign, bool &brakeLearningActive, int &brakeLearningDirection, float &brakeStartDistance){
@@ -4682,7 +5136,7 @@ switch (PwmTuneAggressiveness) {
   // <meta http-equiv = 'refresh' content = '600; url = /'>\n";
   HtmlSrc +="<style type='text/css'> @font-face {font-family: 'Roboto Condensed'; src: url('/RC-R.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap;} @font-face {font-family: 'Roboto Condensed'; src: url('/RC-B.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap;} button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button#go:hover {background-color: orange;} table, th, td {color: #fff; border-collapse: collapse; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle; padding-right: 15px} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} body {margin: 0; padding: 0 18px 28px 18px;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
   HtmlSrc +=".b {border-top: 1px dotted #666;} .tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
-  HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; } .setup-wrap {max-width: 980px; margin: 0 auto;} .setup-form {color: #ccc; margin: 0; text-align: center;} .setup-section {background: #3b3b3b; border: 1px solid #555; border-radius: 14px; margin: 0 0 10px 0; overflow: hidden;} .setup-summary {cursor: pointer; list-style: none; padding: 10px 14px; text-align: left; font-size: 20px; color: #ddd; background: #444;} .setup-summary::-webkit-details-marker {display: none;} .setup-summary:after {content: '\\25be'; float: right; color: #aaa;} .setup-section[open] .setup-summary:after {content: '\\25b4';} .setup-table {width: 100%; table-layout: fixed;} .setup-table td {padding-top: 2px; padding-bottom: 2px;} .setup-table .tdr {width: 50%; box-sizing: border-box;} .setup-table td:last-child {width: 50%; text-align: left; box-sizing: border-box;} .setup-actions {text-align: center; margin-top: 18px;} .setup-note {color: #666; text-align: center; margin-top: 18px;}</style>\n";
+  HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; } .setup-wrap {max-width: 980px; margin: 0 auto;} .setup-form {color: #ccc; margin: 0; text-align: center;} .setup-section {background: #3b3b3b; border: 1px solid #555; border-radius: 14px; margin: 0 0 10px 0; overflow: hidden;} .setup-summary {cursor: pointer; list-style: none; padding: 10px 14px; text-align: left; font-size: 20px; color: #ddd; background: #444;} .setup-summary::-webkit-details-marker {display: none;} .setup-summary:after {content: '\\25be'; float: right; color: #aaa;} .setup-section[open] .setup-summary:after {content: '\\25b4';} .setup-table {width: 100%; table-layout: fixed;} .setup-table td {padding-top: 2px; padding-bottom: 2px;} .setup-table .tdr {width: 50%; box-sizing: border-box;} .setup-table td:last-child {width: 50%; text-align: left; box-sizing: border-box;} .setup-actions {text-align: center; margin-top: 18px;} .setup-note {color: #666; text-align: center; margin-top: 18px;} .backup-box {padding: 16px 18px 18px 18px; text-align: left; color: #ddd;} .backup-box p {margin: 0 0 14px 0; color: #bbb;} .backup-actions {display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px;} .backup-upload {display: flex; flex-wrap: wrap; gap: 10px; align-items: center;} .backup-upload input[type='file'] {max-width: 100%;} .backup-status {display: none; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #2f2f2f; color: #ddd;} .backup-status.is-ok {display: block; background: #16351d; color: #d5ffd8;} .backup-status.is-error {display: block; background: #4a1f1f; color: #ffd9d9;}</style>\n";
   HtmlSrc +="</head><body>\n";
   HtmlSrc +="<H1 style='color: #666; text-align: center;'>Setup<br><span style='font-size: 50%;'>(MAC ";
   HtmlSrc +=MACString;
@@ -4948,21 +5402,27 @@ switch (PwmTuneAggressiveness) {
     HtmlSrc += mqtt_userERR;
     HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Name max 10 character, for connect to MQTT broker</span></span></td></tr>\n";
 
-    HtmlSrc +="<tr><td class='tdr'><label for='mqttpass'><span";
-    HtmlSrc += mqtt_passSTYLE;
-    HtmlSrc += ">MQTT Password:</span></label></td><td><input type='password' id='mqttpass' name='mqttpass' size='20' value='";
-    HtmlSrc += MQTT_PASS;
-    HtmlSrc +="' ";
-    HtmlSrc += mqtt_loginDisable;
-    HtmlSrc +="><span style='color:red;'>";
-    HtmlSrc += mqtt_passERR;
-    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Password max 20 character, for connect to MQTT broker</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='mqttpass'><span";
+  HtmlSrc += mqtt_passSTYLE;
+  HtmlSrc += ">MQTT Password:</span></label></td><td><input type='password' id='mqttpass' name='mqttpass' size='20' value='";
+  HtmlSrc += MQTT_PASS;
+  HtmlSrc +="' ";
+  HtmlSrc += mqtt_loginDisable;
+  HtmlSrc +="><span style='color:red;'>";
+  HtmlSrc += mqtt_passERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Password max 20 character, for connect to MQTT broker</span></span></td></tr>\n";
   HtmlSrc +="</table></details>\n";
+  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Backup and restore</summary><div class='backup-box'>";
+  HtmlSrc +="<p>Download the full rotator configuration as a JSON backup, or upload it later to restore settings.</p>";
+  HtmlSrc +="<div class='backup-actions'><a href='/backup/config'><button type='button' id='go'>Download backup</button></a></div>";
+  HtmlSrc +="<div class='backup-upload'><input type='file' id='backupFile' accept='.json,application/json'><button type='button' id='go' onclick='uploadConfigBackup()'>Upload backup</button></div>";
+  HtmlSrc +="<div id='backupStatus' class='backup-status'></div>";
+  HtmlSrc +="</div></details>\n";
   HtmlSrc +="<div class='setup-actions'><button id='go'>&#10004; Change</button></form>&nbsp; ";
   HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=1150,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></div>";
   HtmlSrc +="<p class='setup-note'>After change, refresh all other page for apply changes.<br><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></p>";
   HtmlSrc +="</div>";
-  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapThemeRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineNtpRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineDarknessRow').style.display=(s==='1')?'table-row':'none';}toggleMapSourceRows();</script>";
+  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapThemeRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineNtpRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineDarknessRow').style.display=(s==='1')?'table-row':'none';}function setBackupStatus(message,isError){var box=document.getElementById('backupStatus');if(!box){return;}box.textContent=message;box.className='backup-status '+(isError?'is-error':'is-ok');}function uploadConfigBackup(){var input=document.getElementById('backupFile');if(!input||!input.files||!input.files.length){setBackupStatus('Select a backup JSON file first.',true);return;}var formData=new FormData();formData.append('file',input.files[0]);setBackupStatus('Uploading backup...',false);fetch('/backup/config',{method:'POST',body:formData}).then(function(response){return response.text().then(function(text){if(!response.ok){throw new Error(text||'Upload failed');}return text;});}).then(function(text){setBackupStatus(text||'Backup restored.',false);}).catch(function(error){setBackupStatus(error.message||'Upload failed',true);});}toggleMapSourceRows();</script>";
   HtmlSrc +="</body></html>\n";
 
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
@@ -5182,6 +5642,73 @@ bool streamStaticFile(const char* path, const char* contentType) {
   return true;
 }
 
+void RefreshFilesystemDiagnostics() {
+  FsMounted = SPIFFS.begin(false);
+  FsBuildInfoPresent = false;
+  FsBuildMatchesFirmware = false;
+  FsTotalBytes = 0;
+  FsUsedBytes = 0;
+  FsBuildRev = "";
+  FsBuildOffset = "";
+  FsBuildSize = "";
+
+  if(!FsMounted){
+    Serial.println("SPIFFS mount failed");
+    return;
+  }
+
+  FsTotalBytes = SPIFFS.totalBytes();
+  FsUsedBytes = SPIFFS.usedBytes();
+  FsBuildInfoPresent = LoadFilesystemBuildInfo();
+  FsBuildMatchesFirmware = FsBuildInfoPresent && FsBuildRev == String(REV);
+
+  Serial.print("SPIFFS mounted: totalBytes=");
+  Serial.print(FsTotalBytes);
+  Serial.print(" usedBytes=");
+  Serial.println(FsUsedBytes);
+
+  if(FsBuildInfoPresent){
+    Serial.print("SPIFFS build info: REV=");
+    Serial.print(FsBuildRev);
+    if(FsBuildOffset.length()){
+      Serial.print(" OFFSET=");
+      Serial.print(FsBuildOffset);
+    }
+    if(FsBuildSize.length()){
+      Serial.print(" SIZE=");
+      Serial.print(FsBuildSize);
+    }
+    Serial.println();
+    Serial.print("FW/FS build match: ");
+    Serial.println(FsBuildMatchesFirmware ? "OK" : "MISMATCH");
+  }else{
+    Serial.println("SPIFFS build info missing: /fs_build.txt");
+  }
+}
+
+bool LoadFilesystemBuildInfo() {
+  File file = SPIFFS.open(FS_BUILD_INFO_PATH, "r");
+  if(!file){
+    return false;
+  }
+
+  String line;
+  while(file.available()){
+    line = file.readStringUntil('\n');
+    line.trim();
+    if(line.startsWith("REV=")){
+      FsBuildRev = line.substring(4);
+    }else if(line.startsWith("SPIFFS_OFFSET=")){
+      FsBuildOffset = line.substring(14);
+    }else if(line.startsWith("SPIFFS_SIZE=")){
+      FsBuildSize = line.substring(12);
+    }
+  }
+  file.close();
+
+  return FsBuildRev.length() > 0;
+}
+
 void handleRoot() {
   if(!streamStaticFile("/index.html", "text/html")){
     ajaxserver.send(500, "text/plain", "Missing /index.html in SPIFFS");
@@ -5301,6 +5828,17 @@ void handleGraylineInfo() {
 void handleRev() {
   ajaxserver.send(200, "text/plane", String(REV));
 }
+void handleFsDiag() {
+  String status = "missing";
+  if(!FsMounted){
+    status = "mount-failed";
+  }else if(FsBuildInfoPresent){
+    status = FsBuildMatchesFirmware ? "ok" : "mismatch";
+  }
+
+  String payload = status + "|" + String(REV) + "|" + FsBuildRev + "|" + FsBuildOffset + "|" + FsBuildSize + "|" + String((unsigned long)FsTotalBytes) + "|" + String((unsigned long)FsUsedBytes);
+  ajaxserver.send(200, "text/plain", payload);
+}
 void handlePwmUi() {
   bool pwmUiEnabled = (ACmotor==false && PWMenable==true);
   ajaxserver.send(200, "text/plane", String(pwmUiEnabled ? 1 : 0) + "|" + String(PwmMaxDuty) + "|" + String(dutyCycle));
@@ -5349,6 +5887,46 @@ void handleFontBold() {
     return;
   }
   ajaxserver.send(404, "text/plain", "Missing /RC-B.ttf in SPIFFS");
+}
+void handleBackupConfigDownload() {
+  ajaxserver.sendHeader("Content-Disposition", "attachment; filename=\"ip-rotator-config.json\"");
+  ajaxserver.send(200, "application/json; charset=utf-8", ExportConfigBackupJson());
+}
+void handleBackupConfigUploadData() {
+  HTTPUpload& upload = ajaxserver.upload();
+  if(upload.status == UPLOAD_FILE_START){
+    ConfigBackupUploadBuffer = "";
+    ConfigBackupUploadBuffer.reserve(3072);
+    ConfigBackupUploadError = "";
+  }else if(upload.status == UPLOAD_FILE_WRITE){
+    if(ConfigBackupUploadError.length() == 0){
+      if(ConfigBackupUploadBuffer.length() + upload.currentSize > 8192){
+        ConfigBackupUploadError = "Backup file is too large";
+      }else{
+        for(size_t i = 0; i < upload.currentSize; i++){
+          ConfigBackupUploadBuffer += char(upload.buf[i]);
+        }
+      }
+    }
+  }else if(upload.status == UPLOAD_FILE_END){
+    if(ConfigBackupUploadBuffer.length() == 0 && ConfigBackupUploadError.length() == 0){
+      ConfigBackupUploadError = "Backup file is empty";
+    }
+  }
+}
+void handleBackupConfigUpload() {
+  if(ConfigBackupUploadError.length() > 0){
+    ajaxserver.send(400, "text/plain", ConfigBackupUploadError);
+  }else{
+    String importError = ImportConfigBackupJson(ConfigBackupUploadBuffer);
+    if(importError.length() > 0){
+      ajaxserver.send(400, "text/plain", importError);
+    }else{
+      ajaxserver.send(200, "text/plain", "Backup restored. Refresh the main page to apply all changes.");
+    }
+  }
+  ConfigBackupUploadBuffer = "";
+  ConfigBackupUploadError = "";
 }
 void handleEndstop() {
   ajaxserver.send(200, "text/plane", String(Endstop) );

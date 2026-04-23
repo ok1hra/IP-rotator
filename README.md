@@ -57,6 +57,7 @@ Default output:
 - `build/spiffs.bin`
 
 The script reads the SPIFFS size and offset from the project's local [`partitions.csv`](/home/dan/inst/IP-rotator/partitions.csv) and packs the current `data/` directory with `mkspiffs`.
+It also writes `/fs_build.txt` into the image so the firmware can report whether the uploaded SPIFFS build matches the running firmware revision.
 
 ### Upload options
 

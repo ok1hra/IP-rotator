@@ -9,6 +9,7 @@ OUTPUT_DIR="${ROOT_DIR}/build"
 OUTPUT_FILE="${OUTPUT_DIR}/spiffs.bin"
 PARTITIONS_CSV="${ROOT_DIR}/partitions.csv"
 MKSPIFFS_BIN="/home/dan/Arduino/hardware/espressif/esp32/tools/mkspiffs/mkspiffs"
+SKETCH_FILE="${ROOT_DIR}/IP-rotator.ino"
 
 usage() {
   cat <<'EOF'
@@ -71,6 +72,11 @@ if [[ ! -x "$MKSPIFFS_BIN" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$SKETCH_FILE" ]]; then
+  echo "Sketch file not found: $SKETCH_FILE" >&2
+  exit 1
+fi
+
 SPIFFS_ROW="$(
   awk -F',' '
     $0 !~ /^[[:space:]]*#/ {
@@ -95,12 +101,37 @@ fi
 
 IFS=',' read -r SPIFFS_NAME SPIFFS_OFFSET SPIFFS_SIZE <<< "$SPIFFS_ROW"
 
+FW_REV="$(
+  awk -F'"' '
+    /const char\* REV = "/ {
+      print $2;
+      exit 0;
+    }
+  ' "$SKETCH_FILE"
+)"
+
+if [[ -z "$FW_REV" ]]; then
+  echo "Could not read REV from: $SKETCH_FILE" >&2
+  exit 1
+fi
+
 mkdir -p "$OUTPUT_DIR"
 
-"$MKSPIFFS_BIN" -c "$DATA_DIR" -b 4096 -p 256 -s "$SPIFFS_SIZE" "$OUTPUT_FILE"
+TMP_DATA_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DATA_DIR"' EXIT
+
+cp -R "${DATA_DIR}/." "$TMP_DATA_DIR/"
+cat > "${TMP_DATA_DIR}/fs_build.txt" <<EOF
+REV=$FW_REV
+SPIFFS_OFFSET=$SPIFFS_OFFSET
+SPIFFS_SIZE=$SPIFFS_SIZE
+EOF
+
+"$MKSPIFFS_BIN" -c "$TMP_DATA_DIR" -b 4096 -p 256 -s "$SPIFFS_SIZE" "$OUTPUT_FILE"
 
 echo "SPIFFS image created: $OUTPUT_FILE"
 echo "Partition: $SPIFFS_NAME"
 echo "Offset:    $SPIFFS_OFFSET"
 echo "Size:      $SPIFFS_SIZE"
+echo "FW REV:    $FW_REV"
 echo "Upload via web OTA as filesystem image."
