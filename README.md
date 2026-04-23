@@ -15,9 +15,13 @@ Keyboard shortcuts on the main control page:
 | `+` / `-` | Change map zoom |
 | `p` | Decrease SPEED |
 | `P` | Increase SPEED |
+| `A` | Toggle ANT |
+| `D` | Toggle DEG |
 | `G` | Toggle Grayline |
+| `O` | Toggle LOC GRID |
 | `S` | Toggle State borders |
-| `D` | Toggle DXCC prefixes |
+| `X` | Toggle DXCC prefixes |
+| `L` | Focus the locator input |
 | `T` | Focus or unfocus the **TO DXCC** input |
 
 <img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/setup.png" height="600"><img src="https://raw.githubusercontent.com/ok1hra/IP-rotator/main/calibrate.png" height="600">

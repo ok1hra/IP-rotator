@@ -327,8 +327,8 @@
 			left: 16px;
 			top: 518px;
 			z-index: 8;
-			width: 132px;
-			padding: 7px 10px 8px 10px;
+			width: auto;
+			padding: 7px 8px 8px 8px;
 			border-radius: 9px;
 			background: rgba(6, 8, 11, 0.58);
 			border: 1px solid rgba(160, 170, 175, 0.12);
@@ -338,7 +338,7 @@
 		.togglelabel{
 			display: flex;
 			align-items: center;
-			gap: 8px;
+			gap: 6px;
 			font-size: 11px;
 			line-height: 1.1;
 			color: rgba(188, 196, 202, 0.72);
@@ -491,6 +491,10 @@
 				<input type="checkbox" id="MapAntToggle" checked>
 				<span><span class="kbdhint">A</span>NT</span>
 			</label>
+			<label class="togglelabel" for="MapLocGridToggle" id="MapLocGridToggleLabel">
+				<input type="checkbox" id="MapLocGridToggle">
+				<span>L<span class="kbdhint">O</span>C GRID</span>
+			</label>
 			<label class="togglelabel" for="MapGraylineToggle" id="MapGraylineToggleLabel">
 				<input type="checkbox" id="MapGraylineToggle">
 				<span><span class="kbdhint">G</span>rayline</span>
@@ -538,6 +542,7 @@
 	var MapGraylineEnabled = true;
 	var MapBordersEnabled = false;
 	var MapDxccEnabled = false;
+	var MapLocGridEnabled = false;
 	var AntOverlayEnabled = true;
 	var LocatorTargetPreview = "";
 	var LastLocatorRotateRequest = "";
@@ -789,22 +794,26 @@
 		var degToggle = document.getElementById("MapDegToggle");
 		var antToggle = document.getElementById("MapAntToggle");
 		var antLabel = document.getElementById("MapAntToggleLabel");
+		var locGridToggle = document.getElementById("MapLocGridToggle");
+		var locGridLabel = document.getElementById("MapLocGridToggleLabel");
 		var graylineToggle = document.getElementById("MapGraylineToggle");
 		var graylineLabel = document.getElementById("MapGraylineToggleLabel");
 		var toggle = document.getElementById("MapBordersToggle");
 		var bordersLabel = document.getElementById("MapBordersToggleLabel");
 		var dxccToggle = document.getElementById("MapDxccToggle");
 		var dxccLabel = document.getElementById("MapDxccToggleLabel");
-		if(!wrap || !degToggle || !antToggle || !antLabel || !graylineToggle || !graylineLabel || !toggle || !bordersLabel || !dxccToggle || !dxccLabel){ return; }
+		if(!wrap || !degToggle || !antToggle || !antLabel || !locGridToggle || !locGridLabel || !graylineToggle || !graylineLabel || !toggle || !bordersLabel || !dxccToggle || !dxccLabel){ return; }
 		if(Number(Elevation) !== 1){
 			wrap.style.display = "block";
 			degToggle.checked = !!DegOverlayEnabled;
 			antLabel.style.display = "flex";
 			antToggle.checked = !!AntOverlayEnabled;
 			var mapOptionsVisible = Number(MapSource) === 1;
+			locGridLabel.style.display = mapOptionsVisible ? "flex" : "none";
 			graylineLabel.style.display = mapOptionsVisible ? "flex" : "none";
 			bordersLabel.style.display = mapOptionsVisible ? "flex" : "none";
 			dxccLabel.style.display = mapOptionsVisible ? "flex" : "none";
+			locGridToggle.checked = !!MapLocGridEnabled;
 			graylineToggle.checked = !!MapGraylineEnabled;
 			toggle.checked = !!MapBordersEnabled;
 			dxccToggle.checked = !!MapDxccEnabled;
@@ -827,6 +836,12 @@
 
 	function setMapGraylineEnabled(enabled){
 		MapGraylineEnabled = !!enabled;
+		updateMapBordersControl();
+		map();
+	}
+
+	function setMapLocGridEnabled(enabled){
+		MapLocGridEnabled = !!enabled;
 		updateMapBordersControl();
 		map();
 	}
@@ -1046,6 +1061,10 @@
 		}
 		if(keyLower === "g"){
 			setMapGraylineEnabled(!MapGraylineEnabled);
+			return true;
+		}
+		if(keyLower === "o"){
+			setMapLocGridEnabled(!MapLocGridEnabled);
 			return true;
 		}
 		if(keyLower === "s"){
@@ -1476,6 +1495,7 @@
 			});
 		}
 		var graylineToggle = document.getElementById("MapGraylineToggle");
+		var locGridToggle = document.getElementById("MapLocGridToggle");
 		var antToggle = document.getElementById("MapAntToggle");
 		var degToggle = document.getElementById("MapDegToggle");
 		if(degToggle){
@@ -1488,6 +1508,12 @@
 			antToggle.checked = true;
 			antToggle.addEventListener("change", function(){
 				setAntOverlayEnabled(this.checked);
+			});
+		}
+		if(locGridToggle){
+			locGridToggle.checked = false;
+			locGridToggle.addEventListener("change", function(){
+				setMapLocGridEnabled(this.checked);
 			});
 		}
 		if(graylineToggle){
@@ -2915,6 +2941,171 @@ var LAND_OUTLINES = [];
 
 	var graylineCacheCanvas = null;
 	var graylineCacheKey = "";
+	var locGridVectorCache = null;
+	var locGridVectorCacheKey = "";
+
+	function maidenheadFieldCode(latDeg, lonDeg){
+		var lat = Number(latDeg);
+		var lon = Number(lonDeg);
+		if(!isFinite(lat) || !isFinite(lon)){
+			return "";
+		}
+		while(lon < -180){ lon += 360; }
+		while(lon >= 180){ lon -= 360; }
+		if(lat > 89.999999){ lat = 89.999999; }
+		if(lat < -89.999999){ lat = -89.999999; }
+		var fieldLon = Math.floor((lon + 180) / 20);
+		var fieldLat = Math.floor((lat + 90) / 10);
+		return String.fromCharCode(65 + fieldLon) + String.fromCharCode(65 + fieldLat);
+	}
+
+	function maidenheadFieldIndices(fieldCode){
+		var code = String(fieldCode || "").toUpperCase();
+		if(!/^[A-R]{2}$/.test(code)){
+			return null;
+		}
+		return {
+			lon: code.charCodeAt(0) - 65,
+			lat: code.charCodeAt(1) - 65
+		};
+	}
+
+	function buildFieldBoundaryLatLon(fieldLon, fieldLat){
+		var lonMin = -180 + fieldLon * 20;
+		var lonMax = lonMin + 20;
+		var latMin = -90 + fieldLat * 10;
+		var latMax = latMin + 10;
+		var boundary = [];
+		var lonStep = 2;
+		var latStep = 1;
+		for(var lon = lonMin; lon <= lonMax; lon += lonStep){
+			boundary.push({lat: latMin, lon: Math.min(lon, lonMax)});
+		}
+		for(var lat = latMin + latStep; lat <= latMax; lat += latStep){
+			boundary.push({lat: Math.min(lat, latMax), lon: lonMax});
+		}
+		for(var lon2 = lonMax - lonStep; lon2 >= lonMin; lon2 -= lonStep){
+			boundary.push({lat: latMax, lon: Math.max(lon2, lonMin)});
+		}
+		for(var lat2 = latMax - latStep; lat2 > latMin; lat2 -= latStep){
+			boundary.push({lat: lat2, lon: lonMin});
+		}
+		return boundary;
+	}
+
+	function buildLocGridVectorData(centerLat, centerLon, mapRadiusPx, zoomKm){
+		var clipPoly = buildCircleClipPolygon(mapRadiusPx, 96);
+		var cells = [];
+		for(var fieldLat = 0; fieldLat < 18; fieldLat++){
+			for(var fieldLon = 0; fieldLon < 18; fieldLon++){
+				var boundary = buildFieldBoundaryLatLon(fieldLon, fieldLat);
+				var projected = [];
+				var skipField = false;
+				for(var i = 0; i < boundary.length; i++){
+					var p = projectAzimuthalRaw(boundary[i].lat, boundary[i].lon, centerLat, centerLon, mapRadiusPx, zoomKm);
+					if(!isFinite(p.x) || !isFinite(p.y)){
+						skipField = true;
+						break;
+					}
+					projected.push(p);
+				}
+				if(skipField || projected.length < 3){
+					continue;
+				}
+				var clipped = clipPolygonWithConvex(projected, clipPoly);
+				if(!clipped || clipped.length < 3){
+					continue;
+				}
+				var labelPoint = projectAzimuthalRaw(
+					-90 + fieldLat * 10 + 5,
+					-180 + fieldLon * 20 + 10,
+					centerLat,
+					centerLon,
+					mapRadiusPx,
+					zoomKm
+				);
+				if(!labelPoint || !isFinite(labelPoint.x) || !isFinite(labelPoint.y)){
+					labelPoint = null;
+				}
+				var east = projectAzimuthalRaw(
+					-90 + fieldLat * 10 + 5,
+					-180 + fieldLon * 20 + 16,
+					centerLat,
+					centerLon,
+					mapRadiusPx,
+					zoomKm
+				);
+				var north = projectAzimuthalRaw(
+					-90 + fieldLat * 10 + 8,
+					-180 + fieldLon * 20 + 10,
+					centerLat,
+					centerLon,
+					mapRadiusPx,
+					zoomKm
+				);
+				var labelSize = 0;
+				if(labelPoint && east && north){
+					var cellHalfWidth = Math.hypot(east.x - labelPoint.x, east.y - labelPoint.y);
+					var cellHalfHeight = Math.hypot(north.x - labelPoint.x, north.y - labelPoint.y);
+					labelSize = Math.round(Clamp(Math.min(cellHalfWidth * 0.92, cellHalfHeight * 1.18), 12, 32));
+				}
+				cells.push({
+					polygon: clipped,
+					label: String.fromCharCode(65 + fieldLon) + String.fromCharCode(65 + fieldLat),
+					labelPoint: labelPoint,
+					labelSize: labelSize,
+					isLightField: ((fieldLon + fieldLat) % 2) === 0
+				});
+			}
+		}
+		return cells;
+	}
+
+	function drawLocGridOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm){
+		if(!MapLocGridEnabled){
+			return;
+		}
+		var cacheKey = String(centerLat) + "|" + String(centerLon) + "|" + String(zoomKm);
+		if(locGridVectorCacheKey !== cacheKey){
+			locGridVectorCache = buildLocGridVectorData(centerLat, centerLon, mapRadiusPx, zoomKm);
+			locGridVectorCacheKey = cacheKey;
+		}
+		var cells = locGridVectorCache || [];
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
+		ctx.clip();
+		for(var i = 0; i < cells.length; i++){
+			var cell = cells[i];
+			var polygon = cell.polygon;
+			if(!polygon || polygon.length < 3){
+				continue;
+			}
+			ctx.beginPath();
+			ctx.moveTo(polygon[0].x, polygon[0].y);
+			for(var j = 1; j < polygon.length; j++){
+				ctx.lineTo(polygon[j].x, polygon[j].y);
+			}
+			ctx.closePath();
+			ctx.fillStyle = cell.isLightField ? "rgba(255,255,255,0.055)" : "rgba(0,0,0,0.055)";
+			ctx.fill();
+		}
+		if(Number(zoomKm) >= 1000 && Number(zoomKm) <= 6500){
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.globalCompositeOperation = "screen";
+			ctx.fillStyle = "rgba(255,255,255,0.26)";
+			for(var k = 0; k < cells.length; k++){
+				var labelCell = cells[k];
+				if(!labelCell.labelPoint || labelCell.labelSize < 12){
+					continue;
+				}
+				ctx.font = "bold " + String(labelCell.labelSize) + "px Arial";
+				ctx.fillText(labelCell.label, labelCell.labelPoint.x, labelCell.labelPoint.y);
+			}
+		}
+		ctx.restore();
+	}
 
 	function drawCelestialPoint(ctx, body, centerLat, centerLon, mapRadiusPx, zoomKm, baseColor, coreColor, sizePx, glowColor){
 		if(!body){
@@ -3242,6 +3433,7 @@ var LAND_OUTLINES = [];
 				drawGeoLineCollection(ctx, COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm, theme.borderStroke, theme.borderWidth || 1.0);
 			}
 			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawLocGridOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawSunMoonOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawOutsideCircleMask(ctx, mapRadiusPx);
@@ -3272,6 +3464,7 @@ var LAND_OUTLINES = [];
 				drawGeoLineCollection(ctx, COUNTRY_BORDERS, centerLat, centerLon, mapRadiusPx, zoomKm, theme.borderStroke, theme.borderWidth || 1.0);
 			}
 			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawLocGridOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawSunMoonOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			ctx.restore();
@@ -3307,6 +3500,7 @@ var LAND_OUTLINES = [];
 			ctx.clearRect(0, 0, BoxSize, BoxSize);
 			ctx.drawImage(locatorSvgImg, 0, 0, BoxSize, BoxSize);
 			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
+			drawLocGridOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawSunMoonOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			return;
@@ -3325,6 +3519,7 @@ var LAND_OUTLINES = [];
 			ctx.clearRect(0, 0, BoxSize, BoxSize);
 			ctx.drawImage(img, 0, 0, BoxSize, BoxSize);
 			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
+			drawLocGridOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawSunMoonOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 		};
