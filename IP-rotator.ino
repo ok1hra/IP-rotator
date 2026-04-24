@@ -279,7 +279,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 331   /*
+#define EEPROM_SIZE 413   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -338,6 +338,9 @@ int i = 0;
 327 - PwmMaxDuty (40-255)
 328-329 - PwmSlowWindowDeg x10 UShort
 330 - PwmTuneAggressiveness (0-4)
+331-394 - DXC host/IP
+395-396 - DXC port
+397-412 - DXC callsign
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -349,6 +352,7 @@ unsigned long WatchdogTimer=0;
 String ConfigBackupUploadBuffer = "";
 String ConfigBackupUploadError = "";
 bool WebAuthEnabled = false;
+#include <mbedtls/sha1.h>
 
 //ajax
 #include <WebServer.h>
@@ -359,6 +363,16 @@ const char* WEB_AUTH_REALM = "IP rotator";
 const char* WEB_AUTH_HEADERS[] = {"Authorization"};
 String WebDigestNonce = "";
 String WebDigestOpaque = "";
+String WebAuthPassword = "";
+WiFiClient DxcTelnetClient;
+WiFiClient DxcWsClient;
+String DxcHost = "";
+uint16_t DxcPort = 7300;
+String DxcCallsign = "";
+bool DxcTelnetStatus = false;
+bool DxcWsStatus = false;
+bool DxcTelnetLoginPending = false;
+unsigned long DxcReconnectTimer = 0;
 
 WiFiServer server(HTTP_SERVER_PORT);
 #if defined(CN3A)
@@ -507,6 +521,7 @@ void AfterMQTTconnect();
 void MqttPubString(String TOPIC, String DATA, bool RETAIN);
 String UtcTime(int format);
 void InitWebAuth();
+void RefreshWebAuthPassword();
 String Md5Hex(const String& value);
 String DigestRandomHex();
 String ExtractHttpHeader(const String& request, const String& headerName);
@@ -562,6 +577,24 @@ void handleCwraw();
 void handleCcwraw();
 void handleMAC();
 void handleUptime();
+void handleDxcHtml();
+void DxcLoop();
+void DxcDisconnectTelnet();
+void DxcDisconnectWebSocket();
+bool DxcConfigReady();
+void DxcRequestReconnect();
+bool DxcConnectTelnet();
+void DxcUpdateTelnetStatus(bool connected, bool forceSend = false);
+void DxcSendTelnetStatus();
+bool DxcHandleWebSocketUpgrade(WiFiClient& webClient, const String& request, const String& method, const String& uri);
+String DxcComputeWebSocketAccept(const String& secKey);
+String Base64Encode(const uint8_t* data, size_t length);
+bool DxcSendWebSocketFrame(uint8_t opcode, const uint8_t* payload, size_t length);
+bool DxcSendWebSocketText(const char* text);
+bool DxcSendWebSocketText(const String& text);
+void DxcHandleWebSocketClient();
+void DxcHandleTelnetClient();
+void WriteFixedStringToEeprom(int start, int length, const String& text);
 float ClampFloat(float value, float minValue, float maxValue);
 byte ClampDuty(int value);
 float ReadControlAzimuthDeg();
@@ -995,6 +1028,30 @@ void setup() {
     }
   }
 
+  // 331-394 DXC host/IP
+  if(EEPROM.read(331)==0xff){
+    DxcHost = "";
+  }else{
+    DxcHost = ReadFixedStringFromEeprom(331, 64);
+  }
+
+  // 395-396 DXC port
+  if(EEPROM.read(395)==0xff){
+    DxcPort = 7300;
+  }else{
+    DxcPort = EEPROM.readUShort(395);
+    if(DxcPort < 1){
+      DxcPort = 7300;
+    }
+  }
+
+  // 397-412 DXC callsign
+  if(EEPROM.read(397)==0xff){
+    DxcCallsign = YOUR_CALL;
+  }else{
+    DxcCallsign = ReadFixedStringFromEeprom(397, 16);
+  }
+
   // 236-245 - MQTT_USER
   if(EEPROM.read(236)==0xff){
     MQTT_USER="Login";
@@ -1026,6 +1083,7 @@ void setup() {
     key[i-41] = EEPROM.readChar(i);
   }
   key[100] = '\0';
+  RefreshWebAuthPassword();
 
   // 232 - WebAuthEnabled, default OFF on blank EEPROM.
   if(EEPROM.read(232)==0xff){
@@ -1106,12 +1164,12 @@ void setup() {
 
   #if defined(OTAWEB)
     OTAserver.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if(WebAuthEnabled && !request->authenticate(WEB_AUTH_USER, key)){
+        if(WebAuthEnabled && !request->authenticate(WEB_AUTH_USER, WebAuthPassword.c_str())){
           return request->requestAuthentication();
         }
         request->send(200, "text/plain", "PSE QSY to /update");
     });
-    AsyncElegantOTA_IPR.begin(&OTAserver, WEB_AUTH_USER, key, &WebAuthEnabled);    // Start OTA
+    AsyncElegantOTA_IPR.begin(&OTAserver, WEB_AUTH_USER, WebAuthPassword.c_str(), &WebAuthEnabled);    // Start OTA
     OTAserver.begin();
   #endif
   //------------------------------------------------
@@ -1161,6 +1219,7 @@ void setup() {
   RegisterAjaxRoute("/map50.js.gz", handleMap50jsGz);
   RegisterAjaxRoute("/RC-R.ttf", handleFontRegular);
   RegisterAjaxRoute("/RC-B.ttf", handleFontBold);
+  RegisterAjaxRoute("/dxc.html", handleDxcHtml);
   RegisterAjaxRoute("/set", handleSet);
   RegisterAjaxRoute("/cal", handleCal);
   RegisterAjaxRoute("/readEndstop", handleEndstop);
@@ -1184,6 +1243,7 @@ void loop() {
   Mqtt();
   CLI2();
   ajaxserver.handleClient();
+  DxcLoop();
   RunByStatus();
   Watchdog();
 
@@ -1836,6 +1896,12 @@ String ReadFixedStringFromEeprom(int start, int length){
   return value;
 }
 
+void WriteFixedStringToEeprom(int start, int length, const String& text){
+  for(int i = 0; i < length; i++){
+    EEPROM.write(start + i, (i < text.length()) ? text[i] : 0xff);
+  }
+}
+
 String JsonEscape(const String& value){
   String escaped = "";
   escaped.reserve(value.length() + 8);
@@ -2006,6 +2072,9 @@ String ExportConfigBackupJson(){
   json += "    \"mqtt_login\": " + String(MQTT_LOGIN ? "true" : "false") + ",\n";
   json += "    \"mqtt_user\": \"" + JsonEscape(MQTT_USER) + "\",\n";
   json += "    \"mqtt_pass\": \"" + JsonEscape(MQTT_PASS) + "\",\n";
+  json += "    \"dxc_host\": \"" + JsonEscape(DxcHost) + "\",\n";
+  json += "    \"dxc_port\": " + String(DxcPort) + ",\n";
+  json += "    \"dxc_callsign\": \"" + JsonEscape(DxcCallsign) + "\",\n";
   json += "    \"elevation\": " + String(ELEVATION ? "true" : "false") + ",\n";
   json += "    \"map_url\": \"" + JsonEscape(MapUrl) + "\",\n";
   json += "    \"map_source\": " + String(MapSource) + ",\n";
@@ -2030,10 +2099,10 @@ String ImportConfigBackupJson(const String& jsonPayload){
     return "Unsupported backup version";
   }
 
-  String newNetId, newRotName, newYourCall, newMapUrl, newMqttUser, newMqttPass, newMapLocator, newGraylineNtp, mqttIpText;
+  String newNetId, newRotName, newYourCall, newMapUrl, newMqttUser, newMqttPass, newMapLocator, newGraylineNtp, mqttIpText, newDxcHost, newDxcCallsign;
   long startAzimuthValue = 0, maxRotateValue = 0, antAngleValue = 0, ccwRawValue = 0, cwRawValue = 0;
   long azSourceValue = 0, pulsePerDegreeValue = 0, baudRateValue = 0, pwmRampStepsValue = 0, pwmMaxDutyValue = 0;
-  long pwmTuneValue = 0, mqttPortValue = 0, mapSourceValue = 0, mapZoomValue = 0, graylineDarknessValue = 0, mapThemeValue = 0, oneTurnLimitValue = 0;
+  long pwmTuneValue = 0, mqttPortValue = 0, dxcPortValue = 0, mapSourceValue = 0, mapZoomValue = 0, graylineDarknessValue = 0, mapThemeValue = 0, oneTurnLimitValue = 0;
   float lowZoneValue = 0.0f, highZoneValue = 0.0f, pwmSlowWindowValue = 0.0f;
   bool endstopValue = false, acMotorValue = false, reverseValue = false, azTwoWireValue = false, azPreampValue = false;
   bool reverseAzValue = false, webAuthEnabledValue = false, pwmEnableValue = false, mqttLoginValue = false, elevationValue = false;
@@ -2128,6 +2197,21 @@ String ImportConfigBackupJson(const String& jsonPayload){
   if(!JsonExtractString(jsonPayload, "mqtt_pass", newMqttPass) || newMqttPass.length() < 1 || newMqttPass.length() > 20){
     return "Invalid mqtt_pass";
   }
+  if(!JsonExtractString(jsonPayload, "dxc_host", newDxcHost) || newDxcHost.length() > 63){
+    return "Invalid dxc_host";
+  }
+  if(!JsonExtractLong(jsonPayload, "dxc_port", dxcPortValue) || dxcPortValue < 1 || dxcPortValue > 65535){
+    return "Invalid dxc_port";
+  }
+  if(!JsonExtractString(jsonPayload, "dxc_callsign", newDxcCallsign) || newDxcCallsign.length() > 16){
+    return "Invalid dxc_callsign";
+  }
+  newDxcHost.trim();
+  newDxcCallsign.trim();
+  newDxcCallsign.toUpperCase();
+  if(newDxcHost.length() > 0 && newDxcCallsign.length() < 1){
+    return "DXC callsign is required when dxc_host is set";
+  }
   if(!JsonExtractBool(jsonPayload, "elevation", elevationValue)){
     return "Invalid elevation";
   }
@@ -2210,6 +2294,9 @@ String ImportConfigBackupJson(const String& jsonPayload){
   MQTT_LOGIN = mqttLoginValue;
   MQTT_USER = newMqttUser;
   MQTT_PASS = newMqttPass;
+  DxcHost = newDxcHost;
+  DxcPort = uint16_t(dxcPortValue);
+  DxcCallsign = newDxcCallsign;
   ELEVATION = elevationValue;
   MapUrl = newMapUrl;
   MapSource = byte(mapSourceValue);
@@ -2220,14 +2307,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   MapTheme = byte(mapThemeValue);
   OneTurnLimitSec = oneTurnLimitValue;
 
-  auto writeFixedString = [](int start, int length, const String& text){
-    for(int i = 0; i < length; i++){
-      EEPROM.write(start + i, (i < text.length()) ? text[i] : 0xff);
-    }
-  };
-
-  writeFixedString(0, 2, NET_ID);
-  writeFixedString(2, 20, RotName);
+  WriteFixedStringToEeprom(0, 2, NET_ID);
+  WriteFixedStringToEeprom(2, 20, RotName);
   EEPROM.writeUShort(23, StartAzimuth);
   EEPROM.writeUShort(25, MaxRotateDegree);
   EEPROM.writeUShort(27, AntRadiationAngle);
@@ -2237,7 +2318,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   EEPROM.writeUShort(33, CwRaw);
   EEPROM.writeBool(35, Reverse);
   EEPROM.writeByte(36, lowZoneTenths);
-  writeFixedString(141, 20, YOUR_CALL);
+  WriteFixedStringToEeprom(141, 20, YOUR_CALL);
   EEPROM.writeByte(161, mqtt_server_ip[0]);
   EEPROM.writeByte(162, mqtt_server_ip[1]);
   EEPROM.writeByte(163, mqtt_server_ip[2]);
@@ -2245,7 +2326,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   EEPROM.writeUShort(165, MQTT_PORT);
   EEPROM.writeBool(167, ELEVATION);
   EEPROM.writeBool(168, MQTT_LOGIN);
-  writeFixedString(169, 50, MapUrl);
+  WriteFixedStringToEeprom(169, 50, MapUrl);
   EEPROM.writeUShort(220, OneTurnLimitSec);
   EEPROM.writeByte(222, highZoneTenths);
   EEPROM.writeByte(223, AZsource);
@@ -2257,19 +2338,22 @@ String ImportConfigBackupJson(const String& jsonPayload){
   EEPROM.writeBool(231, PWMenable);
   EEPROM.writeBool(232, WebAuthEnabled);
   EEPROM.writeUShort(234, PwmRampSteps);
-  writeFixedString(236, 10, MQTT_USER);
-  writeFixedString(246, 20, MQTT_PASS);
+  WriteFixedStringToEeprom(236, 10, MQTT_USER);
+  WriteFixedStringToEeprom(246, 20, MQTT_PASS);
   EEPROM.writeByte(266, MapSource);
   for(int i = 0; i < 6; i++){
     EEPROM.write(267 + i, MapLocator[i]);
   }
   EEPROM.writeUShort(273, MapZoomKm);
-  writeFixedString(275, 50, GraylineNtpServer);
+  WriteFixedStringToEeprom(275, 50, GraylineNtpServer);
   EEPROM.writeByte(325, GraylineDarkness);
   EEPROM.writeByte(326, MapTheme);
   EEPROM.writeByte(327, PwmMaxDuty);
   EEPROM.writeUShort(328, pwmSlowWindowTenths);
   EEPROM.writeByte(330, PwmTuneAggressiveness);
+  WriteFixedStringToEeprom(331, 64, DxcHost);
+  EEPROM.writeUShort(395, DxcPort);
+  WriteFixedStringToEeprom(397, 16, DxcCallsign);
   EEPROM.commit();
 
   digitalWrite(AZtwoWirePin, AZtwoWire);
@@ -2715,7 +2799,7 @@ long RawTmp = 0;
     // Serial.println(MACString);
     // Prn(OUT, 1,"");
     Prn(OUT, 1,"key - print web password");
-    Prn(OUT, 1,"KEY - regenerate web password");
+    Prn(OUT, 1,"KEY - regenerate internal key and web password");
     Prn(OUT, 1,"noauth - disable web authentication");
     Prn(OUT, 1,"R L A S C Mxxx O F - supported GS-232 commands");
 
@@ -3147,7 +3231,7 @@ void ListCommands(int OUT){
     Prn(OUT, 1,"      .  reset timer and send measure");
     Prn(OUT, 1,"      W  erase wind speed max memory");
     Prn(OUT, 1,"      key  print web password");
-    Prn(OUT, 1,"      KEY  regenerate web password");
+    Prn(OUT, 1,"      KEY  regenerate internal key and web password");
     Prn(OUT, 1,"      noauth  disable web authentication");
     Prn(OUT, 1,"      @  restart device");
     // Prn(OUT, 1,"---------------------------------------------");
@@ -3176,9 +3260,7 @@ void PrintWebKey(int OUT){
   Prn(OUT, 1,"Web authentication");
   Prn(OUT, 1,"  user: admin");
   Prn(OUT, 0,"  password: ");
-  for(int i=0; i<100; i++){
-    Prn(OUT, 0, String(key[i]));
-  }
+  Prn(OUT, 0, WebAuthPassword);
   Prn(OUT, 1,"");
   Prn(OUT, 1,"");
 }
@@ -3190,6 +3272,7 @@ void RegenerateWebKey(int OUT){
     key[i-41] = newChar;
   }
   key[100] = '\0';
+  RefreshWebAuthPassword();
   EEPROM.commit();
   InitWebAuth();
   Prn(OUT, 1,"New web password generated.");
@@ -3248,11 +3331,41 @@ void http(){
             method = HTTP_req.substring(0, firstSpace);
             uri = HTTP_req.substring(firstSpace + 1, secondSpace);
           }
+          if(uri == "/dxcws"){
+            DxcHandleWebSocketUpgrade(webClient, HTTP_req, method, uri);
+            HTTP_req = "";
+            return;
+          }
           String authorization = ExtractHttpHeader(HTTP_req, "Authorization");
           if(!CheckDigestAuthorization(authorization, method, uri)){
             SendHttpDigestChallenge(webClient);
             if(EnableSerialDebug>0){
               Serial.print(HTTP_req);
+            }
+            HTTP_req = "";
+            break;
+          }
+          if(uri == "/dxc.html"){
+            File dxcFile = SPIFFS.open("/dxc.html", "r");
+            if(!dxcFile){
+              webClient.println(F("HTTP/1.1 404 Not Found"));
+              webClient.println(F("Content-Type: text/plain"));
+              webClient.println(F("Connection: close"));
+              webClient.println();
+              webClient.println(F("Missing /dxc.html in SPIFFS"));
+            }else{
+              webClient.println(F("HTTP/1.1 200 OK"));
+              webClient.println(F("Content-Type: text/html; charset=utf-8"));
+              webClient.println(F("Connection: close"));
+              webClient.println();
+              uint8_t fileBuffer[512];
+              while(dxcFile.available()){
+                int chunk = dxcFile.read(fileBuffer, sizeof(fileBuffer));
+                if(chunk > 0){
+                  webClient.write(fileBuffer, chunk);
+                }
+              }
+              dxcFile.close();
             }
             HTTP_req = "";
             break;
@@ -3988,6 +4101,10 @@ void InitWebAuth(){
   WebDigestOpaque = DigestRandomHex();
 }
 
+void RefreshWebAuthPassword(){
+  WebAuthPassword = Md5Hex(String(key));
+}
+
 String Md5Hex(const String& value){
   MD5Builder md5;
   md5.begin();
@@ -4081,7 +4198,7 @@ bool CheckDigestAuthorization(const String& authHeader, const String& method, co
   if(requestUri.length() == 0 || response.length() == 0){
     return false;
   }
-  String h1 = Md5Hex(String(WEB_AUTH_USER) + ":" + WEB_AUTH_REALM + ":" + String(key));
+  String h1 = Md5Hex(String(WEB_AUTH_USER) + ":" + WEB_AUTH_REALM + ":" + WebAuthPassword);
   String h2 = Md5Hex(method + ":" + requestUri);
   String expected;
   if(qop == "auth"){
@@ -4114,7 +4231,7 @@ bool AjaxAuthOk(){
   if(!WebAuthEnabled){
     return true;
   }
-  return ajaxserver.authenticate(WEB_AUTH_USER, key);
+  return ajaxserver.authenticate(WEB_AUTH_USER, WebAuthPassword.c_str());
 }
 
 bool RequireAjaxAuth(){
@@ -4250,6 +4367,9 @@ void handleSet() {
   String mqtt_passSTYLE= "";
   String mqtt_passERR= "";
   String mqtt_loginDisable= "";
+  String dxc_hostERR= "";
+  String dxc_portERR= "";
+  String dxc_callsignERR= "";
   String mapsourceERR= "";
   String maplocatorERR= "";
   String mapzoomkmERR= "";
@@ -4289,6 +4409,9 @@ void handleSet() {
     && ajaxserver.hasArg("maptheme") == false \
     && ajaxserver.hasArg("graylinentp") == false \
     && ajaxserver.hasArg("graylinedarkness") == false \
+    && ajaxserver.hasArg("dxchost") == false \
+    && ajaxserver.hasArg("dxcport") == false \
+    && ajaxserver.hasArg("dxccall") == false \
     && ajaxserver.hasArg("webauth") == false \
   ) {
     // MqttPubString("Debug", "Form not valid", false);
@@ -4425,6 +4548,45 @@ void handleSet() {
             EEPROM.write(246+i, 0xff);
           }
         }
+      }
+    }
+
+    String newDxcHost = String(ajaxserver.arg("dxchost"));
+    String newDxcCallsign = String(ajaxserver.arg("dxccall"));
+    newDxcHost.trim();
+    newDxcCallsign.trim();
+    newDxcCallsign.toUpperCase();
+
+    if(newDxcHost.length() > 63){
+      dxc_hostERR = " Out of range 0-63 characters";
+    }else{
+      dxc_hostERR = "";
+      if(DxcHost != newDxcHost){
+        DxcHost = newDxcHost;
+        WriteFixedStringToEeprom(331, 64, DxcHost);
+      }
+    }
+
+    if ( ajaxserver.arg("dxcport").length()<1 || ajaxserver.arg("dxcport").toInt()<1 || ajaxserver.arg("dxcport").toInt()>65535){
+      dxc_portERR = " Out of range number 1-65535";
+    }else{
+      dxc_portERR = "";
+      uint16_t newDxcPort = uint16_t(ajaxserver.arg("dxcport").toInt());
+      if(DxcPort != newDxcPort){
+        DxcPort = newDxcPort;
+        EEPROM.writeUShort(395, DxcPort);
+      }
+    }
+
+    if(newDxcHost.length() > 0 && (newDxcCallsign.length() < 1 || newDxcCallsign.length() > 16)){
+      dxc_callsignERR = " Out of range 1-16 characters";
+    }else if(newDxcHost.length() == 0 && newDxcCallsign.length() > 16){
+      dxc_callsignERR = " Out of range 0-16 characters";
+    }else{
+      dxc_callsignERR = "";
+      if(DxcCallsign != newDxcCallsign){
+        DxcCallsign = newDxcCallsign;
+        WriteFixedStringToEeprom(397, 16, DxcCallsign);
       }
     }
 
@@ -4950,6 +5112,10 @@ void handleSet() {
       MqttPubString("ElevationEnable", String(ELEVATION), true);
     }
 
+    if(ajaxserver.hasArg("dxchost") || ajaxserver.hasArg("dxcport") || ajaxserver.hasArg("dxccall")){
+      DxcRequestReconnect();
+    }
+
     EEPROM.commit();
   } // else form valid
 
@@ -5471,6 +5637,23 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc += mqtt_passERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Password max 20 character, for connect to MQTT broker</span></span></td></tr>\n";
   HtmlSrc +="</table></details>\n";
+  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>DXC</summary><table class='setup-table'>\n";
+  HtmlSrc +="<tr class='b'><td class='tdr'><label for='dxchost'>DX cluster IP/host:</label></td><td><input type='text' id='dxchost' name='dxchost' size='24' value='";
+  HtmlSrc += DxcHost;
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += dxc_hostERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 220px;'>Leave empty to disable DXC. The ESP32 opens a Telnet TCP connection to this host.</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='dxcport'>DX cluster PORT:</label></td><td><input type='text' id='dxcport' name='dxcport' size='6' value='";
+  HtmlSrc += String(DxcPort);
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += dxc_portERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 180px;'>Typical Telnet port is often 23 or 7300.</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='dxccall'>DX cluster callsign:</label></td><td><input type='text' id='dxccall' name='dxccall' size='16' maxlength='16' value='";
+  HtmlSrc += DxcCallsign;
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += dxc_callsignERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 210px;'>Sent to the DX cluster after Telnet connects. Required when DXC host is filled.</span></span></td></tr>\n";
+  HtmlSrc +="</table></details>\n";
   HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Web authentication</summary><table class='setup-table'>\n";
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='webauth'>Enable web authentication:</label></td><td><input type='checkbox' id='webauth' name='webauth' value='1' ";
   HtmlSrc += webauthCHECKED;
@@ -5478,7 +5661,7 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc +="<tr><td class='tdr'>Web login user:</td><td><input type='text' size='10' value='";
   HtmlSrc += WEB_AUTH_USER;
   HtmlSrc +="' readonly></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'>Web login password:</td><td><span style='color:#ccc;'>Use the 100-character key printed on the USB serial console. Send command <strong>key</strong> to print it, or <strong>KEY</strong> to generate a new one.</span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'>Web login password:</td><td><span style='color:#ccc;'>Use the password printed on the USB serial console. Send command <strong>key</strong> to print it, or <strong>KEY</strong> to generate a new one from the internal device key.</span></td></tr>\n";
   HtmlSrc +="</table></details>\n";
   HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Backup and restore</summary><div class='backup-box'>";
   HtmlSrc +="<p>Download the full rotator configuration as a JSON backup, or upload it later to restore settings.</p>";
@@ -5782,6 +5965,12 @@ void handleRoot() {
     ajaxserver.send(500, "text/plain", "Missing /index.html in SPIFFS");
   }
 }
+void handleDxcHtml() {
+  if(streamStaticFile("/dxc.html", "text/html")){
+    return;
+  }
+  ajaxserver.send(404, "text/plain", "Missing /dxc.html in SPIFFS");
+}
 void handleADC() {
  ajaxserver.send(200, "text/plane", String(VoltageValue)); //Send ADC value only to client ajax request
 }
@@ -6053,4 +6242,329 @@ void handleMAC() {
 }
 void handleUptime() {
   ajaxserver.send(200, "text/plane", String(millis()/1000) );
+}
+
+bool DxcConfigReady(){
+  return DxcHost.length() > 0 && DxcPort > 0 && DxcCallsign.length() > 0;
+}
+
+void DxcDisconnectTelnet(){
+  if(DxcTelnetClient.connected()){
+    DxcTelnetClient.stop();
+  }
+  DxcTelnetLoginPending = false;
+  DxcUpdateTelnetStatus(false);
+}
+
+void DxcDisconnectWebSocket(){
+  if(DxcWsClient.connected()){
+    DxcWsClient.stop();
+  }
+  DxcWsStatus = false;
+  DxcDisconnectTelnet();
+}
+
+void DxcRequestReconnect(){
+  DxcDisconnectTelnet();
+  DxcReconnectTimer = millis() + 250;
+}
+
+void DxcUpdateTelnetStatus(bool connected, bool forceSend){
+  if(!forceSend && DxcTelnetStatus == connected){
+    return;
+  }
+  DxcTelnetStatus = connected;
+  DxcSendTelnetStatus();
+}
+
+void DxcSendTelnetStatus(){
+  if(!DxcWsClient.connected()){
+    return;
+  }
+  String payload = String("{\"telnet\":") + String(DxcTelnetStatus ? "true" : "false") + "}";
+  DxcSendWebSocketText(payload);
+}
+
+bool DxcConnectTelnet(){
+  if(!DxcWsClient.connected() || !DxcConfigReady()){
+    DxcUpdateTelnetStatus(false);
+    return false;
+  }
+  if(DxcTelnetClient.connected()){
+    return true;
+  }
+  WiFiClient newClient;
+  newClient.setNoDelay(true);
+  if(!newClient.connect(DxcHost.c_str(), DxcPort)){
+    DxcReconnectTimer = millis() + 5000;
+    DxcUpdateTelnetStatus(false);
+    return false;
+  }
+  DxcTelnetClient = newClient;
+  DxcTelnetLoginPending = true;
+  DxcUpdateTelnetStatus(true, true);
+  return true;
+}
+
+String Base64Encode(const uint8_t* data, size_t length){
+  static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  String encoded = "";
+  encoded.reserve(((length + 2) / 3) * 4);
+  for(size_t i = 0; i < length; i += 3){
+    uint32_t block = uint32_t(data[i]) << 16;
+    bool hasSecond = (i + 1) < length;
+    bool hasThird = (i + 2) < length;
+    if(hasSecond){
+      block |= uint32_t(data[i + 1]) << 8;
+    }
+    if(hasThird){
+      block |= uint32_t(data[i + 2]);
+    }
+    encoded += alphabet[(block >> 18) & 0x3F];
+    encoded += alphabet[(block >> 12) & 0x3F];
+    encoded += hasSecond ? alphabet[(block >> 6) & 0x3F] : '=';
+    encoded += hasThird ? alphabet[block & 0x3F] : '=';
+  }
+  return encoded;
+}
+
+String DxcComputeWebSocketAccept(const String& secKey){
+  String source = secKey;
+  source += "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  uint8_t digest[20];
+  mbedtls_sha1(reinterpret_cast<const unsigned char*>(source.c_str()), source.length(), digest);
+  return Base64Encode(digest, sizeof(digest));
+}
+
+bool DxcSendWebSocketFrame(uint8_t opcode, const uint8_t* payload, size_t length){
+  if(!DxcWsClient.connected()){
+    return false;
+  }
+  uint8_t header[10];
+  size_t headerLen = 0;
+  header[headerLen++] = 0x80 | (opcode & 0x0F);
+  if(length < 126){
+    header[headerLen++] = uint8_t(length);
+  }else if(length <= 0xFFFF){
+    header[headerLen++] = 126;
+    header[headerLen++] = uint8_t((length >> 8) & 0xFF);
+    header[headerLen++] = uint8_t(length & 0xFF);
+  }else{
+    header[headerLen++] = 127;
+    for(int shift = 56; shift >= 0; shift -= 8){
+      header[headerLen++] = uint8_t((uint64_t(length) >> shift) & 0xFF);
+    }
+  }
+  if(DxcWsClient.write(header, headerLen) != headerLen){
+    DxcDisconnectWebSocket();
+    return false;
+  }
+  if(length > 0 && payload != nullptr){
+    if(DxcWsClient.write(payload, length) != length){
+      DxcDisconnectWebSocket();
+      return false;
+    }
+  }
+  return true;
+}
+
+bool DxcSendWebSocketText(const char* text){
+  if(text == nullptr){
+    return DxcSendWebSocketFrame(0x1, nullptr, 0);
+  }
+  return DxcSendWebSocketFrame(0x1, reinterpret_cast<const uint8_t*>(text), strlen(text));
+}
+
+bool DxcSendWebSocketText(const String& text){
+  return DxcSendWebSocketFrame(0x1, reinterpret_cast<const uint8_t*>(text.c_str()), text.length());
+}
+
+bool DxcHandleWebSocketUpgrade(WiFiClient& webClient, const String& request, const String& method, const String& uri){
+  if(method != "GET" || uri != "/dxcws"){
+    return false;
+  }
+  String secKey = ExtractHttpHeader(request, "Sec-WebSocket-Key");
+  String upgrade = ExtractHttpHeader(request, "Upgrade");
+  String connection = ExtractHttpHeader(request, "Connection");
+  String upgradeLower = upgrade;
+  String connectionLower = connection;
+  upgradeLower.toLowerCase();
+  connectionLower.toLowerCase();
+  if(secKey.length() == 0 || upgradeLower != "websocket" || connectionLower.indexOf("upgrade") < 0){
+    webClient.println(F("HTTP/1.1 400 Bad Request"));
+    webClient.println(F("Content-Type: text/plain"));
+    webClient.println(F("Connection: close"));
+    webClient.println();
+    webClient.println(F("Invalid WebSocket handshake"));
+    return true;
+  }
+  if(DxcWsClient.connected()){
+    DxcDisconnectWebSocket();
+  }
+  String accept = DxcComputeWebSocketAccept(secKey);
+  webClient.println(F("HTTP/1.1 101 Switching Protocols"));
+  webClient.println(F("Upgrade: websocket"));
+  webClient.println(F("Connection: Upgrade"));
+  webClient.print(F("Sec-WebSocket-Accept: "));
+  webClient.println(accept);
+  webClient.println();
+  DxcWsClient = webClient;
+  DxcWsClient.setNoDelay(true);
+  DxcWsStatus = true;
+  DxcUpdateTelnetStatus(DxcTelnetClient.connected(), true);
+  DxcRequestReconnect();
+  return true;
+}
+
+void DxcHandleWebSocketClient(){
+  if(!DxcWsClient.connected()){
+    if(DxcWsStatus){
+      DxcWsStatus = false;
+      DxcDisconnectTelnet();
+    }
+    return;
+  }
+  while(DxcWsClient.available() >= 2){
+    uint8_t hdr[2];
+    if(DxcWsClient.read(hdr, 2) != 2){
+      DxcDisconnectWebSocket();
+      return;
+    }
+    uint8_t opcode = hdr[0] & 0x0F;
+    bool masked = (hdr[1] & 0x80) != 0;
+    uint64_t payloadLen = hdr[1] & 0x7F;
+
+    if(payloadLen == 126){
+      uint8_t ext[2];
+      while(DxcWsClient.connected() && DxcWsClient.available() < 2){
+        delay(1);
+      }
+      if(DxcWsClient.read(ext, 2) != 2){
+        DxcDisconnectWebSocket();
+        return;
+      }
+      payloadLen = (uint16_t(ext[0]) << 8) | uint16_t(ext[1]);
+    }else if(payloadLen == 127){
+      uint8_t ext[8];
+      while(DxcWsClient.connected() && DxcWsClient.available() < 8){
+        delay(1);
+      }
+      if(DxcWsClient.read(ext, 8) != 8){
+        DxcDisconnectWebSocket();
+        return;
+      }
+      payloadLen = 0;
+      for(int i = 0; i < 8; i++){
+        payloadLen = (payloadLen << 8) | ext[i];
+      }
+    }
+
+    uint8_t maskKey[4] = {0, 0, 0, 0};
+    if(masked){
+      while(DxcWsClient.connected() && DxcWsClient.available() < 4){
+        delay(1);
+      }
+      if(DxcWsClient.read(maskKey, 4) != 4){
+        DxcDisconnectWebSocket();
+        return;
+      }
+    }
+
+    if(payloadLen > 2048){
+      DxcDisconnectWebSocket();
+      return;
+    }
+
+    static uint8_t payload[2048];
+    size_t needed = size_t(payloadLen);
+    while(DxcWsClient.connected() && DxcWsClient.available() < int(needed)){
+      delay(1);
+    }
+    if(needed > 0 && DxcWsClient.read(payload, needed) != int(needed)){
+      DxcDisconnectWebSocket();
+      return;
+    }
+    if(masked){
+      for(size_t i = 0; i < needed; i++){
+        payload[i] ^= maskKey[i % 4];
+      }
+    }
+
+    if(opcode == 0x8){
+      DxcDisconnectWebSocket();
+      return;
+    }
+    if(opcode == 0x9){
+      DxcSendWebSocketFrame(0xA, payload, needed);
+      continue;
+    }
+    if(opcode != 0x1){
+      continue;
+    }
+
+    String command = "";
+    command.reserve(needed + 1);
+    for(size_t i = 0; i < needed; i++){
+      if(payload[i] != '\0'){
+        command += char(payload[i]);
+      }
+    }
+    command.trim();
+    if(command.length() == 0){
+      continue;
+    }
+    if(command == "@reconnect"){
+      DxcRequestReconnect();
+      continue;
+    }
+    if(!DxcTelnetClient.connected()){
+      DxcRequestReconnect();
+      continue;
+    }
+    DxcTelnetClient.print(command);
+    DxcTelnetClient.print("\r\n");
+  }
+}
+
+void DxcHandleTelnetClient(){
+  if(!DxcWsClient.connected()){
+    if(DxcTelnetClient.connected()){
+      DxcDisconnectTelnet();
+    }
+    return;
+  }
+
+  if(!DxcTelnetClient.connected()){
+    DxcUpdateTelnetStatus(false);
+    return;
+  }
+
+  if(DxcTelnetLoginPending && DxcCallsign.length() > 0){
+    DxcTelnetClient.print(DxcCallsign);
+    DxcTelnetClient.print("\r\n");
+    DxcTelnetLoginPending = false;
+  }
+
+  static uint8_t telnetBuffer[1024];
+  while(DxcTelnetClient.available()){
+    int chunk = DxcTelnetClient.read(telnetBuffer, sizeof(telnetBuffer));
+    if(chunk <= 0){
+      break;
+    }
+    if(!DxcSendWebSocketFrame(0x1, telnetBuffer, size_t(chunk))){
+      return;
+    }
+  }
+}
+
+void DxcLoop(){
+  DxcHandleWebSocketClient();
+  if(!DxcWsClient.connected()){
+    DxcDisconnectTelnet();
+    return;
+  }
+  if(!DxcTelnetClient.connected() && DxcConfigReady() && millis() >= DxcReconnectTimer){
+    DxcConnectTelnet();
+  }
+  DxcHandleTelnetClient();
 }

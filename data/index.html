@@ -325,7 +325,7 @@
 		.maptoggle{
 			position: absolute;
 			left: 16px;
-			top: 518px;
+			top: 500px;
 			z-index: 8;
 			width: auto;
 			padding: 7px 8px 8px 8px;
@@ -438,6 +438,27 @@
 			color: #fff;
 			text-decoration: underline;
 		}
+		.dxcbtn{
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			height: 28px;
+			padding: 0 12px;
+			margin-right: 8px;
+			color: #eaffea;
+			text-decoration: none;
+			background: linear-gradient(180deg, #0d5f2a, #08451d);
+			border-radius: 4px;
+			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+			font-weight: 700;
+			letter-spacing: 0.05em;
+			cursor: pointer;
+		}
+		.dxcbtn:hover{
+			background: linear-gradient(180deg, #127436, #0a5423);
+			color: #fff;
+			text-decoration: none;
+		}
 		a:hover {color: #fff;}
     a { color: #ccc; text-decoration: underline;}
 	</style>
@@ -512,15 +533,16 @@
 		<div class="second">
 			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
 				<span class="statuspill">
-					<span class="statuspillmain">
-						<span style="color: #fff;" id="AntName2"> </span>&nbsp;| POE
-						<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V |
-						 raw <span style="font-weight: bold;" id="AZValue">0</span>&deg; |
+						<span class="statuspillmain">
+							<span style="color: #fff;" id="AntName2"> </span>&nbsp;| POE
+							<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V |
+							raw <span style="font-weight: bold;" id="AZValue">0</span>&deg;
+							<a class="dxcbtn" href="/dxc.html?ws_port=80" onclick="window.open(this.href, 'DXC', 'width=960,height=720,left=0,top=0,menubar=no,location=no,status=no'); return false;">DXC</a>
 					</span>
 					<a class="setupbtn" href="/set" onclick="window.open( this.href, this.href, 'width=700,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;">SETUP</a>
 				</span>
 				<br>
-				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="NtpStatus" style="color: #666; font-size: 73%"></span><span id="ReleaseStatus" style="color: #666; font-size: 73%"></span><span id="FsDiagStatus" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
+				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="NtpStatus" style="color: #666; font-size: 73%"></span><span id="ReleaseStatus" style="color: #666; font-size: 73%"></span><span id="RawStatus" style="color: #666; font-size: 73%"></span><span id="FsDiagStatus" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
 			</p>
 		</div>
 	</div>
@@ -1202,7 +1224,7 @@
 			return;
 		}
 		if(FilesystemDiagStatus === "ok"){
-			info.innerHTML = " | FW/FS OK";
+			info.innerHTML = "";
 			return;
 		}
 		if(FilesystemDiagStatus === "mismatch"){
@@ -1218,6 +1240,12 @@
 			return;
 		}
 		info.innerHTML = "";
+	}
+
+	function updateRawStatus(){
+		var info = document.getElementById("RawStatus");
+		if(!info){ return; }
+		info.innerHTML = " | raw " + String(Azimuth || 0) + "&deg;";
 	}
 
 	function checkLatestRelease(){
@@ -1593,6 +1621,7 @@
 	    if (this.readyState == 4 && this.status == 200) {
 	      document.getElementById("AZValue").innerHTML = this.responseText;
 				Azimuth = this.responseText;
+				updateRawStatus();
 				// if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>1 ){	// || Status != 4
 				if( Number(AzimuthTmp) != Number(Azimuth) ){
 					AzimuthPulseStart = new Date().getTime();
