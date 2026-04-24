@@ -297,8 +297,9 @@ void AsyncElegantOtaIprClass::setID(const char* id){
     _id = id;
 }
 
-void AsyncElegantOtaIprClass::begin(AsyncWebServer *server, const char* username, const char* password){
+void AsyncElegantOtaIprClass::begin(AsyncWebServer *server, const char* username, const char* password, bool* authEnabled){
     _server = server;
+    _authEnabled = authEnabled;
 
     if(strlen(username) > 0){
         _authRequired = true;
@@ -311,7 +312,7 @@ void AsyncElegantOtaIprClass::begin(AsyncWebServer *server, const char* username
     }
 
     _server->on("/update/identity", HTTP_GET, [&](AsyncWebServerRequest *request){
-        if(_authRequired){
+        if(_authRequired && (_authEnabled == nullptr || *_authEnabled)){
             if(!request->authenticate(_username.c_str(), _password.c_str())){
                 return request->requestAuthentication();
             }
@@ -324,7 +325,7 @@ void AsyncElegantOtaIprClass::begin(AsyncWebServer *server, const char* username
     });
 
     _server->on("/update", HTTP_GET, [&](AsyncWebServerRequest *request){
-        if(_authRequired){
+        if(_authRequired && (_authEnabled == nullptr || *_authEnabled)){
             if(!request->authenticate(_username.c_str(), _password.c_str())){
                 return request->requestAuthentication();
             }
@@ -333,7 +334,7 @@ void AsyncElegantOtaIprClass::begin(AsyncWebServer *server, const char* username
     });
 
     _server->on("/update", HTTP_POST, [&](AsyncWebServerRequest *request) {
-        if(_authRequired){
+        if(_authRequired && (_authEnabled == nullptr || *_authEnabled)){
             if(!request->authenticate(_username.c_str(), _password.c_str())){
                 return request->requestAuthentication();
             }
@@ -344,7 +345,7 @@ void AsyncElegantOtaIprClass::begin(AsyncWebServer *server, const char* username
         request->send(response);
         restart();
     }, [&](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
-        if(_authRequired){
+        if(_authRequired && (_authEnabled == nullptr || *_authEnabled)){
             if(!request->authenticate(_username.c_str(), _password.c_str())){
                 return request->requestAuthentication();
             }

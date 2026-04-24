@@ -26,7 +26,7 @@ class AsyncElegantOtaIprClass{
     public:
         void
             setID(const char* id),
-            begin(AsyncWebServer *server, const char* username = "", const char* password = ""),
+            begin(AsyncWebServer *server, const char* username = "", const char* password = "", bool* authEnabled = nullptr),
             loop(),
             restart();
 
@@ -39,6 +39,7 @@ class AsyncElegantOtaIprClass{
         String _username = "";
         String _password = "";
         bool _authRequired = false;
+        bool* _authEnabled = nullptr;
 
 };
 

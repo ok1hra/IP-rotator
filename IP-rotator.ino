@@ -100,7 +100,6 @@ ToDo
   - serial protocol easycomm2
 - watchdog if eth_connected = false; > 5s, then reconect
 - do debugu vypisovat prumer casu behu hlavni smycky v ms
-- telnet
 - vycistit kod
   https://stackoverflow.com/questions/3420975/html5-canvas-zooming
   https://codepen.io/chengarda/pen/wRxoyB
@@ -278,6 +277,7 @@ int incomingByte = 0;   // for incoming serial data
 int i = 0;
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <MD5Builder.h>
 #include "EEPROM.h"
 #define EEPROM_SIZE 331   /*
 
@@ -307,8 +307,8 @@ int i = 0;
 33-34 - CwRaw
 35 - Reverse
 36 - NoEndstopLowZone
-37-40 - Authorised telnet client IP
-41-140 - Authorised telnet client key
+37-40 - reserved legacy
+41-140 - Web authentication key
 141-160 - YOUR_CALL
 161-164 - MQTT broker IP
 165-166 - MQTT_PORT
@@ -324,7 +324,8 @@ int i = 0;
 229 AZpreamp
 230 - ReverseAZ
 231 - PWMenable
-232-3 reserved legacy PWM start distance
+232 - WebAuthEnabled
+233 reserved legacy PWM start distance
 234-5 PwmRampSteps UShort
 236-245 - MQTT_USER
 246-265 - MQTT_PASS
@@ -347,11 +348,17 @@ int Altitude = 0;
 unsigned long WatchdogTimer=0;
 String ConfigBackupUploadBuffer = "";
 String ConfigBackupUploadError = "";
+bool WebAuthEnabled = false;
 
 //ajax
 #include <WebServer.h>
 #include "SPIFFS.h"
 WebServer ajaxserver(HTTP_SERVER_PORT+8);
+const char* WEB_AUTH_USER = "admin";
+const char* WEB_AUTH_REALM = "IP rotator";
+const char* WEB_AUTH_HEADERS[] = {"Authorization"};
+String WebDigestNonce = "";
+String WebDigestOpaque = "";
 
 WiFiServer server(HTTP_SERVER_PORT);
 #if defined(CN3A)
@@ -467,19 +474,6 @@ bool GraylineUtcAvailable(time_t* nowOut = nullptr){
   return true;
 }
 
-#define MAX_SRV_CLIENTS 1
-int TelnetServerIPport = 23;
-WiFiServer TelnetServer;
-WiFiClient TelnetServerClients[MAX_SRV_CLIENTS];
-IPAddress TelnetServerClientAuth;
-bool TelnetAuthorized = false;
-int TelnetAuthStep=0;
-int TelnetAuthStepFails=0;
-int TelnetLoginFails=0;
-long TelnetLoginFailsBanTimer[2]={0,600000};
-int RandomNumber;
-bool FirstListCommands=true;
-
 // Explicit prototypes keep Arduino's sketch preprocessor from breaking
 // if the large comment header is malformed or contains unusual content.
 uint32_t readADC_Cal(int ADC_Raw);
@@ -499,6 +493,10 @@ void Enter();
 void EnterChar(int OUT);
 void Prn(int OUT, int LN, String STR);
 void ListCommands(int OUT);
+String ReadSerialCommandTail(byte maxLen, unsigned long timeoutMs);
+void PrintWebKey(int OUT);
+void RegenerateWebKey(int OUT);
+void DisableWebAuth(int OUT);
 void http();
 void EthEvent(WiFiEvent_t event);
 void Mqtt();
@@ -507,10 +505,19 @@ void reSubscribe();
 void MqttRx(char *topic, byte *payload, unsigned int length);
 void AfterMQTTconnect();
 void MqttPubString(String TOPIC, String DATA, bool RETAIN);
-void TelnetAuth();
-void AuthQ(int NR, bool BAD);
-void Telnet();
 String UtcTime(int format);
+void InitWebAuth();
+String Md5Hex(const String& value);
+String DigestRandomHex();
+String ExtractHttpHeader(const String& request, const String& headerName);
+String ExtractDigestParam(const String& authHeader, const String& name, char delimiter);
+bool CheckDigestAuthorization(const String& authHeader, const String& method, const String& uri);
+void SendHttpDigestChallenge(WiFiClient& webClient);
+bool RequireAjaxAuth();
+bool AjaxAuthOk();
+void RegisterAjaxRoute(const char* uri, WebServer::THandlerFunction handler);
+void RegisterAjaxRoute(const char* uri, HTTPMethod method, WebServer::THandlerFunction handler);
+void RegisterAjaxUploadRoute(const char* uri, HTTPMethod method, WebServer::THandlerFunction handler, WebServer::THandlerFunction uploadHandler);
 void handlePostRot();
 void handleSet();
 void handleCal();
@@ -571,6 +578,8 @@ void RefreshFilesystemDiagnostics();
 bool LoadFilesystemBuildInfo();
 float GetPwmTuneAggressionFactor();
 String JsonEscape(const String& value);
+bool IsSafeConfigChar(byte value);
+String ReadFixedStringFromEeprom(int start, int length);
 bool JsonExtractString(const String& json, const char* key, String& value);
 bool JsonExtractLong(const String& json, const char* key, long& value);
 bool JsonExtractFloat(const String& json, const char* key, float& value);
@@ -682,22 +691,14 @@ void setup() {
     if(EEPROM.read(0)==0xff){
       NET_ID="0";
     }else{
-      for (int i=0; i<2; i++){
-        if(EEPROM.read(i)!=0xff){
-          NET_ID=NET_ID+char(EEPROM.read(i));
-        }
-      }
+      NET_ID = ReadFixedStringFromEeprom(0, 2);
     }
 
   // 2-22 RotName
   if(EEPROM.read(2)==0xff){
     RotName="Antenna";
   }else{
-    for (int i=2; i<23; i++){
-      if(EEPROM.read(i)!=0xff){
-        RotName=RotName+char(EEPROM.read(i));
-      }
-    }
+    RotName = ReadFixedStringFromEeprom(2, 21);
   }
 
   // 23 StartAzimuth
@@ -731,11 +732,7 @@ void setup() {
   if(EEPROM.read(169)==0xff){
     MapUrl="https://remoteqth.com/xplanet/OK.png";
   }else{
-    for (int i=169; i<220; i++){
-      if(EEPROM.read(i)!=0xff){
-        MapUrl=MapUrl+char(EEPROM.read(i));
-      }
-    }
+    MapUrl = ReadFixedStringFromEeprom(169, 51);
   }
 
   // 266 - MapSource
@@ -753,12 +750,7 @@ void setup() {
   if(EEPROM.read(267)==0xff){
     MapLocator="JO60UC";
   }else{
-    MapLocator = "";
-    for (int i=267; i<273; i++){
-      if(EEPROM.read(i)!=0xff){
-        MapLocator=MapLocator+char(EEPROM.read(i));
-      }
-    }
+    MapLocator = ReadFixedStringFromEeprom(267, 6);
     MapLocator.toUpperCase();
     if(MapLocator.length()!=6){
       MapLocator="JO60UC";
@@ -780,12 +772,7 @@ void setup() {
   if(EEPROM.read(275)==0xff){
     GraylineNtpServer = "pool.ntp.org";
   }else{
-    GraylineNtpServer = "";
-    for (int i=275; i<325; i++){
-      if(EEPROM.read(i)!=0xff){
-        GraylineNtpServer = GraylineNtpServer + char(EEPROM.read(i));
-      }
-    }
+    GraylineNtpServer = ReadFixedStringFromEeprom(275, 50);
     GraylineNtpServer.trim();
     if(GraylineNtpServer.length()<1 || GraylineNtpServer.length()>50){
       GraylineNtpServer = "pool.ntp.org";
@@ -1012,28 +999,15 @@ void setup() {
   if(EEPROM.read(236)==0xff){
     MQTT_USER="Login";
   }else{
-    for (int i=236; i<246; i++){
-      if(EEPROM.read(i)!=0xff){
-        MQTT_USER=MQTT_USER+char(EEPROM.read(i));
-      }
-    }
+    MQTT_USER = ReadFixedStringFromEeprom(236, 10);
   }
 
   // 246-265 - MQTT_PASS
   if(EEPROM.read(246)==0xff){
     MQTT_PASS="Password";
   }else{
-    for (int i=246; i<266; i++){
-      if(EEPROM.read(i)!=0xff){
-        MQTT_PASS=MQTT_PASS+char(EEPROM.read(i));
-      }
-    }
+    MQTT_PASS = ReadFixedStringFromEeprom(246, 20);
   }
-
-  TelnetServerClientAuth[0]=EEPROM.readByte(37);
-  TelnetServerClientAuth[1]=EEPROM.readByte(38);
-  TelnetServerClientAuth[2]=EEPROM.readByte(39);
-  TelnetServerClientAuth[3]=EEPROM.readByte(40);
 
   // 41-140 key
   // if clear, generate
@@ -1052,6 +1026,14 @@ void setup() {
     key[i-41] = EEPROM.readChar(i);
   }
   key[100] = '\0';
+
+  // 232 - WebAuthEnabled, default OFF on blank EEPROM.
+  if(EEPROM.read(232)==0xff){
+    WebAuthEnabled = false;
+  }else{
+    WebAuthEnabled = EEPROM.readBool(232);
+  }
+  InitWebAuth();
 
   // YOUR_CALL
   // move after ETH init
@@ -1124,16 +1106,14 @@ void setup() {
 
   #if defined(OTAWEB)
     OTAserver.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if(WebAuthEnabled && !request->authenticate(WEB_AUTH_USER, key)){
+          return request->requestAuthentication();
+        }
         request->send(200, "text/plain", "PSE QSY to /update");
     });
-    AsyncElegantOTA_IPR.begin(&OTAserver);    // Start OTA
+    AsyncElegantOTA_IPR.begin(&OTAserver, WEB_AUTH_USER, key, &WebAuthEnabled);    // Start OTA
     OTAserver.begin();
   #endif
-
-  TelnetServer.begin(TelnetServerIPport);
-  // TelnetlServer.setNoDelay(true);
-
-
   //------------------------------------------------
 
   // digitalWrite(EnablePin,0);
@@ -1147,49 +1127,50 @@ void setup() {
    ApplyGraylineNtpConfig();
 
    // ajax
-   ajaxserver.on("/",HTTP_POST, handlePostRot);
+   ajaxserver.collectHeaders(WEB_AUTH_HEADERS, 1);
+   RegisterAjaxRoute("/", HTTP_POST, handlePostRot);
    // ajaxserver.on("/STOP",HTTP_POST, handlePostStop);
-   ajaxserver.on("/", handleRoot);      //This is display page
-   ajaxserver.on("/readADC", handleADC);//To get update of ADC Value only
-   ajaxserver.on("/readAZ", handleAZ);
-   ajaxserver.on("/readFrontAZ", handleFrontAZ);
-   ajaxserver.on("/readAZadc", handleAZadc);
-   ajaxserver.on("/readStat", handleStat);
-   ajaxserver.on("/readTargetUi", handleTargetUi);
-   ajaxserver.on("/readStart", handleStart);
-   ajaxserver.on("/readElevation", handleElevation);
-   ajaxserver.on("/readMax", handleMax);
-   ajaxserver.on("/readAnt", handleAnt);
-   ajaxserver.on("/readAntName", handleAntName);
-   ajaxserver.on("/readMapUrl", handleMapUrl);
-   ajaxserver.on("/readMapSource", handleMapSource);
-   ajaxserver.on("/readMapLocator", handleMapLocator);
-   ajaxserver.on("/readMapZoomKm", handleMapZoomKm);
-   ajaxserver.on("/setMapLocator", handleSetMapLocator);
-   ajaxserver.on("/setMapZoomKm", handleSetMapZoomKm);
-   ajaxserver.on("/readMapTheme", handleMapTheme);
-  ajaxserver.on("/readGraylineDarkness", handleGraylineDarkness);
-  ajaxserver.on("/readGraylineInfo", handleGraylineInfo);
-  ajaxserver.on("/readRev", handleRev);
- ajaxserver.on("/readFsDiag", handleFsDiag);
- ajaxserver.on("/readPwmUi", handlePwmUi);
- ajaxserver.on("/setPwmMaxDuty", handleSetPwmMaxDuty);
- ajaxserver.on("/backup/config", HTTP_GET, handleBackupConfigDownload);
- ajaxserver.on("/backup/config", HTTP_POST, handleBackupConfigUpload, handleBackupConfigUploadData);
- ajaxserver.on("/map50.js", handleMap50js);
-  ajaxserver.on("/map50.js.gz", handleMap50jsGz);
-  ajaxserver.on("/RC-R.ttf", handleFontRegular);
-  ajaxserver.on("/RC-B.ttf", handleFontBold);
-  ajaxserver.on("/set", handleSet);
-  ajaxserver.on("/cal", handleCal);
-  ajaxserver.on("/readEndstop", handleEndstop);
-  ajaxserver.on("/readEndstopLowZone", handleEndstopLowZone);
-  ajaxserver.on("/readEndstopHighZone", handleEndstopHighZone);
-  ajaxserver.on("/setEndstopZones", handleSetEndstopZones);
-  ajaxserver.on("/readCwraw", handleCwraw);
-  ajaxserver.on("/readCcwraw", handleCcwraw);
-  ajaxserver.on("/readMAC", handleMAC);
-  ajaxserver.on("/readUptime", handleUptime);
+   RegisterAjaxRoute("/", handleRoot);      //This is display page
+   RegisterAjaxRoute("/readADC", handleADC);//To get update of ADC Value only
+   RegisterAjaxRoute("/readAZ", handleAZ);
+   RegisterAjaxRoute("/readFrontAZ", handleFrontAZ);
+   RegisterAjaxRoute("/readAZadc", handleAZadc);
+   RegisterAjaxRoute("/readStat", handleStat);
+   RegisterAjaxRoute("/readTargetUi", handleTargetUi);
+   RegisterAjaxRoute("/readStart", handleStart);
+   RegisterAjaxRoute("/readElevation", handleElevation);
+   RegisterAjaxRoute("/readMax", handleMax);
+   RegisterAjaxRoute("/readAnt", handleAnt);
+   RegisterAjaxRoute("/readAntName", handleAntName);
+   RegisterAjaxRoute("/readMapUrl", handleMapUrl);
+   RegisterAjaxRoute("/readMapSource", handleMapSource);
+   RegisterAjaxRoute("/readMapLocator", handleMapLocator);
+   RegisterAjaxRoute("/readMapZoomKm", handleMapZoomKm);
+   RegisterAjaxRoute("/setMapLocator", handleSetMapLocator);
+   RegisterAjaxRoute("/setMapZoomKm", handleSetMapZoomKm);
+   RegisterAjaxRoute("/readMapTheme", handleMapTheme);
+  RegisterAjaxRoute("/readGraylineDarkness", handleGraylineDarkness);
+  RegisterAjaxRoute("/readGraylineInfo", handleGraylineInfo);
+  RegisterAjaxRoute("/readRev", handleRev);
+ RegisterAjaxRoute("/readFsDiag", handleFsDiag);
+ RegisterAjaxRoute("/readPwmUi", handlePwmUi);
+ RegisterAjaxRoute("/setPwmMaxDuty", handleSetPwmMaxDuty);
+ RegisterAjaxRoute("/backup/config", HTTP_GET, handleBackupConfigDownload);
+ RegisterAjaxUploadRoute("/backup/config", HTTP_POST, handleBackupConfigUpload, handleBackupConfigUploadData);
+ RegisterAjaxRoute("/map50.js", handleMap50js);
+  RegisterAjaxRoute("/map50.js.gz", handleMap50jsGz);
+  RegisterAjaxRoute("/RC-R.ttf", handleFontRegular);
+  RegisterAjaxRoute("/RC-B.ttf", handleFontBold);
+  RegisterAjaxRoute("/set", handleSet);
+  RegisterAjaxRoute("/cal", handleCal);
+  RegisterAjaxRoute("/readEndstop", handleEndstop);
+  RegisterAjaxRoute("/readEndstopLowZone", handleEndstopLowZone);
+  RegisterAjaxRoute("/readEndstopHighZone", handleEndstopHighZone);
+  RegisterAjaxRoute("/setEndstopZones", handleSetEndstopZones);
+  RegisterAjaxRoute("/readCwraw", handleCwraw);
+  RegisterAjaxRoute("/readCcwraw", handleCcwraw);
+  RegisterAjaxRoute("/readMAC", handleMAC);
+  RegisterAjaxRoute("/readUptime", handleUptime);
    // ajaxserver.on("/cal/readAZ", handleAZ);
    ajaxserver.begin();                  //Start server
    Serial.println("HTTP ajax server started");
@@ -1202,7 +1183,6 @@ void loop() {
   http();
   Mqtt();
   CLI2();
-  Telnet();
   ajaxserver.handleClient();
   RunByStatus();
   Watchdog();
@@ -1465,10 +1445,6 @@ void Watchdog(){
       Prn(3, 0,"WDT reset ");
       Prn(3, 1, UtcTime(1));
     }
-  }
-
-  if(!TelnetServerClients[0].connected() && FirstListCommands==false){
-    FirstListCommands=true;
   }
 
   // AZ master potentiometer - must ne on end of Watchdog() because RunByStatus() must be next step
@@ -1841,18 +1817,46 @@ String FormatPwmTotalRampTime(unsigned int stepIntervalMs, byte maxDuty){
   return String(totalRampMs) + " ms total";
 }
 
+bool IsSafeConfigChar(byte value){
+  return value >= 32 && value <= 126;
+}
+
+String ReadFixedStringFromEeprom(int start, int length){
+  String value = "";
+  value.reserve(length);
+  for(int i = 0; i < length; i++){
+    byte raw = EEPROM.read(start + i);
+    if(raw == 0xff || raw == 0x00){
+      break;
+    }
+    if(IsSafeConfigChar(raw)){
+      value += char(raw);
+    }
+  }
+  return value;
+}
+
 String JsonEscape(const String& value){
   String escaped = "";
   escaped.reserve(value.length() + 8);
   for(size_t i = 0; i < value.length(); i++){
-    char c = value[i];
+    unsigned char c = static_cast<unsigned char>(value[i]);
     switch(c){
       case '\\': escaped += "\\\\"; break;
       case '"': escaped += "\\\""; break;
       case '\n': escaped += "\\n"; break;
       case '\r': escaped += "\\r"; break;
       case '\t': escaped += "\\t"; break;
-      default: escaped += c; break;
+      default:
+        if(c < 0x20){
+          const char* hex = "0123456789ABCDEF";
+          escaped += "\\u00";
+          escaped += hex[(c >> 4) & 0x0F];
+          escaped += hex[c & 0x0F];
+        }else{
+          escaped += char(c);
+        }
+        break;
     }
   }
   return escaped;
@@ -1991,6 +1995,7 @@ String ExportConfigBackupJson(){
   json += "    \"az_two_wire\": " + String(AZtwoWire ? "true" : "false") + ",\n";
   json += "    \"az_preamp\": " + String(AZpreamp ? "true" : "false") + ",\n";
   json += "    \"reverse_az\": " + String(ReverseAZ ? "true" : "false") + ",\n";
+  json += "    \"web_auth_enabled\": " + String(WebAuthEnabled ? "true" : "false") + ",\n";
   json += "    \"pwm_enable\": " + String(PWMenable ? "true" : "false") + ",\n";
   json += "    \"pwm_ramp_steps\": " + String(PwmRampSteps) + ",\n";
   json += "    \"pwm_max_duty\": " + String(PwmMaxDuty) + ",\n";
@@ -2031,7 +2036,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   long pwmTuneValue = 0, mqttPortValue = 0, mapSourceValue = 0, mapZoomValue = 0, graylineDarknessValue = 0, mapThemeValue = 0, oneTurnLimitValue = 0;
   float lowZoneValue = 0.0f, highZoneValue = 0.0f, pwmSlowWindowValue = 0.0f;
   bool endstopValue = false, acMotorValue = false, reverseValue = false, azTwoWireValue = false, azPreampValue = false;
-  bool reverseAzValue = false, pwmEnableValue = false, mqttLoginValue = false, elevationValue = false;
+  bool reverseAzValue = false, webAuthEnabledValue = false, pwmEnableValue = false, mqttLoginValue = false, elevationValue = false;
 
   if(!JsonExtractString(jsonPayload, "net_id", newNetId) || newNetId.length() < 1 || newNetId.length() > 2){
     return "Invalid net_id";
@@ -2089,6 +2094,9 @@ String ImportConfigBackupJson(const String& jsonPayload){
   }
   if(!JsonExtractBool(jsonPayload, "reverse_az", reverseAzValue)){
     return "Invalid reverse_az";
+  }
+  if(!JsonExtractBool(jsonPayload, "web_auth_enabled", webAuthEnabledValue)){
+    webAuthEnabledValue = false;
   }
   if(!JsonExtractBool(jsonPayload, "pwm_enable", pwmEnableValue)){
     return "Invalid pwm_enable";
@@ -2188,6 +2196,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   AZtwoWire = azTwoWireValue;
   AZpreamp = azPreampValue;
   ReverseAZ = reverseAzValue;
+  WebAuthEnabled = webAuthEnabledValue;
   PWMenable = pwmEnableValue && !ACmotor;
   PwmRampSteps = pwmRampStepsValue;
   PwmMaxDuty = pwmMaxDutyValue;
@@ -2246,6 +2255,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   EEPROM.writeBool(229, AZpreamp);
   EEPROM.writeBool(230, ReverseAZ);
   EEPROM.writeBool(231, PWMenable);
+  EEPROM.writeBool(232, WebAuthEnabled);
   EEPROM.writeUShort(234, PwmRampSteps);
   writeFixedString(236, 10, MQTT_USER);
   writeFixedString(246, 20, MQTT_PASS);
@@ -2636,10 +2646,6 @@ void CLI2(){
     incomingByte = Serial.read();
     OUT = 0;
   }
-  // if(TelnetServerClients[0].available()){
-  //   incomingByte=TelnetServerClients[0].read();
-  //   OUT = 1;
-  // }
   esp_task_wdt_reset();
   WdtTimer=millis();
 
@@ -2708,7 +2714,30 @@ long RawTmp = 0;
     // Serial.print("MAC ");
     // Serial.println(MACString);
     // Prn(OUT, 1,"");
-    Prn(OUT, 1,"Supported GS-232 commands: R L A S C Mxxx O F");
+    Prn(OUT, 1,"key - print web password");
+    Prn(OUT, 1,"KEY - regenerate web password");
+    Prn(OUT, 1,"noauth - disable web authentication");
+    Prn(OUT, 1,"R L A S C Mxxx O F - supported GS-232 commands");
+
+  // key / KEY
+  }else if(incomingByte==107 || incomingByte==75){
+    char firstChar = char(incomingByte);
+    String tail = ReadSerialCommandTail(2, 300);
+    String command = String(firstChar) + tail;
+    if(command == "key"){
+      PrintWebKey(OUT);
+    }else if(command == "KEY"){
+      RegenerateWebKey(OUT);
+    }
+
+  // noauth / NOAUTH
+  }else if(incomingByte==110 || incomingByte==78){
+    char firstChar = char(incomingByte);
+    String tail = ReadSerialCommandTail(5, 500);
+    String command = String(firstChar) + tail;
+    if(command == "noauth" || command == "NOAUTH"){
+      DisableWebAuth(OUT);
+    }
 
   // R 82 Clockwise Rotation
   }else if(incomingByte==82){
@@ -2861,73 +2890,36 @@ long RawTmp = 0;
   incomingByte=0;
 }
 void Enter(){
-  int OUT;
-  if(TelnetAuthorized==true){
-    OUT=1;
-  }else{
-    OUT=0;
-  }
+  int OUT=0;
 
   InputByte[0]=0;
   incomingByte = 0;
   bool br=false;
   Prn(OUT, 0,"> ");
 
-  if(OUT==0){
-    while(br==false) {
-      if(Serial.available()){
-        incomingByte=Serial.read();
-        if(incomingByte==13 || incomingByte==59){ // CR or ;
-          br=true;
-          Prn(OUT, 1,"");
-        }else{
-          Serial.write(incomingByte);
-          if(incomingByte!=10 && incomingByte!=13){
-            if(incomingByte==127){
-              if(InputByte[0] > 0){
-                InputByte[0]--;
-              }
-            }else{
-              InputByte[InputByte[0]+1]=incomingByte;
-              InputByte[0]++;
+  while(br==false) {
+    if(Serial.available()){
+      incomingByte=Serial.read();
+      if(incomingByte==13 || incomingByte==59){ // CR or ;
+        br=true;
+        Prn(OUT, 1,"");
+      }else{
+        Serial.write(incomingByte);
+        if(incomingByte!=10 && incomingByte!=13){
+          if(incomingByte==127){
+            if(InputByte[0] > 0){
+              InputByte[0]--;
             }
+          }else{
+            InputByte[InputByte[0]+1]=incomingByte;
+            InputByte[0]++;
           }
-        }
-        if(InputByte[0]==20){
-          br=true;
-          Prn(OUT, 1," too long");
         }
       }
-    }
-
-  }else if(OUT==1){
-    if (TelnetServerClients[0] && TelnetServerClients[0].connected()){
-
-        while(br==false){
-          if(TelnetServerClients[0].available()){
-            incomingByte=TelnetServerClients[0].read();
-            if(incomingByte==10){
-              br=true;
-              Prn(OUT, 1,"");
-            }else{
-              TelnetServerClients[0].write(incomingByte);
-              if(incomingByte!=10 && incomingByte!=13){
-                if(incomingByte==127){
-                  if(InputByte[0] > 0){
-                    InputByte[0]--;
-                  }
-                }else{
-                  InputByte[InputByte[0]+1]=incomingByte;
-                  InputByte[0]++;
-                }
-              }
-            }
-            if(InputByte[0]==20){
-              br=true;
-              Prn(OUT, 1," too long");
-            }
-          }
-        }
+      if(InputByte[0]==20){
+        br=true;
+        Prn(OUT, 1," too long");
+      }
     }
   }
 
@@ -2944,58 +2936,17 @@ void Enter(){
 void EnterChar(int OUT){
   incomingByte = 0;
   Prn(OUT, 0," > ");
-  if(OUT==0){
-    while (Serial.available() == 0) {
-      // Wait
-    }
-    incomingByte = Serial.read();
-  }else if(OUT==1){
-    if (TelnetServerClients[0] && TelnetServerClients[0].connected()){
-      while(incomingByte==0){
-        if(TelnetServerClients[0].available()){
-          incomingByte=TelnetServerClients[0].read();
-        }
-      }
-      if(EnableSerialDebug>0){
-        Serial.println();
-        Serial.print("Telnet rx-");
-        Serial.print(incomingByte, DEC);
-      }
-    }
+  while (Serial.available() == 0) {
+    // Wait
   }
+  incomingByte = Serial.read();
   Prn(OUT, 1, String(char(incomingByte)) );
 }
 
 void Prn(int OUT, int LN, String STR){
-  if(OUT==3){
-    if(TelnetAuthorized==true){
-      OUT=1;
-    }else{
-      OUT=0;
-    }
-  }
-
-  if(OUT==0){
-    Serial.print(STR);
-    if(LN==1){
-      Serial.println();
-    }
-  }else if(OUT==1){
-    size_t len = STR.length()+1;
-    // uint8_t sbuf[len];
-    char sbuf[len];
-    STR.toCharArray(sbuf, len);
-    //push data to all connected telnet clients
-    for(i = 0; i < MAX_SRV_CLIENTS; i++){
-      if (TelnetServerClients[i] && TelnetServerClients[i].connected()){
-        TelnetServerClients[i].write(sbuf, len-1);
-        // delay(1);
-        if(LN==1){
-          TelnetServerClients[i].write(13); // CR
-          TelnetServerClients[i].write(10); // LF
-        }
-      }
-    }
+  Serial.print(STR);
+  if(LN==1){
+    Serial.println();
   }
 }
 
@@ -3006,7 +2957,7 @@ void ListCommands(int OUT){
     Prn(OUT, 1,"");
     Prn(OUT, 1,"");
     Prn(OUT, 1," =============================================================");
-    Prn(OUT, 1," Please copy and save the IP address, MAC and telnet acces KEY");
+    Prn(OUT, 1," Please copy and save the IP address, MAC and web access KEY");
     Prn(OUT, 1,"");
       Prn(OUT, 1, "   "+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
       Serial.print("   ");
@@ -3025,7 +2976,7 @@ void ListCommands(int OUT){
       Prn(OUT, 1,"");
     }
     Prn(OUT, 1,"");
-    Prn(OUT, 1," Then disconnect the USB, and log in using telnet");
+    Prn(OUT, 1," Then disconnect the USB, and log in using web");
     Prn(OUT, 1," More information https://remoteqth.com/w/doku.php?id=3d_print_wx_station#second_step_connect_remotely_via_ip");
     Prn(OUT, 1," =============================================================");
     Prn(OUT, 1,"");
@@ -3058,7 +3009,7 @@ void ListCommands(int OUT){
     #endif
 
     if(OUT==0){
-      Prn(OUT, 1,"  Key for telnet access:");
+      Prn(OUT, 1,"  Key for web access:");
       Prn(OUT, 0,"    ");
       for(int i=0; i<100; i++){
         Prn(OUT, 0, String(key[i]));
@@ -3187,26 +3138,70 @@ void ListCommands(int OUT){
     Prn(OUT, 1,"      x  TX repeat time ["+String(MeasureTimer[1]/60000)+" min]");
     Prn(OUT, 1,"      L  change location | "+YOUR_CALL);
     Prn(OUT, 1,"      &  send broadcast packet");
-    if(TelnetServerClients[0].connected()){
-      Prn(OUT, 0,"      q  disconnect and close telnet [verified IP ");
-      Prn(OUT, 0, String(TelnetServerClientAuth[0])+"."+String(TelnetServerClientAuth[1])+"."+String(TelnetServerClientAuth[2])+"."+String(TelnetServerClientAuth[3]) );
-      Prn(OUT, 1,"]");
-      Prn(OUT, 1,"      Q  logout with erase your verified IP from memory and close telnet");
-    }else{
-      Prn(OUT, 1,"      E  erase whole eeprom (telnet key also)");
-      // Prn(OUT, 1,"      C  eeprom commit");
-      Prn(OUT, 1,"      /  list directory");
-      Prn(OUT, 1,"      R  read log file");
-    }
+    Prn(OUT, 1,"      E  erase whole eeprom (web key also)");
+    // Prn(OUT, 1,"      C  eeprom commit");
+    Prn(OUT, 1,"      /  list directory");
+    Prn(OUT, 1,"      R  read log file");
     Prn(OUT, 1,"      e  list EEPROM");
     Prn(OUT, 1,"      2  I2C scanner");
     Prn(OUT, 1,"      .  reset timer and send measure");
     Prn(OUT, 1,"      W  erase wind speed max memory");
+    Prn(OUT, 1,"      key  print web password");
+    Prn(OUT, 1,"      KEY  regenerate web password");
+    Prn(OUT, 1,"      noauth  disable web authentication");
     Prn(OUT, 1,"      @  restart device");
     // Prn(OUT, 1,"---------------------------------------------");
     Prn(OUT, 0, " > " );
   }
   // digitalWrite(EnablePin,0);
+}
+
+String ReadSerialCommandTail(byte maxLen, unsigned long timeoutMs){
+  String tail = "";
+  unsigned long started = millis();
+  while(tail.length() < maxLen && millis() - started < timeoutMs){
+    if(Serial.available()){
+      char c = Serial.read();
+      if(c == '\r' || c == '\n' || c == ';'){
+        break;
+      }
+      tail += c;
+    }
+  }
+  return tail;
+}
+
+void PrintWebKey(int OUT){
+  Prn(OUT, 1,"");
+  Prn(OUT, 1,"Web authentication");
+  Prn(OUT, 1,"  user: admin");
+  Prn(OUT, 0,"  password: ");
+  for(int i=0; i<100; i++){
+    Prn(OUT, 0, String(key[i]));
+  }
+  Prn(OUT, 1,"");
+  Prn(OUT, 1,"");
+}
+
+void RegenerateWebKey(int OUT){
+  for(int i=41; i<141; i++){
+    char newChar = RandomChar();
+    EEPROM.writeChar(i, newChar);
+    key[i-41] = newChar;
+  }
+  key[100] = '\0';
+  EEPROM.commit();
+  InitWebAuth();
+  Prn(OUT, 1,"New web password generated.");
+  PrintWebKey(OUT);
+}
+
+void DisableWebAuth(int OUT){
+  WebAuthEnabled = false;
+  EEPROM.writeBool(232, WebAuthEnabled);
+  EEPROM.commit();
+  Prn(OUT, 1,"Web authentication disabled.");
+  Prn(OUT, 1,"Use Setup > Web authentication to enable it again.");
 }
 
 char RandomChar(){
@@ -3245,6 +3240,23 @@ void http(){
         // character) and the line is blank, the http request has ended,
         // so you can send a reply
         if (c == '\n' && currentLineIsBlank) {
+          int firstSpace = HTTP_req.indexOf(' ');
+          int secondSpace = HTTP_req.indexOf(' ', firstSpace + 1);
+          String method = "GET";
+          String uri = "/";
+          if(firstSpace > 0 && secondSpace > firstSpace){
+            method = HTTP_req.substring(0, firstSpace);
+            uri = HTTP_req.substring(firstSpace + 1, secondSpace);
+          }
+          String authorization = ExtractHttpHeader(HTTP_req, "Authorization");
+          if(!CheckDigestAuthorization(authorization, method, uri)){
+            SendHttpDigestChallenge(webClient);
+            if(EnableSerialDebug>0){
+              Serial.print(HTTP_req);
+            }
+            HTTP_req = "";
+            break;
+          }
           // send a standard http response header
 
           // send a standard http response header
@@ -3291,7 +3303,14 @@ void http(){
           webClient.println(F("            .messages .message header .mark.retain { background: #dc2626 !important; color: #fff !important; }"));
           webClient.println(F("            .messages .message header .mark.qos[data-qos=\"1\"] { background: #475569 !important; color: #fff !important; }"));
           webClient.println(F("            .messages .message header .mark.qos[data-qos=\"2\"] { background: #0f172a !important; color: #fff !important; }"));
-          webClient.println(F("            .messages .message p { color: #f8fafc !important; background: linear-gradient(180deg, rgba(51, 65, 85, 0.96) 0%, rgba(30, 41, 59, 0.98) 100%) !important; border: 1px solid rgba(148, 163, 184, 0.24); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }"));
+          webClient.println(F("            .messages .message header, .messages .message p, .messages .message code { font-variant-numeric: tabular-nums; }"));
+          webClient.println(F("            .messages .message p { color: #f8fafc !important; background-color: rgba(45, 58, 78, 0.98) !important; background-image: none !important; border: 1px solid rgba(148, 163, 184, 0.24); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease; }"));
+          webClient.println(F("            .messages .message p.ipr-flash { animation: iprValueFlash 0.85s ease-out; }"));
+          webClient.println(F("            @keyframes iprValueFlash {"));
+          webClient.println(F("              0% { background-color: rgba(250, 204, 21, 0.98) !important; border-color: rgba(254, 240, 138, 0.95); box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.16); color: #111827 !important; }"));
+          webClient.println(F("              38% { background-color: rgba(248, 113, 113, 0.98) !important; border-color: rgba(254, 202, 202, 0.92); box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.10); color: #fff7ed !important; }"));
+          webClient.println(F("              100% { background-color: rgba(45, 58, 78, 0.98) !important; border-color: rgba(148, 163, 184, 0.24); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); color: #f8fafc !important; }"));
+          webClient.println(F("            }"));
           webClient.println(F("            .status, .status a, .status em, .status span, #footer, #footer p, #footer a { color: #d1d5db !important; }"));
           webClient.println(F("            code { background: rgba(15, 23, 42, 0.95) !important; border-radius: 6px; padding: 2px 6px; }"));
           webClient.println(F("            #topic { background: transparent !important; color: #f9fafb !important; border: none !important; border-radius: 8px; font-weight: 700; letter-spacing: 0.03em; }"));
@@ -3500,6 +3519,69 @@ void http(){
           webClient.println(F("          <script type=\"text/javascript\" src=\"https://code.jquery.com/color/jquery.color-2.1.2.min.js\"></script>"));
           webClient.println(F("          <script type=\"text/javascript\" src=\"https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js\"></script>"));
           webClient.println(F("          <script type=\"text/javascript\" src=\"https://remoteqth.com/mqtt-wall/wall.js\"></script>"));
+          webClient.println(F("          <script type=\"text/javascript\">"));
+          webClient.println(F("            (function(){"));
+          webClient.println(F("              function flashValue(node){"));
+          webClient.println(F("                if(!node || !node.classList){ return; }"));
+          webClient.println(F("                node.classList.remove(\"ipr-flash\");"));
+          webClient.println(F("                void node.offsetWidth;"));
+          webClient.println(F("                node.classList.add(\"ipr-flash\");"));
+          webClient.println(F("              }"));
+          webClient.println(F("              function resolvePayloadNode(node){"));
+          webClient.println(F("                if(!node){ return null; }"));
+          webClient.println(F("                if(node.nodeType === 3){ node = node.parentElement; }"));
+          webClient.println(F("                if(!node || !node.closest){ return null; }"));
+          webClient.println(F("                return node.matches(\".messages .message p\") ? node : node.closest(\".messages .message p\");"));
+          webClient.println(F("              }"));
+          webClient.println(F("              function watchMessages(){"));
+          webClient.println(F("                var host = document.querySelector(\".messages\");"));
+          webClient.println(F("                if(!host){ window.setTimeout(watchMessages, 250); return; }"));
+          webClient.println(F("                var lastValues = new WeakMap();"));
+          webClient.println(F("                function markIfChanged(node){"));
+          webClient.println(F("                  var payload = resolvePayloadNode(node);"));
+          webClient.println(F("                  if(!payload){ return; }"));
+          webClient.println(F("                  var next = payload.textContent;"));
+          webClient.println(F("                  if(!next){ return; }"));
+          webClient.println(F("                  var prev = lastValues.get(payload);"));
+          webClient.println(F("                  if(prev === undefined){"));
+          webClient.println(F("                    lastValues.set(payload, next);"));
+          webClient.println(F("                    return;"));
+          webClient.println(F("                  }"));
+          webClient.println(F("                  if(prev !== next){"));
+          webClient.println(F("                    lastValues.set(payload, next);"));
+          webClient.println(F("                    flashValue(payload);"));
+          webClient.println(F("                  }"));
+          webClient.println(F("                }"));
+          webClient.println(F("                host.querySelectorAll(\".message p\").forEach(function(payload){"));
+          webClient.println(F("                  lastValues.set(payload, payload.textContent);"));
+          webClient.println(F("                });"));
+          webClient.println(F("                var observer = new MutationObserver(function(mutations){"));
+          webClient.println(F("                  mutations.forEach(function(mutation){"));
+          webClient.println(F("                    if(mutation.type === \"characterData\"){"));
+          webClient.println(F("                      markIfChanged(mutation.target);"));
+          webClient.println(F("                      return;"));
+          webClient.println(F("                    }"));
+          webClient.println(F("                    if(mutation.type === \"childList\"){"));
+          webClient.println(F("                      if(mutation.target){ markIfChanged(mutation.target); }"));
+          webClient.println(F("                      Array.prototype.forEach.call(mutation.addedNodes, function(added){"));
+          webClient.println(F("                        var payload = resolvePayloadNode(added);"));
+          webClient.println(F("                        if(payload){"));
+          webClient.println(F("                          lastValues.set(payload, payload.textContent);"));
+          webClient.println(F("                          flashValue(payload);"));
+          webClient.println(F("                        }"));
+          webClient.println(F("                      });"));
+          webClient.println(F("                    }"));
+          webClient.println(F("                  });"));
+          webClient.println(F("                });"));
+          webClient.println(F("                observer.observe(host, { childList: true, subtree: true, characterData: true });"));
+          webClient.println(F("              }"));
+          webClient.println(F("              if(document.readyState === \"loading\"){"));
+          webClient.println(F("                document.addEventListener(\"DOMContentLoaded\", watchMessages);"));
+          webClient.println(F("              }else{"));
+          webClient.println(F("                watchMessages();"));
+          webClient.println(F("              }"));
+          webClient.println(F("            })();"));
+          webClient.println(F("          </script>"));
           webClient.println(F("      </body>"));
           webClient.println(F("  </html>"));
 
@@ -3583,11 +3665,7 @@ void EthEvent(WiFiEvent_t event)
               YOUR_CALL=MACString;
               YOUR_CALL.remove(0, 12);
               }else{
-                for (int i=141; i<161; i++){
-                  if(EEPROM.read(i)!=0xff){
-                    YOUR_CALL=YOUR_CALL+char(EEPROM.read(i));
-                  }
-                }
+                YOUR_CALL = ReadFixedStringFromEeprom(141, 20);
               }
           }
 
@@ -3883,216 +3961,6 @@ void MqttPubString(String TOPIC, String DATA, bool RETAIN){
   }
 }
 //-------------------------------------------------------------------------------------------------------
-void TelnetAuth(){
-
-  switch (TelnetAuthStep) {
-    case 0: {
-      if(TelnetLoginFails>=3 && millis()-TelnetLoginFailsBanTimer[0]<TelnetLoginFailsBanTimer[1]){
-        Prn(1, 1,"");
-        Prn(1, 0,"   Ten minutes login ban, PSE QRX ");
-        Prn(1, 0,String((TelnetLoginFailsBanTimer[1]-millis()-TelnetLoginFailsBanTimer[0])/1000));
-        Prn(1, 1," seconds");
-        delay(3000);
-        TelnetServerClients[0].stop();
-        break;
-      }else if(TelnetLoginFails>2 && millis()-TelnetLoginFailsBanTimer[0]>TelnetLoginFailsBanTimer[1]){
-        TelnetLoginFails=0;
-      }
-      if(TelnetLoginFails<=3){
-        Prn(1, 1,"Login? [y/n] ");
-        TelnetAuthStep++;
-        incomingByte=0;
-      }
-      break; }
-    case 1: {
-      // incomingByte=TelnetRX();
-      if(incomingByte==121 || incomingByte==89){
-        Prn(1, 1,String(char(incomingByte)));
-        TelnetAuthStep++;
-      }else if(incomingByte!=121 && incomingByte!=0){
-        // TelnetServerClients[0].stop();
-        TelnetAuthorized=false;
-        TelnetAuthStep=0;
-        // TelnetServerClientAuth = {0,0,0,0};
-      }
-      break; }
-    case 2: {
-      AuthQ(1, 0);
-      TelnetAuthStepFails=0;
-      break; }
-    case 3: {
-      if(incomingByte==key[RandomNumber]){
-        Prn(1, 1, String(char(incomingByte)) );
-        AuthQ(2, 0);
-      }else if(incomingByte!=0 && incomingByte!=key[RandomNumber]){
-        Prn(1, 1, String(char(incomingByte)) );
-        AuthQ(2, 1);
-      }
-      break; }
-    case 4: {
-      if(incomingByte==key[RandomNumber]){
-        Prn(1, 1, String(char(incomingByte)) );
-        AuthQ(3, 0);
-      }else if(incomingByte!=0 && incomingByte!=key[RandomNumber]){
-        Prn(1, 1, String(char(incomingByte)) );
-        AuthQ(3, 1);
-      }
-      break; }
-    case 5: {
-      if(incomingByte==key[RandomNumber]){
-        Prn(1, 1, String(char(incomingByte)) );
-        AuthQ(4, 0);
-      }else if(incomingByte!=0 && incomingByte!=key[RandomNumber]){
-        Prn(1, 1, String(char(incomingByte)) );
-        AuthQ(4, 1);
-      }
-      break; }
-    case 6: {
-      if(incomingByte==key[RandomNumber]){
-        Prn(1, 1, String(char(incomingByte)) );
-        TelnetAuthStep++;
-        incomingByte=0;
-      }else if(incomingByte!=0 && incomingByte!=key[RandomNumber]){
-        Prn(1, 1, String(char(incomingByte)) );
-        TelnetAuthStep++;
-        incomingByte=0;
-        TelnetAuthStepFails++;
-      }
-      break; }
-    case 7: {
-      if(TelnetAuthStepFails==0){
-        TelnetAuthorized = true;
-        TelnetServerClientAuth = TelnetServerClients[0].remoteIP();
-        Prn(1, 1,"Login OK");
-        ListCommands(1);
-        TelnetAuthStep++;
-        incomingByte=0;
-      }else{
-        TelnetAuthorized = false;
-        TelnetServerClientAuth = {0,0,0,0};
-        Prn(1, 1,"Access denied");
-        TelnetAuthStep=0;
-        incomingByte=0;
-        TelnetLoginFails++;
-        TelnetLoginFailsBanTimer[0]=millis();
-      }
-      EEPROM.write(37, TelnetServerClientAuth[0]); // address, value
-      EEPROM.write(38, TelnetServerClientAuth[1]); // address, value
-      EEPROM.write(39, TelnetServerClientAuth[2]); // address, value
-      EEPROM.write(40, TelnetServerClientAuth[3]); // address, value
-      EEPROM.commit();
-      break; }
-  }
-}
-
-//-------------------------------------------------------------------------------------------------------
-
-void AuthQ(int NR, bool BAD){
-  Prn(1, 0,"What character is at ");
-  RandomNumber=random(0, strlen(key));
-  Prn(1, 0, String(RandomNumber+1) );
-  Prn(1, 0," position, in key? (");
-  Prn(1, 0,String(NR));
-  Prn(1, 1,"/4)");
-  // Prn(1, 1, String(key[RandomNumber]) );
-  TelnetAuthStep++;
-  incomingByte=0;
-  if(BAD==true){
-    TelnetAuthStepFails++;
-  }
-}
-
-//-------------------------------------------------------------------------------------------------------
-void Telnet(){
-  uint8_t i;
-  // if (wifiMulti.run() == WL_CONNECTED) {
-  if (eth_connected==true) {
-
-    //check if there are any new clients
-    if (TelnetServer.hasClient()){
-      for(i = 0; i < MAX_SRV_CLIENTS; i++){
-        //find free/disconnected spot
-        if (!TelnetServerClients[i] || !TelnetServerClients[i].connected()){
-          if(TelnetServerClients[i]) TelnetServerClients[i].stop();
-          TelnetServerClients[i] = TelnetServer.available();
-          if (!TelnetServerClients[i]) Serial.println("Telnet available broken");
-          if(EnableSerialDebug>0){
-            Serial.println();
-            Serial.print("New Telnet client: ");
-            Serial.print(i); Serial.print(' ');
-            Serial.println(TelnetServerClients[i].remoteIP());
-          }
-          break;
-        }
-      }
-      if (i >= MAX_SRV_CLIENTS) {
-        //no free/disconnected spot so reject
-        TelnetServer.available().stop();
-      }
-    }
-
-    //check clients for data
-    for(i = 0; i < MAX_SRV_CLIENTS; i++){
-      if (TelnetServerClients[i] && TelnetServerClients[i].connected()){
-        if(TelnetServerClients[i].available()){
-          //get data from the telnet client and push it to the UART
-          // while(TelnetServerClients[i].available()) Serial_one.write(TelnetServerClients[i].read());
-          if(EnableSerialDebug>0){
-            Serial.println();
-            Serial.print("TelnetRX ");
-          }
-
-          while(TelnetServerClients[i].available()){
-            incomingByte=TelnetServerClients[i].read();
-            // Serial_one.write(RX);
-            if(EnableSerialDebug>0){
-              // Serial.write(RX);
-              Serial.print(char(incomingByte));
-            }
-          }
-        }
-      }else{
-        if (TelnetServerClients[i]) {
-          TelnetServerClients[i].stop();
-          TelnetAuthorized=false;
-          FirstListCommands=true;
-          // TelnetServerClientAuth = {0,0,0,0};
-        }
-      }
-    }
-
-    //check UART for data
-    // if(Serial_one.available()){
-    //   size_t len = Serial_one.available();
-    //   uint8_t sbuf[len];
-    //   Serial_one.readBytes(sbuf, len);
-    //   //push UART data to all connected telnet clients
-    //   for(i = 0; i < MAX_SRV_CLIENTS; i++){
-    //     if (TelnetServerClients[i] && TelnetServerClients[i].connected()){
-    //       TelnetServerClients[i].write(sbuf, len);
-    //       // delay(1);
-    //       if(EnableSerialDebug>0){
-    //         Serial.println();
-    //         Serial.print("Telnet tx-");
-    //         Serial.write(sbuf, len);
-    //       }
-    //     }
-    //   }
-    // }
-
-  }else{
-    // if(EnableSerialDebug>0){
-    //   Serial.println("Telnet not connected!");
-    // }
-    for(i = 0; i < MAX_SRV_CLIENTS; i++) {
-      if (TelnetServerClients[i]) TelnetServerClients[i].stop();
-    }
-    delay(1000);
-  }
-}
-
-//-------------------------------------------------------------------------------------------------------
-
 String UtcTime(int format){
   tm timeinfo;
   char buf[50]; //50 chars should be enough
@@ -4113,6 +3981,180 @@ String UtcTime(int format){
   }
   // Serial.println(buf);
   return String(buf);
+}
+
+void InitWebAuth(){
+  WebDigestNonce = DigestRandomHex();
+  WebDigestOpaque = DigestRandomHex();
+}
+
+String Md5Hex(const String& value){
+  MD5Builder md5;
+  md5.begin();
+  md5.add(value);
+  md5.calculate();
+  return md5.toString();
+}
+
+String DigestRandomHex(){
+  char buffer[33];
+  for(int n=0; n<4; n++){
+    sprintf(buffer + (n*8), "%08x", esp_random());
+  }
+  buffer[32] = '\0';
+  return String(buffer);
+}
+
+String ExtractHttpHeader(const String& request, const String& headerName){
+  String needle = "\n" + headerName + ":";
+  int start = request.indexOf(needle);
+  if(start < 0){
+    needle = "\n" + headerName;
+    needle.toLowerCase();
+    String lowerRequest = request;
+    lowerRequest.toLowerCase();
+    start = lowerRequest.indexOf(needle + ":");
+    if(start < 0){
+      return "";
+    }
+  }
+  start = request.indexOf(':', start);
+  if(start < 0){
+    return "";
+  }
+  start++;
+  int end = request.indexOf('\n', start);
+  if(end < 0){
+    end = request.length();
+  }
+  String value = request.substring(start, end);
+  value.trim();
+  return value;
+}
+
+String ExtractDigestParam(const String& authHeader, const String& name, char delimiter){
+  String quotedNeedle = name + "=\"";
+  int start = authHeader.indexOf(quotedNeedle);
+  if(start >= 0){
+    start += quotedNeedle.length();
+    int end = authHeader.indexOf('"', start);
+    if(end < 0){
+      return "";
+    }
+    return authHeader.substring(start, end);
+  }
+  String rawNeedle = name + "=";
+  start = authHeader.indexOf(rawNeedle);
+  if(start < 0){
+    return "";
+  }
+  start += rawNeedle.length();
+  int end = authHeader.indexOf(delimiter, start);
+  if(end < 0){
+    end = authHeader.length();
+  }
+  String value = authHeader.substring(start, end);
+  value.trim();
+  return value;
+}
+
+bool CheckDigestAuthorization(const String& authHeader, const String& method, const String& uri){
+  if(!WebAuthEnabled){
+    return true;
+  }
+  if(!authHeader.startsWith("Digest ")){
+    return false;
+  }
+  String username = ExtractDigestParam(authHeader, "username", ',');
+  String realm = ExtractDigestParam(authHeader, "realm", ',');
+  String nonce = ExtractDigestParam(authHeader, "nonce", ',');
+  String requestUri = ExtractDigestParam(authHeader, "uri", ',');
+  String response = ExtractDigestParam(authHeader, "response", ',');
+  String opaque = ExtractDigestParam(authHeader, "opaque", ',');
+  String qop = ExtractDigestParam(authHeader, "qop", ',');
+  String nc = ExtractDigestParam(authHeader, "nc", ',');
+  String cnonce = ExtractDigestParam(authHeader, "cnonce", ',');
+
+  if(username != String(WEB_AUTH_USER) || realm != String(WEB_AUTH_REALM) || nonce != WebDigestNonce || opaque != WebDigestOpaque){
+    return false;
+  }
+  if(requestUri.length() == 0 || response.length() == 0){
+    return false;
+  }
+  String h1 = Md5Hex(String(WEB_AUTH_USER) + ":" + WEB_AUTH_REALM + ":" + String(key));
+  String h2 = Md5Hex(method + ":" + requestUri);
+  String expected;
+  if(qop == "auth"){
+    if(nc.length() == 0 || cnonce.length() == 0){
+      return false;
+    }
+    expected = Md5Hex(h1 + ":" + nonce + ":" + nc + ":" + cnonce + ":auth:" + h2);
+  }else{
+    expected = Md5Hex(h1 + ":" + nonce + ":" + h2);
+  }
+  return response == expected;
+}
+
+void SendHttpDigestChallenge(WiFiClient& webClient){
+  webClient.println(F("HTTP/1.1 401 Unauthorized"));
+  webClient.print(F("WWW-Authenticate: Digest realm=\""));
+  webClient.print(WEB_AUTH_REALM);
+  webClient.print(F("\", qop=\"auth\", nonce=\""));
+  webClient.print(WebDigestNonce);
+  webClient.print(F("\", opaque=\""));
+  webClient.print(WebDigestOpaque);
+  webClient.println(F("\""));
+  webClient.println(F("Content-Type: text/plain"));
+  webClient.println(F("Connection: close"));
+  webClient.println();
+  webClient.println(F("Authentication required"));
+}
+
+bool AjaxAuthOk(){
+  if(!WebAuthEnabled){
+    return true;
+  }
+  return ajaxserver.authenticate(WEB_AUTH_USER, key);
+}
+
+bool RequireAjaxAuth(){
+  if(AjaxAuthOk()){
+    return true;
+  }
+  ajaxserver.requestAuthentication(DIGEST_AUTH, WEB_AUTH_REALM, "Authentication required");
+  return false;
+}
+
+void RegisterAjaxRoute(const char* uri, WebServer::THandlerFunction handler){
+  ajaxserver.on(uri, [handler](){
+    if(!RequireAjaxAuth()){
+      return;
+    }
+    handler();
+  });
+}
+
+void RegisterAjaxRoute(const char* uri, HTTPMethod method, WebServer::THandlerFunction handler){
+  ajaxserver.on(uri, method, [handler](){
+    if(!RequireAjaxAuth()){
+      return;
+    }
+    handler();
+  });
+}
+
+void RegisterAjaxUploadRoute(const char* uri, HTTPMethod method, WebServer::THandlerFunction handler, WebServer::THandlerFunction uploadHandler){
+  ajaxserver.on(uri, method, [handler](){
+    if(!RequireAjaxAuth()){
+      return;
+    }
+    handler();
+  }, [uploadHandler](){
+    if(!AjaxAuthOk()){
+      return;
+    }
+    uploadHandler();
+  });
 }
 
 // ajax rx
@@ -4228,6 +4270,7 @@ void handleSet() {
   String mapThemeSELECT3= "";
   String mapThemeSELECT4= "";
   String mapThemeSELECT5= "";
+  String webauthCHECKED= "";
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -4246,6 +4289,7 @@ void handleSet() {
     && ajaxserver.hasArg("maptheme") == false \
     && ajaxserver.hasArg("graylinentp") == false \
     && ajaxserver.hasArg("graylinedarkness") == false \
+    && ajaxserver.hasArg("webauth") == false \
   ) {
     // MqttPubString("Debug", "Form not valid", false);
   }else{
@@ -4880,6 +4924,15 @@ void handleSet() {
       MqttPubString("MQTToginEnable", String(MQTT_LOGIN), true);
     }
 
+    // 232 - WebAuthEnabled
+    if(ajaxserver.arg("webauth").toInt()==1 && WebAuthEnabled==false){
+      WebAuthEnabled = true;
+      EEPROM.writeBool(232, WebAuthEnabled);
+    }else if(ajaxserver.arg("webauth").toInt()!=1 && WebAuthEnabled==true){
+      WebAuthEnabled = false;
+      EEPROM.writeBool(232, WebAuthEnabled);
+    }
+
     // 167 - ELEVATION
     if(ajaxserver.arg("elevation").toInt()==1 && ELEVATION==false){
       ELEVATION = true;
@@ -5063,6 +5116,12 @@ if(MQTT_LOGIN==true){
 }else{
   mqtt_loginCHECKED= "";
   mqtt_loginSTYLE=" style='text-decoration: line-through; color: #555;'";
+}
+
+if(WebAuthEnabled==true){
+  webauthCHECKED= "checked";
+}else{
+  webauthCHECKED= "";
 }
 
 if(MQTT_LOGIN==true){
@@ -5411,6 +5470,15 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc +="><span style='color:red;'>";
   HtmlSrc += mqtt_passERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Password max 20 character, for connect to MQTT broker</span></span></td></tr>\n";
+  HtmlSrc +="</table></details>\n";
+  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Web authentication</summary><table class='setup-table'>\n";
+  HtmlSrc +="<tr class='b'><td class='tdr'><label for='webauth'>Enable web authentication:</label></td><td><input type='checkbox' id='webauth' name='webauth' value='1' ";
+  HtmlSrc += webauthCHECKED;
+  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 260px;'>Protects the web pages, control API and OTA update with HTTP Digest authentication. HTTPS is not available, so use this only on a trusted local network.</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'>Web login user:</td><td><input type='text' size='10' value='";
+  HtmlSrc += WEB_AUTH_USER;
+  HtmlSrc +="' readonly></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'>Web login password:</td><td><span style='color:#ccc;'>Use the 100-character key printed on the USB serial console. Send command <strong>key</strong> to print it, or <strong>KEY</strong> to generate a new one.</span></td></tr>\n";
   HtmlSrc +="</table></details>\n";
   HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Backup and restore</summary><div class='backup-box'>";
   HtmlSrc +="<p>Download the full rotator configuration as a JSON backup, or upload it later to restore settings.</p>";
