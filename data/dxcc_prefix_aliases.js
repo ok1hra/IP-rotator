@@ -59,7 +59,7 @@
   addAliases(aliasMap, "BY", ["BA","BD","BG","BH","BI","BJ","BL","BM","BN","BO","BP","BQ","BR","BT","BU","BY"]);
   addAliases(aliasMap, "HL", ["6K","6L","6M","6N","D7","D8","D9","DS","DT","HL"]);
   addAliases(aliasMap, "YB", ["8A","8B","8C","YB","YC","YD","YE","YF","YG","YH"]);
-  addAliases(aliasMap, "DU", ["4D","4E","4F","DU","DV","DW","DX"]);
+  addAliases(aliasMap, "DU", ["4D","4E","4F","4G","4H","4I","DU","DV","DW","DX","DY","DZ"]);
   addAliases(aliasMap, "HS", ["E2","HS"]);
   addAliases(aliasMap, "VU", ["8T","AT","AU","VT","VU","VW"]);
   addAliases(aliasMap, "AP", ["AP","AS"]);

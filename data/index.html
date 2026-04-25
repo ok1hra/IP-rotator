@@ -2297,12 +2297,75 @@ var LAND_OUTLINES = [];
 		return cleaned || text.replace(/[^A-Z0-9\/]/g, "");
 	}
 
+	function canonicalizeDxccPrefixFallback(prefix){
+		var normalized = normalizePrefixQuery(prefix);
+		var match;
+		if(!normalized){
+			return "";
+		}
+		if(normalized.indexOf("EA6") === 0){ return "EA6"; }
+		if(normalized.indexOf("EA8") === 0){ return "EA8"; }
+		if(normalized.indexOf("EA9") === 0){ return "EA9"; }
+		if(normalized.indexOf("CT3") === 0){ return "CT3"; }
+		if(normalized.indexOf("CU") === 0){ return "CU"; }
+		if(normalized.indexOf("IS0") === 0){ return "IS0"; }
+		if(normalized.indexOf("GI") === 0 || normalized.indexOf("2I") === 0 || normalized.indexOf("MI") === 0){ return "GI"; }
+		if(normalized.indexOf("GM") === 0 || normalized.indexOf("2M") === 0 || normalized.indexOf("MM") === 0){ return "GM"; }
+		if(normalized.indexOf("GW") === 0 || normalized.indexOf("2W") === 0 || normalized.indexOf("MW") === 0){ return "GW"; }
+		if(normalized.indexOf("GD") === 0 || normalized.indexOf("2D") === 0 || normalized.indexOf("MD") === 0){ return "GD"; }
+		if(normalized.indexOf("GJ") === 0 || normalized.indexOf("2J") === 0 || normalized.indexOf("MJ") === 0){ return "GJ"; }
+		if(normalized.indexOf("GU") === 0 || normalized.indexOf("2U") === 0 || normalized.indexOf("MU") === 0){ return "GU"; }
+		if(normalized.indexOf("M") === 0 || normalized.indexOf("2E") === 0 || normalized.indexOf("GX") === 0 || normalized.indexOf("MX") === 0){ return "G"; }
+		if(/^(R[0-9]|R[A-Z][0-9]|U[A-I][0-9]|U[A-I][A-Z][0-9])/.test(normalized)){
+			match = normalized.match(/[0-9]/);
+			if(normalized.indexOf("UA2") === 0){ return "UA2"; }
+			return match && /^[089]$/.test(match[0]) ? "UA/AS" : "UA/E";
+		}
+		if(/^(AA|AB|AC|AD|AE|AF|AG|AI|AJ|AK|AL|K|N|W)/.test(normalized)){ return "K"; }
+		if(/^(CF|CG|CH|CI|CJ|CK|CY|CZ|VA|VB|VC|VD|VE|VF|VG|VO|VX|VY|XL|XM|XN|XO)/.test(normalized)){ return "VE"; }
+		if(/^(4D|4E|4F|4G|4H|4I|DU|DV|DW|DX|DY|DZ)/.test(normalized)){ return "DU"; }
+		if(/^(DA|DB|DC|DD|DE|DF|DG|DH|DJ|DK|DL|DM|DN|DO|DP|DQ|DR|Y[2-9])/.test(normalized)){ return "DL"; }
+		if(/^(OO|OP|OQ|OR|OS|OT)/.test(normalized)){ return "ON"; }
+		if(/^(PA|PB|PC|PD|PE|PF|PG|PH|PI)/.test(normalized)){ return "PA"; }
+		if(/^(F|TM|TO|TP|TQ|TV|TX)/.test(normalized)){ return "F"; }
+		if(/^(AM|AN|AO|EA|EB|EC|ED|EE|EF|EG|EH)/.test(normalized)){ return "EA"; }
+		if(/^(CQ|CR|CS|CT)/.test(normalized)){ return "CT"; }
+		if(/^(7J|7K|7L|7M|7N|8J|8K|8L|8M|8N|J[A-S])/.test(normalized)){ return "JA"; }
+		if(/^(AY|AZ|LO|LP|LQ|LR|LS|LT|LU|LV|LW)/.test(normalized)){ return "LU"; }
+		if(/^(3G|CA|CB|CC|CD|CE|XQ|XR)/.test(normalized)){ return "CE"; }
+		if(/^(PP|PQ|PR|PS|PT|PU|PV|PW|PX|PY|ZV|ZW|ZX|ZY|ZZ)/.test(normalized)){ return "PY"; }
+		if(/^(EM|EN|EO|UR|US|UT|UU|UV|UW|UX|UY|UZ)/.test(normalized)){ return "UR"; }
+		if(/^(EU|EV|EW)/.test(normalized)){ return "EU"; }
+		if(/^(OF|OG|OH|OI)/.test(normalized)){ return "OH"; }
+		if(/^(7S|8S|SA|SB|SC|SD|SE|SF|SG|SH|SI|SJ|SK|SL|SM)/.test(normalized)){ return "SM"; }
+		if(/^(LA|LB|LC|LD|LE|LF|LG|LH|LI|LJ|LK|LM|LN)/.test(normalized)){ return "LA"; }
+		if(/^(3Z|HF|SN|SO|SP|SQ|SR)/.test(normalized)){ return "SP"; }
+		if(/^(HB|HE)/.test(normalized)){ return "HB"; }
+		if(/^(I|IA|IB|IC|ID|IE|IF|IG|II|IJ|IK|IL|IM|IN|IO|IQ|IR|IS|IT|IU|IV|IW|IX|IY|IZ)/.test(normalized)){ return "I"; }
+		if(/^(J4|SV|SX|SY|SZ)/.test(normalized)){ return "SV"; }
+		if(/^(TA|TB|TC|YM)/.test(normalized)){ return "TA"; }
+		if(/^(YO|YP|YQ|YR)/.test(normalized)){ return "YO"; }
+		if(/^(HA|HG)/.test(normalized)){ return "HA"; }
+		if(/^(OK|OL)/.test(normalized)){ return "OK"; }
+		if(/^(EI|EJ)/.test(normalized)){ return "EI"; }
+		if(/^(YT|YU|YZ)/.test(normalized)){ return "YU"; }
+		if(/^(6K|6L|6M|6N|D7|D8|D9|DS|DT|HL)/.test(normalized)){ return "HL"; }
+		if(/^(8A|8B|8C|YB|YC|YD|YE|YF|YG|YH)/.test(normalized)){ return "YB"; }
+		if(/^(8T|AT|AU|VT|VU|VW)/.test(normalized)){ return "VU"; }
+		if(/^(AP|AS)/.test(normalized)){ return "AP"; }
+		if(/^(5C|5D|CN)/.test(normalized)){ return "CN"; }
+		if(/^(7R|7T|7U|7V|7W|7X)/.test(normalized)){ return "7X"; }
+		if(/^(5H|5I)/.test(normalized)){ return "5H"; }
+		if(/^(5Y|5Z)/.test(normalized)){ return "5Z"; }
+		return normalized;
+	}
+
 	function canonicalizeDxccPrefix(prefix){
 		var normalized = normalizePrefixQuery(prefix);
 		if(window.canonicalizeDxccPrefixAlias){
 			return window.canonicalizeDxccPrefixAlias(normalized);
 		}
-		return normalized;
+		return canonicalizeDxccPrefixFallback(normalized);
 	}
 
 	function ensureDxccPrefixIndex(){
