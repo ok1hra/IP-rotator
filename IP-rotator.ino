@@ -148,6 +148,12 @@ unsigned int MapZoomKm = 20000;
 String GraylineNtpServer = "pool.ntp.org";
 byte GraylineDarkness = 80;
 byte MapTheme = 1;
+bool DefaultDegOverlayEnabled = true;
+bool DefaultAntOverlayEnabled = true;
+bool DefaultMapLocGridEnabled = false;
+bool DefaultMapGraylineEnabled = true;
+bool DefaultMapBordersEnabled = false;
+bool DefaultMapDxccEnabled = false;
 bool FsMounted = false;
 bool FsBuildInfoPresent = false;
 bool FsBuildMatchesFirmware = false;
@@ -246,7 +252,7 @@ const int greenPWMChannel = 2;
 #include "esp_attr.h"
 
 // values
-char key[101];
+char WebAuthPasswordBuffer[101];
 long MeasureTimer[2]={2800000,300000};   //  millis,timer (5 min)
 
 /*
@@ -279,7 +285,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 413   /*
+#define EEPROM_SIZE 419   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -308,7 +314,7 @@ int i = 0;
 35 - Reverse
 36 - NoEndstopLowZone
 37-40 - reserved legacy
-41-140 - Web authentication key
+41-140 - Web authentication password
 141-160 - YOUR_CALL
 161-164 - MQTT broker IP
 165-166 - MQTT_PORT
@@ -325,7 +331,7 @@ int i = 0;
 230 - ReverseAZ
 231 - PWMenable
 232 - WebAuthEnabled
-233 reserved legacy PWM start distance
+233 - WebAuth password storage format marker
 234-5 PwmRampSteps UShort
 236-245 - MQTT_USER
 246-265 - MQTT_PASS
@@ -341,6 +347,12 @@ int i = 0;
 331-394 - DXC host/IP
 395-396 - DXC port
 397-412 - DXC callsign
+413 - DefaultDegOverlayEnabled
+414 - DefaultAntOverlayEnabled
+415 - DefaultMapLocGridEnabled
+416 - DefaultMapGraylineEnabled
+417 - DefaultMapBordersEnabled
+418 - DefaultMapDxccEnabled
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -491,7 +503,8 @@ bool GraylineUtcAvailable(time_t* nowOut = nullptr){
 // Explicit prototypes keep Arduino's sketch preprocessor from breaking
 // if the large comment header is malformed or contains unusual content.
 uint32_t readADC_Cal(int ADC_Raw);
-char RandomChar();
+bool IsSafeWebAuthPasswordValue(const String& value);
+bool LooksLikeLegacyWebAuthKey(const String& value);
 void Watchdog();
 void LedStatus();
 void LedStatusErr();
@@ -509,7 +522,6 @@ void Prn(int OUT, int LN, String STR);
 void ListCommands(int OUT);
 String ReadSerialCommandTail(byte maxLen, unsigned long timeoutMs);
 void PrintWebKey(int OUT);
-void RegenerateWebKey(int OUT);
 void DisableWebAuth(int OUT);
 void http();
 void EthEvent(WiFiEvent_t event);
@@ -521,7 +533,6 @@ void AfterMQTTconnect();
 void MqttPubString(String TOPIC, String DATA, bool RETAIN);
 String UtcTime(int format);
 void InitWebAuth();
-void RefreshWebAuthPassword();
 String Md5Hex(const String& value);
 String DigestRandomHex();
 String ExtractHttpHeader(const String& request, const String& headerName);
@@ -557,6 +568,7 @@ void handleSetMapLocator();
 void handleSetMapZoomKm();
 void handleMapTheme();
 void handleGraylineDarkness();
+void handleMapDisplayDefaults();
 void handleGraylineInfo();
 void handleRev();
 void handleFsDiag();
@@ -834,6 +846,38 @@ void setup() {
     }
   }
 
+  // 413-418 - control page default map/display toggles
+  if(EEPROM.read(413)==0xff){
+    DefaultDegOverlayEnabled = true;
+  }else{
+    DefaultDegOverlayEnabled = EEPROM.readBool(413);
+  }
+  if(EEPROM.read(414)==0xff){
+    DefaultAntOverlayEnabled = true;
+  }else{
+    DefaultAntOverlayEnabled = EEPROM.readBool(414);
+  }
+  if(EEPROM.read(415)==0xff){
+    DefaultMapLocGridEnabled = false;
+  }else{
+    DefaultMapLocGridEnabled = EEPROM.readBool(415);
+  }
+  if(EEPROM.read(416)==0xff){
+    DefaultMapGraylineEnabled = true;
+  }else{
+    DefaultMapGraylineEnabled = EEPROM.readBool(416);
+  }
+  if(EEPROM.read(417)==0xff){
+    DefaultMapBordersEnabled = false;
+  }else{
+    DefaultMapBordersEnabled = EEPROM.readBool(417);
+  }
+  if(EEPROM.read(418)==0xff){
+    DefaultMapDxccEnabled = false;
+  }else{
+    DefaultMapDxccEnabled = EEPROM.readBool(418);
+  }
+
   // 29  - Endstop
   if(EEPROM.read(29)==0xff){
     Endstop=false;
@@ -1066,24 +1110,27 @@ void setup() {
     MQTT_PASS = ReadFixedStringFromEeprom(246, 20);
   }
 
-  // 41-140 key
-  // if clear, generate
-  if(EEPROM.readByte(41)==255 && EEPROM.readByte(140)==255){
-    Serial.println();
-    Serial.println("  ** GENERATE KEY **");
-    for(int i=41; i<141; i++){
-      EEPROM.writeChar(i, RandomChar());
-      Serial.print("*");
-    }
-    EEPROM.commit();
-    Serial.println();
-  }
-  // read
+  // 41-140 WebAuthPassword
   for(int i=41; i<141; i++){
-    key[i-41] = EEPROM.readChar(i);
+    char currentChar = EEPROM.readChar(i);
+    if(currentChar == char(0xff) || currentChar == '\0'){
+      WebAuthPasswordBuffer[i-41] = '\0';
+      break;
+    }
+    WebAuthPasswordBuffer[i-41] = currentChar;
   }
-  key[100] = '\0';
-  RefreshWebAuthPassword();
+  WebAuthPasswordBuffer[100] = '\0';
+  WebAuthPassword = String(WebAuthPasswordBuffer);
+  bool webAuthPasswordStoredDirectly = EEPROM.readByte(233) == 0xA5;
+  if(!webAuthPasswordStoredDirectly && LooksLikeLegacyWebAuthKey(WebAuthPassword)){
+    WebAuthPassword = Md5Hex(WebAuthPassword);
+    WriteFixedStringToEeprom(41, 100, WebAuthPassword);
+    EEPROM.writeByte(233, 0xA5);
+    EEPROM.commit();
+  }else if(!webAuthPasswordStoredDirectly){
+    EEPROM.writeByte(233, 0xA5);
+    EEPROM.commit();
+  }
 
   // 232 - WebAuthEnabled, default OFF on blank EEPROM.
   if(EEPROM.read(232)==0xff){
@@ -1205,8 +1252,9 @@ void setup() {
    RegisterAjaxRoute("/readMapLocator", handleMapLocator);
    RegisterAjaxRoute("/readMapZoomKm", handleMapZoomKm);
    RegisterAjaxRoute("/setMapLocator", handleSetMapLocator);
-   RegisterAjaxRoute("/setMapZoomKm", handleSetMapZoomKm);
-   RegisterAjaxRoute("/readMapTheme", handleMapTheme);
+  RegisterAjaxRoute("/setMapZoomKm", handleSetMapZoomKm);
+  RegisterAjaxRoute("/readMapTheme", handleMapTheme);
+  RegisterAjaxRoute("/readMapDisplayDefaults", handleMapDisplayDefaults);
   RegisterAjaxRoute("/readGraylineDarkness", handleGraylineDarkness);
   RegisterAjaxRoute("/readGraylineInfo", handleGraylineInfo);
   RegisterAjaxRoute("/readRev", handleRev);
@@ -1881,6 +1929,32 @@ bool IsSafeConfigChar(byte value){
   return value >= 32 && value <= 126;
 }
 
+bool IsSafeWebAuthPasswordValue(const String& value){
+  for(size_t i = 0; i < value.length(); i++){
+    char c = value[i];
+    if(c == '"' || c == '\'' || c == '<' || c == '>' || c == '&'){
+      return false;
+    }
+  }
+  return true;
+}
+
+bool LooksLikeLegacyWebAuthKey(const String& value){
+  if(value.length() != 100){
+    return false;
+  }
+  for(size_t i = 0; i < value.length(); i++){
+    char c = value[i];
+    bool isDigit = (c >= '0' && c <= '9');
+    bool isUpper = (c >= 'A' && c <= 'Z');
+    bool isLower = (c >= 'a' && c <= 'z');
+    if(!(isDigit || isUpper || isLower)){
+      return false;
+    }
+  }
+  return true;
+}
+
 String ReadFixedStringFromEeprom(int start, int length){
   String value = "";
   value.reserve(length);
@@ -2062,6 +2136,7 @@ String ExportConfigBackupJson(){
   json += "    \"az_preamp\": " + String(AZpreamp ? "true" : "false") + ",\n";
   json += "    \"reverse_az\": " + String(ReverseAZ ? "true" : "false") + ",\n";
   json += "    \"web_auth_enabled\": " + String(WebAuthEnabled ? "true" : "false") + ",\n";
+  json += "    \"web_auth_password\": \"" + JsonEscape(WebAuthPassword) + "\",\n";
   json += "    \"pwm_enable\": " + String(PWMenable ? "true" : "false") + ",\n";
   json += "    \"pwm_ramp_steps\": " + String(PwmRampSteps) + ",\n";
   json += "    \"pwm_max_duty\": " + String(PwmMaxDuty) + ",\n";
@@ -2083,6 +2158,12 @@ String ExportConfigBackupJson(){
   json += "    \"grayline_ntp_server\": \"" + JsonEscape(GraylineNtpServer) + "\",\n";
   json += "    \"grayline_darkness\": " + String(GraylineDarkness) + ",\n";
   json += "    \"map_theme\": " + String(MapTheme) + ",\n";
+  json += "    \"default_deg_overlay\": " + String(DefaultDegOverlayEnabled ? "true" : "false") + ",\n";
+  json += "    \"default_ant_overlay\": " + String(DefaultAntOverlayEnabled ? "true" : "false") + ",\n";
+  json += "    \"default_loc_grid\": " + String(DefaultMapLocGridEnabled ? "true" : "false") + ",\n";
+  json += "    \"default_grayline\": " + String(DefaultMapGraylineEnabled ? "true" : "false") + ",\n";
+  json += "    \"default_state_borders\": " + String(DefaultMapBordersEnabled ? "true" : "false") + ",\n";
+  json += "    \"default_dxcc_prefixes\": " + String(DefaultMapDxccEnabled ? "true" : "false") + ",\n";
   json += "    \"one_turn_limit_sec\": " + String(OneTurnLimitSec) + "\n";
   json += "  }\n";
   json += "}\n";
@@ -2099,13 +2180,14 @@ String ImportConfigBackupJson(const String& jsonPayload){
     return "Unsupported backup version";
   }
 
-  String newNetId, newRotName, newYourCall, newMapUrl, newMqttUser, newMqttPass, newMapLocator, newGraylineNtp, mqttIpText, newDxcHost, newDxcCallsign;
+  String newNetId, newRotName, newYourCall, newMapUrl, newMqttUser, newMqttPass, newMapLocator, newGraylineNtp, mqttIpText, newDxcHost, newDxcCallsign, newWebAuthPassword;
   long startAzimuthValue = 0, maxRotateValue = 0, antAngleValue = 0, ccwRawValue = 0, cwRawValue = 0;
   long azSourceValue = 0, pulsePerDegreeValue = 0, baudRateValue = 0, pwmRampStepsValue = 0, pwmMaxDutyValue = 0;
   long pwmTuneValue = 0, mqttPortValue = 0, dxcPortValue = 0, mapSourceValue = 0, mapZoomValue = 0, graylineDarknessValue = 0, mapThemeValue = 0, oneTurnLimitValue = 0;
   float lowZoneValue = 0.0f, highZoneValue = 0.0f, pwmSlowWindowValue = 0.0f;
   bool endstopValue = false, acMotorValue = false, reverseValue = false, azTwoWireValue = false, azPreampValue = false;
   bool reverseAzValue = false, webAuthEnabledValue = false, pwmEnableValue = false, mqttLoginValue = false, elevationValue = false;
+  bool defaultDegOverlayValue = true, defaultAntOverlayValue = true, defaultLocGridValue = false, defaultGraylineValue = true, defaultStateBordersValue = false, defaultDxccPrefixesValue = false;
 
   if(!JsonExtractString(jsonPayload, "net_id", newNetId) || newNetId.length() < 1 || newNetId.length() > 2){
     return "Invalid net_id";
@@ -2166,6 +2248,15 @@ String ImportConfigBackupJson(const String& jsonPayload){
   }
   if(!JsonExtractBool(jsonPayload, "web_auth_enabled", webAuthEnabledValue)){
     webAuthEnabledValue = false;
+  }
+  if(!JsonExtractString(jsonPayload, "web_auth_password", newWebAuthPassword)){
+    newWebAuthPassword = WebAuthPassword;
+  }
+  if(newWebAuthPassword.length() > 100 || !IsSafeWebAuthPasswordValue(newWebAuthPassword)){
+    return "Invalid web_auth_password";
+  }
+  if(webAuthEnabledValue && newWebAuthPassword.length() < 1){
+    return "web_auth_password is required when web_auth_enabled is true";
   }
   if(!JsonExtractBool(jsonPayload, "pwm_enable", pwmEnableValue)){
     return "Invalid pwm_enable";
@@ -2241,6 +2332,24 @@ String ImportConfigBackupJson(const String& jsonPayload){
   if(!JsonExtractLong(jsonPayload, "map_theme", mapThemeValue) || mapThemeValue < 0 || mapThemeValue > 5){
     return "Invalid map_theme";
   }
+  if(!JsonExtractBool(jsonPayload, "default_deg_overlay", defaultDegOverlayValue)){
+    defaultDegOverlayValue = true;
+  }
+  if(!JsonExtractBool(jsonPayload, "default_ant_overlay", defaultAntOverlayValue)){
+    defaultAntOverlayValue = true;
+  }
+  if(!JsonExtractBool(jsonPayload, "default_loc_grid", defaultLocGridValue)){
+    defaultLocGridValue = false;
+  }
+  if(!JsonExtractBool(jsonPayload, "default_grayline", defaultGraylineValue)){
+    defaultGraylineValue = true;
+  }
+  if(!JsonExtractBool(jsonPayload, "default_state_borders", defaultStateBordersValue)){
+    defaultStateBordersValue = false;
+  }
+  if(!JsonExtractBool(jsonPayload, "default_dxcc_prefixes", defaultDxccPrefixesValue)){
+    defaultDxccPrefixesValue = false;
+  }
   if(!JsonExtractLong(jsonPayload, "one_turn_limit_sec", oneTurnLimitValue) || oneTurnLimitValue < 20 || oneTurnLimitValue > 600){
     return "Invalid one_turn_limit_sec";
   }
@@ -2281,6 +2390,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   AZpreamp = azPreampValue;
   ReverseAZ = reverseAzValue;
   WebAuthEnabled = webAuthEnabledValue;
+  WebAuthPassword = newWebAuthPassword;
   PWMenable = pwmEnableValue && !ACmotor;
   PwmRampSteps = pwmRampStepsValue;
   PwmMaxDuty = pwmMaxDutyValue;
@@ -2305,6 +2415,12 @@ String ImportConfigBackupJson(const String& jsonPayload){
   GraylineNtpServer = newGraylineNtp;
   GraylineDarkness = byte(graylineDarknessValue);
   MapTheme = byte(mapThemeValue);
+  DefaultDegOverlayEnabled = defaultDegOverlayValue;
+  DefaultAntOverlayEnabled = defaultAntOverlayValue;
+  DefaultMapLocGridEnabled = defaultLocGridValue;
+  DefaultMapGraylineEnabled = defaultGraylineValue;
+  DefaultMapBordersEnabled = defaultStateBordersValue;
+  DefaultMapDxccEnabled = defaultDxccPrefixesValue;
   OneTurnLimitSec = oneTurnLimitValue;
 
   WriteFixedStringToEeprom(0, 2, NET_ID);
@@ -2337,6 +2453,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   EEPROM.writeBool(230, ReverseAZ);
   EEPROM.writeBool(231, PWMenable);
   EEPROM.writeBool(232, WebAuthEnabled);
+  EEPROM.writeByte(233, 0xA5);
+  WriteFixedStringToEeprom(41, 100, WebAuthPassword);
   EEPROM.writeUShort(234, PwmRampSteps);
   WriteFixedStringToEeprom(236, 10, MQTT_USER);
   WriteFixedStringToEeprom(246, 20, MQTT_PASS);
@@ -2354,6 +2472,12 @@ String ImportConfigBackupJson(const String& jsonPayload){
   WriteFixedStringToEeprom(331, 64, DxcHost);
   EEPROM.writeUShort(395, DxcPort);
   WriteFixedStringToEeprom(397, 16, DxcCallsign);
+  EEPROM.writeBool(413, DefaultDegOverlayEnabled);
+  EEPROM.writeBool(414, DefaultAntOverlayEnabled);
+  EEPROM.writeBool(415, DefaultMapLocGridEnabled);
+  EEPROM.writeBool(416, DefaultMapGraylineEnabled);
+  EEPROM.writeBool(417, DefaultMapBordersEnabled);
+  EEPROM.writeBool(418, DefaultMapDxccEnabled);
   EEPROM.commit();
 
   digitalWrite(AZtwoWirePin, AZtwoWire);
@@ -2799,19 +2923,16 @@ long RawTmp = 0;
     // Serial.println(MACString);
     // Prn(OUT, 1,"");
     Prn(OUT, 1,"key - print web password");
-    Prn(OUT, 1,"KEY - regenerate internal key and web password");
     Prn(OUT, 1,"noauth - disable web authentication");
     Prn(OUT, 1,"R L A S C Mxxx O F - supported GS-232 commands");
 
-  // key / KEY
+  // key
   }else if(incomingByte==107 || incomingByte==75){
     char firstChar = char(incomingByte);
     String tail = ReadSerialCommandTail(2, 300);
     String command = String(firstChar) + tail;
     if(command == "key"){
       PrintWebKey(OUT);
-    }else if(command == "KEY"){
-      RegenerateWebKey(OUT);
     }
 
   // noauth / NOAUTH
@@ -3041,24 +3162,13 @@ void ListCommands(int OUT){
     Prn(OUT, 1,"");
     Prn(OUT, 1,"");
     Prn(OUT, 1," =============================================================");
-    Prn(OUT, 1," Please copy and save the IP address, MAC and web access KEY");
+    Prn(OUT, 1," Please copy and save the IP address and MAC address");
     Prn(OUT, 1,"");
       Prn(OUT, 1, "   "+String(ETH.localIP()[0])+"."+String(ETH.localIP()[1])+"."+String(ETH.localIP()[2])+"."+String(ETH.localIP()[3]) );
       Serial.print("   ");
       Serial.println(MACString);
     Prn(OUT, 1,"");
-    Prn(OUT, 1,"   [position]    key");
-    Prn(OUT, 0," ");
-    for(int i=0; i<10; i++){
-      Prn(OUT, 0,"    ["+String(i*10+1)+"-"+String(i*10+10)+"]  ");
-      if(i<9){
-        Prn(OUT, 0," ");
-      }
-      for(int j=0; j<10; j++){
-        Prn(OUT, 0, String(key[i*10+j]));
-      }
-      Prn(OUT, 1,"");
-    }
+    Prn(OUT, 1,"   Use command 'key' to print the current web password");
     Prn(OUT, 1,"");
     Prn(OUT, 1," Then disconnect the USB, and log in using web");
     Prn(OUT, 1," More information https://remoteqth.com/w/doku.php?id=3d_print_wx_station#second_step_connect_remotely_via_ip");
@@ -3093,15 +3203,7 @@ void ListCommands(int OUT){
     #endif
 
     if(OUT==0){
-      Prn(OUT, 1,"  Key for web access:");
-      Prn(OUT, 0,"    ");
-      for(int i=0; i<100; i++){
-        Prn(OUT, 0, String(key[i]));
-        if((i+1)%10==0){
-          Prn(OUT, 0," ");
-        }
-      }
-      Prn(OUT, 1,"");
+      Prn(OUT, 1,"  Use command 'key' to print the current web password");
     }
     // Prn(OUT, 1, "  ChipID: "+ChipidHex);
 
@@ -3222,7 +3324,7 @@ void ListCommands(int OUT){
     Prn(OUT, 1,"      x  TX repeat time ["+String(MeasureTimer[1]/60000)+" min]");
     Prn(OUT, 1,"      L  change location | "+YOUR_CALL);
     Prn(OUT, 1,"      &  send broadcast packet");
-    Prn(OUT, 1,"      E  erase whole eeprom (web key also)");
+    Prn(OUT, 1,"      E  erase whole eeprom (web password also)");
     // Prn(OUT, 1,"      C  eeprom commit");
     Prn(OUT, 1,"      /  list directory");
     Prn(OUT, 1,"      R  read log file");
@@ -3231,7 +3333,6 @@ void ListCommands(int OUT){
     Prn(OUT, 1,"      .  reset timer and send measure");
     Prn(OUT, 1,"      W  erase wind speed max memory");
     Prn(OUT, 1,"      key  print web password");
-    Prn(OUT, 1,"      KEY  regenerate internal key and web password");
     Prn(OUT, 1,"      noauth  disable web authentication");
     Prn(OUT, 1,"      @  restart device");
     // Prn(OUT, 1,"---------------------------------------------");
@@ -3260,23 +3361,13 @@ void PrintWebKey(int OUT){
   Prn(OUT, 1,"Web authentication");
   Prn(OUT, 1,"  user: admin");
   Prn(OUT, 0,"  password: ");
-  Prn(OUT, 0, WebAuthPassword);
-  Prn(OUT, 1,"");
-  Prn(OUT, 1,"");
-}
-
-void RegenerateWebKey(int OUT){
-  for(int i=41; i<141; i++){
-    char newChar = RandomChar();
-    EEPROM.writeChar(i, newChar);
-    key[i-41] = newChar;
+  if(WebAuthPassword.length() > 0){
+    Prn(OUT, 0, WebAuthPassword);
+  }else{
+    Prn(OUT, 0, "(not set)");
   }
-  key[100] = '\0';
-  RefreshWebAuthPassword();
-  EEPROM.commit();
-  InitWebAuth();
-  Prn(OUT, 1,"New web password generated.");
-  PrintWebKey(OUT);
+  Prn(OUT, 1,"");
+  Prn(OUT, 1,"");
 }
 
 void DisableWebAuth(int OUT){
@@ -3285,17 +3376,6 @@ void DisableWebAuth(int OUT){
   EEPROM.commit();
   Prn(OUT, 1,"Web authentication disabled.");
   Prn(OUT, 1,"Use Setup > Web authentication to enable it again.");
-}
-
-char RandomChar(){
-    int R = random(48, 122);
-    if(R>=58 && 64>=R){
-      R=R-random(7, 10);
-    }
-    if(R>=91 && 96>=R){
-      R=R+random(6, 26);
-    }
-    return char(R);
 }
 
 void http(){
@@ -4101,10 +4181,6 @@ void InitWebAuth(){
   WebDigestOpaque = DigestRandomHex();
 }
 
-void RefreshWebAuthPassword(){
-  WebAuthPassword = Md5Hex(String(key));
-}
-
 String Md5Hex(const String& value){
   MD5Builder md5;
   md5.begin();
@@ -4366,6 +4442,7 @@ void handleSet() {
   String mqtt_userERR= "";
   String mqtt_passSTYLE= "";
   String mqtt_passERR= "";
+  String webpassERR= "";
   String mqtt_loginDisable= "";
   String dxc_hostERR= "";
   String dxc_portERR= "";
@@ -4376,6 +4453,12 @@ void handleSet() {
   String graylinentpERR= "";
   String graylinedarknessERR= "";
   String mapthemeERR= "";
+  String mapdefaultdegCHECKED= "";
+  String mapdefaultantCHECKED= "";
+  String mapdefaultlocgridCHECKED= "";
+  String mapdefaultgraylineCHECKED= "";
+  String mapdefaultbordersCHECKED= "";
+  String mapdefaultdxccCHECKED= "";
   String mapSourceSELECT0= "";
   String mapSourceSELECT1= "";
   String mapUrlRowStyle= "";
@@ -4413,6 +4496,7 @@ void handleSet() {
     && ajaxserver.hasArg("dxcport") == false \
     && ajaxserver.hasArg("dxccall") == false \
     && ajaxserver.hasArg("webauth") == false \
+    && ajaxserver.hasArg("webpass") == false \
   ) {
     // MqttPubString("Debug", "Form not valid", false);
   }else{
@@ -4548,6 +4632,25 @@ void handleSet() {
             EEPROM.write(246+i, 0xff);
           }
         }
+      }
+    }
+
+    // 41-140 - WebAuthPassword
+    if ( ajaxserver.arg("webpass").length()>100){
+      webpassERR= " Out of range 0-100 characters";
+    }else if(!IsSafeWebAuthPasswordValue(ajaxserver.arg("webpass"))){
+      webpassERR= " Unsupported chars: avoid quotes, <, > and &";
+    }else{
+      String str = String(ajaxserver.arg("webpass"));
+      if(str.length() < 1 && ajaxserver.arg("webauth").toInt()==1){
+        webpassERR= " Password is required when web authentication is enabled";
+      }else if(WebAuthPassword == str){
+        webpassERR="";
+      }else{
+        webpassERR="";
+        WebAuthPassword = str;
+        EEPROM.writeByte(233, 0xA5);
+        WriteFixedStringToEeprom(41, 100, WebAuthPassword);
       }
     }
 
@@ -4784,6 +4887,38 @@ void handleSet() {
       }
     }
 
+    // Control page default map/display toggles
+    bool newDefaultDegOverlayEnabled = ajaxserver.arg("mapdefaultdeg").toInt() == 1;
+    bool newDefaultAntOverlayEnabled = ajaxserver.arg("mapdefaultant").toInt() == 1;
+    bool newDefaultMapLocGridEnabled = ajaxserver.arg("mapdefaultlocgrid").toInt() == 1;
+    bool newDefaultMapGraylineEnabled = ajaxserver.arg("mapdefaultgrayline").toInt() == 1;
+    bool newDefaultMapBordersEnabled = ajaxserver.arg("mapdefaultborders").toInt() == 1;
+    bool newDefaultMapDxccEnabled = ajaxserver.arg("mapdefaultdxcc").toInt() == 1;
+    if(DefaultDegOverlayEnabled != newDefaultDegOverlayEnabled){
+      DefaultDegOverlayEnabled = newDefaultDegOverlayEnabled;
+      EEPROM.writeBool(413, DefaultDegOverlayEnabled);
+    }
+    if(DefaultAntOverlayEnabled != newDefaultAntOverlayEnabled){
+      DefaultAntOverlayEnabled = newDefaultAntOverlayEnabled;
+      EEPROM.writeBool(414, DefaultAntOverlayEnabled);
+    }
+    if(DefaultMapLocGridEnabled != newDefaultMapLocGridEnabled){
+      DefaultMapLocGridEnabled = newDefaultMapLocGridEnabled;
+      EEPROM.writeBool(415, DefaultMapLocGridEnabled);
+    }
+    if(DefaultMapGraylineEnabled != newDefaultMapGraylineEnabled){
+      DefaultMapGraylineEnabled = newDefaultMapGraylineEnabled;
+      EEPROM.writeBool(416, DefaultMapGraylineEnabled);
+    }
+    if(DefaultMapBordersEnabled != newDefaultMapBordersEnabled){
+      DefaultMapBordersEnabled = newDefaultMapBordersEnabled;
+      EEPROM.writeBool(417, DefaultMapBordersEnabled);
+    }
+    if(DefaultMapDxccEnabled != newDefaultMapDxccEnabled){
+      DefaultMapDxccEnabled = newDefaultMapDxccEnabled;
+      EEPROM.writeBool(418, DefaultMapDxccEnabled);
+    }
+
     // 223 AZsource
     switch (ajaxserver.arg("source").toInt()) {
       case 0: {AZsource = 0;
@@ -4958,7 +5093,7 @@ void handleSet() {
       MqttPubString("PWMenable", "OFF", true);
     }
 
-    // 233 PwmRampSteps UShort
+    // 234-235 PwmRampSteps UShort
     if (ACmotor==false && PWMenable==true){
       if(ajaxserver.arg("pwmrampsteps").length()<1 || ajaxserver.arg("pwmrampsteps").toInt()<1 || ajaxserver.arg("pwmrampsteps").toInt()>200){
         pwmrampstepsERR= " Out of range number 1-200";
@@ -5087,7 +5222,14 @@ void handleSet() {
     }
 
     // 232 - WebAuthEnabled
-    if(ajaxserver.arg("webauth").toInt()==1 && WebAuthEnabled==false){
+    if(ajaxserver.arg("webauth").toInt()==1 && webpassERR.length() > 0){
+      WebAuthEnabled = false;
+      EEPROM.writeBool(232, WebAuthEnabled);
+    }else if(ajaxserver.arg("webauth").toInt()==1 && WebAuthPassword.length()<1){
+      webpassERR= " Password is required when web authentication is enabled";
+      WebAuthEnabled = false;
+      EEPROM.writeBool(232, WebAuthEnabled);
+    }else if(ajaxserver.arg("webauth").toInt()==1 && WebAuthEnabled==false){
       WebAuthEnabled = true;
       EEPROM.writeBool(232, WebAuthEnabled);
     }else if(ajaxserver.arg("webauth").toInt()!=1 && WebAuthEnabled==true){
@@ -5218,6 +5360,25 @@ if(MapTheme==0){
   mapThemeSELECT3 = "";
   mapThemeSELECT4 = "";
   mapThemeSELECT5 = " selected";
+}
+
+if(DefaultDegOverlayEnabled==true){
+  mapdefaultdegCHECKED = "checked";
+}
+if(DefaultAntOverlayEnabled==true){
+  mapdefaultantCHECKED = "checked";
+}
+if(DefaultMapLocGridEnabled==true){
+  mapdefaultlocgridCHECKED = "checked";
+}
+if(DefaultMapGraylineEnabled==true){
+  mapdefaultgraylineCHECKED = "checked";
+}
+if(DefaultMapBordersEnabled==true){
+  mapdefaultbordersCHECKED = "checked";
+}
+if(DefaultMapDxccEnabled==true){
+  mapdefaultdxccCHECKED = "checked";
 }
 
 // if(AZsource==true){
@@ -5360,8 +5521,8 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>\n";
   // <meta http-equiv = 'refresh' content = '600; url = /'>\n";
   HtmlSrc +="<style type='text/css'> @font-face {font-family: 'Roboto Condensed'; src: url('/RC-R.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap;} @font-face {font-family: 'Roboto Condensed'; src: url('/RC-B.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap;} button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button#go:hover {background-color: orange;} table, th, td {color: #fff; border-collapse: collapse; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle; padding-right: 15px} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} body {margin: 0; padding: 0 18px 28px 18px;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
-  HtmlSrc +=".b {border-top: 1px dotted #666;} .tooltip-text {visibility: hidden; position: absolute; z-index: 1; width: 300px; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; } .hover-text:hover .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
-  HtmlSrc +=".hover-text {position: relative; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; } .setup-wrap {max-width: 980px; margin: 0 auto;} .setup-form {color: #ccc; margin: 0; text-align: center;} .setup-section {background: #3b3b3b; border: 1px solid #555; border-radius: 14px; margin: 0 0 10px 0; overflow: hidden;} .setup-summary {cursor: pointer; list-style: none; padding: 10px 14px; text-align: left; font-size: 20px; color: #ddd; background: #444;} .setup-summary::-webkit-details-marker {display: none;} .setup-summary:after {content: '\\25be'; float: right; color: #aaa;} .setup-section[open] .setup-summary:after {content: '\\25b4';} .setup-table {width: 100%; table-layout: fixed;} .setup-table td {padding-top: 2px; padding-bottom: 2px;} .setup-table .tdr {width: 50%; box-sizing: border-box;} .setup-table td:last-child {width: 50%; text-align: left; box-sizing: border-box;} .setup-actions {text-align: center; margin-top: 18px;} .setup-note {color: #666; text-align: center; margin-top: 18px;} .backup-box {padding: 16px 18px 18px 18px; text-align: left; color: #ddd;} .backup-box p {margin: 0 0 14px 0; color: #bbb;} .backup-actions {display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px;} .backup-upload {display: flex; flex-wrap: wrap; gap: 10px; align-items: center;} .backup-upload input[type='file'] {max-width: 100%;} .backup-status {display: none; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #2f2f2f; color: #ddd;} .backup-status.is-ok {display: block; background: #16351d; color: #d5ffd8;} .backup-status.is-error {display: block; background: #4a1f1f; color: #ffd9d9;}</style>\n";
+  HtmlSrc +=".b {border-top: 1px dotted #666;} .tooltip-text {visibility: hidden; position: absolute; z-index: 9999; width: 300px; max-width: calc(100vw - 24px); box-sizing: border-box; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.35); } .hover-text:hover .tooltip-text, .hover-text:focus-within .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
+  HtmlSrc +=".hover-text {position: relative; z-index: 2; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; } .setup-wrap {max-width: 980px; margin: 0 auto;} .setup-form {color: #ccc; margin: 0; text-align: center;} .setup-section {position: relative; background: #3b3b3b; border: 1px solid #555; border-radius: 14px; margin: 0 0 10px 0; overflow: visible;} .setup-summary {cursor: pointer; list-style: none; padding: 10px 14px; text-align: left; font-size: 20px; color: #ddd; background: #444; transition: background-color 0.15s ease, color 0.15s ease;} .setup-summary:hover, .setup-summary:focus {background: orange; color: #111;} .setup-summary::-webkit-details-marker {display: none;} .setup-summary:after {content: '\\25be'; float: right; color: #aaa;} .setup-summary:hover:after, .setup-summary:focus:after {color: #111;} .setup-section[open] .setup-summary {background: #d8921a; color: #111;} .setup-section[open] .setup-summary:after {content: '\\25b4'; color: #111;} .setup-table {width: 100%; table-layout: fixed;} .setup-table td {padding-top: 2px; padding-bottom: 2px;} .setup-table .tdr {width: 50%; box-sizing: border-box;} .setup-table td:last-child {width: 50%; text-align: left; box-sizing: border-box;} .setup-actions {text-align: center; margin-top: 18px;} .setup-note {color: #666; text-align: center; margin-top: 18px;} .backup-box {padding: 16px 18px 18px 18px; text-align: left; color: #ddd;} .backup-box p {margin: 0 0 14px 0; color: #bbb;} .backup-actions {display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px;} .backup-upload {display: flex; flex-wrap: wrap; gap: 10px; align-items: center;} .backup-upload input[type='file'] {max-width: 100%;} .backup-status {display: none; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #2f2f2f; color: #ddd;} .backup-status.is-ok {display: block; background: #16351d; color: #d5ffd8;} .backup-status.is-error {display: block; background: #4a1f1f; color: #ffd9d9;}</style>\n";
   HtmlSrc +="</head><body>\n";
   HtmlSrc +="<H1 style='color: #666; text-align: center;'>Setup<br><span style='font-size: 50%;'>(MAC ";
   HtmlSrc +=MACString;
@@ -5465,6 +5626,24 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc +="'>&nbsp;%<span style='color:red;'>";
   HtmlSrc += graylinedarknessERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 190px;'>0 means invisible overlay, 100 means darkest night mask.</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultdeg'>Default DEG overlay:</label></td><td><input type='checkbox' id='mapdefaultdeg' name='mapdefaultdeg' value='1' ";
+  HtmlSrc += mapdefaultdegCHECKED;
+  HtmlSrc +="></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultant'>Default ANT overlay:</label></td><td><input type='checkbox' id='mapdefaultant' name='mapdefaultant' value='1' ";
+  HtmlSrc += mapdefaultantCHECKED;
+  HtmlSrc +="></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultlocgrid'>Default locator grid:</label></td><td><input type='checkbox' id='mapdefaultlocgrid' name='mapdefaultlocgrid' value='1' ";
+  HtmlSrc += mapdefaultlocgridCHECKED;
+  HtmlSrc +="></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultgrayline'>Default grayline:</label></td><td><input type='checkbox' id='mapdefaultgrayline' name='mapdefaultgrayline' value='1' ";
+  HtmlSrc += mapdefaultgraylineCHECKED;
+  HtmlSrc +="></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultborders'>Default state borders:</label></td><td><input type='checkbox' id='mapdefaultborders' name='mapdefaultborders' value='1' ";
+  HtmlSrc += mapdefaultbordersCHECKED;
+  HtmlSrc +="></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultdxcc'>Default DXCC prefixes:</label></td><td><input type='checkbox' id='mapdefaultdxcc' name='mapdefaultdxcc' value='1' ";
+  HtmlSrc += mapdefaultdxccCHECKED;
+  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>These values define how the control page toggles are pre-set after the page is opened or refreshed.</span></span></td></tr>\n";
   HtmlSrc +="</table></details>\n";
 
   HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Sensors and limits</summary><table class='setup-table'>\n";
@@ -5637,7 +5816,7 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc += mqtt_passERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Password max 20 character, for connect to MQTT broker</span></span></td></tr>\n";
   HtmlSrc +="</table></details>\n";
-  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>DXC</summary><table class='setup-table'>\n";
+  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>DX Cluster</summary><table class='setup-table'>\n";
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='dxchost'>DX cluster IP/host:</label></td><td><input type='text' id='dxchost' name='dxchost' size='24' value='";
   HtmlSrc += DxcHost;
   HtmlSrc +="'><span style='color:red;'>";
@@ -5661,7 +5840,11 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc +="<tr><td class='tdr'>Web login user:</td><td><input type='text' size='10' value='";
   HtmlSrc += WEB_AUTH_USER;
   HtmlSrc +="' readonly></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'>Web login password:</td><td><span style='color:#ccc;'>Use the password printed on the USB serial console. Send command <strong>key</strong> to print it, or <strong>KEY</strong> to generate a new one from the internal device key.</span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='webpass'>Web login password:</label></td><td><input type='password' id='webpass' name='webpass' size='24' maxlength='100' value='";
+  HtmlSrc += WebAuthPassword;
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += webpassERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 220px;'>Set your own web password here. The current password is also available in the USB serial console with command <strong>key</strong>.</span></span></td></tr>\n";
   HtmlSrc +="</table></details>\n";
   HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Backup and restore</summary><div class='backup-box'>";
   HtmlSrc +="<p>Download the full rotator configuration as a JSON backup, or upload it later to restore settings.</p>";
@@ -5673,7 +5856,7 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=1150,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></div>";
   HtmlSrc +="<p class='setup-note'>After change, refresh all other page for apply changes.<br><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></p>";
   HtmlSrc +="</div>";
-  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapThemeRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineNtpRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineDarknessRow').style.display=(s==='1')?'table-row':'none';}function setBackupStatus(message,isError){var box=document.getElementById('backupStatus');if(!box){return;}box.textContent=message;box.className='backup-status '+(isError?'is-error':'is-ok');}function uploadConfigBackup(){var input=document.getElementById('backupFile');if(!input||!input.files||!input.files.length){setBackupStatus('Select a backup JSON file first.',true);return;}var formData=new FormData();formData.append('file',input.files[0]);setBackupStatus('Uploading backup...',false);fetch('/backup/config',{method:'POST',body:formData}).then(function(response){return response.text().then(function(text){if(!response.ok){throw new Error(text||'Upload failed');}return text;});}).then(function(text){setBackupStatus(text||'Backup restored.',false);}).catch(function(error){setBackupStatus(error.message||'Upload failed',true);});}toggleMapSourceRows();</script>";
+  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapThemeRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineNtpRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineDarknessRow').style.display=(s==='1')?'table-row':'none';}function setBackupStatus(message,isError){var box=document.getElementById('backupStatus');if(!box){return;}box.textContent=message;box.className='backup-status '+(isError?'is-error':'is-ok');}function uploadConfigBackup(){var input=document.getElementById('backupFile');if(!input||!input.files||!input.files.length){setBackupStatus('Select a backup JSON file first.',true);return;}var formData=new FormData();formData.append('file',input.files[0]);setBackupStatus('Uploading backup...',false);fetch('/backup/config',{method:'POST',body:formData}).then(function(response){return response.text().then(function(text){if(!response.ok){throw new Error(text||'Upload failed');}return text;});}).then(function(text){setBackupStatus(text||'Backup restored.',false);}).catch(function(error){setBackupStatus(error.message||'Upload failed',true);});}var activeTooltipHost=null;function resetTooltip(trigger){var tip=trigger?trigger.querySelector('.tooltip-text'):null;if(!tip){return;}tip.style.left='';tip.style.right='';tip.style.top='';tip.style.bottom='';tip.style.position='';}function positionTooltip(trigger){var tip=trigger?trigger.querySelector('.tooltip-text'):null;if(!tip){return;}tip.style.position='fixed';tip.style.left='0px';tip.style.right='auto';tip.style.top='0px';tip.style.bottom='auto';var triggerRect=trigger.getBoundingClientRect();var tipRect=tip.getBoundingClientRect();var gap=12;var left=triggerRect.left+((triggerRect.width-tipRect.width)/2);var top=triggerRect.top-tipRect.height-gap;if(tip.id==='left'){left=triggerRect.left-tipRect.width-gap;top=triggerRect.top+((triggerRect.height-tipRect.height)/2);}else if(tip.id==='right'){left=triggerRect.right+gap;top=triggerRect.top+((triggerRect.height-tipRect.height)/2);}if(left<12){left=12;}if(left+tipRect.width>window.innerWidth-12){left=window.innerWidth-tipRect.width-12;}if(top<12){top=(tip.id==='top')?(triggerRect.bottom+gap):12;}if(top+tipRect.height>window.innerHeight-12){top=window.innerHeight-tipRect.height-12;}if(top<12){top=12;}tip.style.left=Math.round(left)+'px';tip.style.top=Math.round(top)+'px';}function bindTooltips(){var triggers=document.querySelectorAll('.hover-text');for(var i=0;i<triggers.length;i++){triggers[i].addEventListener('mouseenter',function(){activeTooltipHost=this;positionTooltip(this);});triggers[i].addEventListener('focusin',function(){activeTooltipHost=this;positionTooltip(this);});triggers[i].addEventListener('mouseleave',function(){if(activeTooltipHost===this){activeTooltipHost=null;}resetTooltip(this);});triggers[i].addEventListener('focusout',function(){if(activeTooltipHost===this){activeTooltipHost=null;}resetTooltip(this);});}}window.addEventListener('resize',function(){if(activeTooltipHost){positionTooltip(activeTooltipHost);}});window.addEventListener('scroll',function(){if(activeTooltipHost){positionTooltip(activeTooltipHost);}},true);toggleMapSourceRows();bindTooltips();</script>";
   HtmlSrc +="</body></html>\n";
 
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
@@ -6073,6 +6256,16 @@ void handleMapTheme() {
 }
 void handleGraylineDarkness() {
   ajaxserver.send(200, "text/plane", String(GraylineDarkness) );
+}
+void handleMapDisplayDefaults() {
+  ajaxserver.send(200, "text/plane",
+    String(DefaultDegOverlayEnabled ? "1" : "0") + "|" +
+    String(DefaultAntOverlayEnabled ? "1" : "0") + "|" +
+    String(DefaultMapLocGridEnabled ? "1" : "0") + "|" +
+    String(DefaultMapGraylineEnabled ? "1" : "0") + "|" +
+    String(DefaultMapBordersEnabled ? "1" : "0") + "|" +
+    String(DefaultMapDxccEnabled ? "1" : "0")
+  );
 }
 void handleGraylineInfo() {
   time_t now;

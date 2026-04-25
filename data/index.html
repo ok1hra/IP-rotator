@@ -534,19 +534,25 @@
 			<p style="font-size: 25px; color: #ccc; margin: 20 0 0 0; text-align: center;">
 				<span class="statuspill">
 						<span class="statuspillmain">
-							<span style="color: #fff;" id="AntName2"> </span>&nbsp;| POE
-							<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span> V |
-							raw <span style="font-weight: bold;" id="AZValue">0</span>&deg;
-							<a class="dxcbtn" href="/dxc.html?ws_port=80" onclick="window.open(this.href, 'DXC', 'width=960,height=720,left=0,top=0,menubar=no,location=no,status=no'); return false;">DXC</a>
+							<span style="color: #fff;" id="AntName2"> </span>&nbsp;|&nbsp;POE&nbsp;
+							<span style="color: #fff; font-weight: bold;" id="ADCValue">0</span>&nbsp;V&nbsp;
+							<a class="dxcbtn" href="/dxc.html?ws_port=80" onclick="window.open(this.href, 'DXC', 'width=600,height=750,left=0,top=0,menubar=no,location=no,status=no'); return false;">DXC</a>
 					</span>
-					<a class="setupbtn" href="/set" onclick="window.open( this.href, this.href, 'width=700,height=710,left=0,top=0,menubar=no,location=no,status=no' ); return false;">SETUP</a>
+					<a class="setupbtn" href="/set" onclick="window.open( this.href, this.href, 'width=700,height=750,left=0,top=0,menubar=no,location=no,status=no' ); return false;">SETUP</a>
 				</span>
 				<br>
-				<span style="color: #666; font-size: 73%" id="mac"> </span><span id="MapModeInfo" style="color: #666; font-size: 73%"></span><span id="NtpStatus" style="color: #666; font-size: 73%"></span><span id="ReleaseStatus" style="color: #666; font-size: 73%"></span><span id="RawStatus" style="color: #666; font-size: 73%"></span><span id="FsDiagStatus" style="color: #666; font-size: 73%"></span><span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
+				<span style="color: #666; font-size: 73%" id="mac"> </span>
+				<span id="MapModeInfo" style="color: #666; font-size: 73%"></span>
+				<span id="NtpStatus" style="color: #666; font-size: 73%"></span>
+				<span id="ReleaseStatus" style="color: #666; font-size: 73%"></span>
+				<span style="color: #666; font-size: 73%">&nbsp;|&nbsp;raw&nbsp;<span id="AZValue">0</span>°&nbsp;</span>
+				<span id="FsDiagStatus" style="color: #666; font-size: 73%"></span>
+				<span id="OnlineStatus" style="color: #666; font-size: 73%"></span>
 			</p>
 		</div>
 	</div>
 
+	<script src="/dxcc_prefix_aliases.js"></script>
 	<script>
 	var BoxSize = 600;
 	var Target  = 0;
@@ -577,6 +583,12 @@
 	var LastDxccRotateAt = 0;
 	var GraylineNtpOk = false;
 	var GraylineMinuteKey = "";
+	var DefaultDegOverlayEnabled = true;
+	var DefaultAntOverlayEnabled = true;
+	var DefaultMapLocGridEnabled = false;
+	var DefaultMapGraylineEnabled = true;
+	var DefaultMapBordersEnabled = false;
+	var DefaultMapDxccEnabled = false;
 	var AzimuthPulseStart = 0;
 	var OnlineTimeStamp = 0;
 	var Elevation = 0; 
@@ -879,6 +891,19 @@
 		MapDxccEnabled = !!enabled;
 		updateMapBordersControl();
 		updateMapDxccSearchControl();
+		map();
+	}
+
+	function applyMapDisplayDefaults(){
+		DegOverlayEnabled = !!DefaultDegOverlayEnabled;
+		AntOverlayEnabled = !!DefaultAntOverlayEnabled;
+		MapLocGridEnabled = !!DefaultMapLocGridEnabled;
+		MapGraylineEnabled = !!DefaultMapGraylineEnabled;
+		MapBordersEnabled = !!DefaultMapBordersEnabled;
+		MapDxccEnabled = !!DefaultMapDxccEnabled;
+		updateMapBordersControl();
+		updateMapDxccSearchControl();
+		AZ(Azimuth);
 		map();
 	}
 
@@ -1413,6 +1438,24 @@
 	  };
 	  shttp.open("GET", "readGraylineDarkness", true);
 	  shttp.send();
+
+	  var defaultsHttp = new XMLHttpRequest();
+	  defaultsHttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				var parts = String(this.responseText || "").split("|");
+				if(parts.length >= 6){
+					DefaultDegOverlayEnabled = parts[0] === "1";
+					DefaultAntOverlayEnabled = parts[1] === "1";
+					DefaultMapLocGridEnabled = parts[2] === "1";
+					DefaultMapGraylineEnabled = parts[3] === "1";
+					DefaultMapBordersEnabled = parts[4] === "1";
+					DefaultMapDxccEnabled = parts[5] === "1";
+					applyMapDisplayDefaults();
+				}
+	    }
+	  };
+	  defaultsHttp.open("GET", "readMapDisplayDefaults", true);
+	  defaultsHttp.send();
 
 	  var nhttp = new XMLHttpRequest();
 	  nhttp.onreadystatechange = function() {
@@ -2254,6 +2297,14 @@ var LAND_OUTLINES = [];
 		return cleaned || text.replace(/[^A-Z0-9\/]/g, "");
 	}
 
+	function canonicalizeDxccPrefix(prefix){
+		var normalized = normalizePrefixQuery(prefix);
+		if(window.canonicalizeDxccPrefixAlias){
+			return window.canonicalizeDxccPrefixAlias(normalized);
+		}
+		return normalized;
+	}
+
 	function ensureDxccPrefixIndex(){
 		if(DxccPrefixIndex){ return DxccPrefixIndex; }
 		DxccPrefixIndex = {};
@@ -2275,6 +2326,44 @@ var LAND_OUTLINES = [];
 		return DxccPrefixIndex;
 	}
 
+	function resolveDxccPrefixEntry(query){
+		var prefixIndex = ensureDxccPrefixIndex();
+		var normalized = normalizePrefixQuery(query);
+		var prefixes;
+		var i;
+		var candidate;
+		if(!normalized){
+			return null;
+		}
+		if(prefixIndex[normalized]){
+			return prefixIndex[normalized];
+		}
+		prefixes = Object.keys(prefixIndex).sort(function(a, b){
+			return b.length - a.length;
+		});
+		for(i = 0; i < prefixes.length; i++){
+			candidate = prefixes[i];
+			if(normalized.indexOf(candidate) === 0){
+				return prefixIndex[candidate];
+			}
+		}
+		candidate = canonicalizeDxccPrefix(normalized);
+		if(candidate && prefixIndex[candidate]){
+			return prefixIndex[candidate];
+		}
+		for(i = normalized.length - 1; i > 0; i--){
+			candidate = normalized.slice(0, i);
+			if(prefixIndex[candidate]){
+				return prefixIndex[candidate];
+			}
+			candidate = canonicalizeDxccPrefix(normalized.slice(0, i));
+			if(candidate && prefixIndex[candidate]){
+				return prefixIndex[candidate];
+			}
+		}
+		return null;
+	}
+
 	function updateDxccSearchSuggestions(query){
 		var list = document.getElementById("MapDxccSearchList");
 		if(!list || !MapDatasetReady){ return; }
@@ -2285,6 +2374,12 @@ var LAND_OUTLINES = [];
 			return;
 		}
 		var prefixIndex = ensureDxccPrefixIndex();
+		var aliasEntry = resolveDxccPrefixEntry(normalized);
+		if(aliasEntry && aliasEntry.label !== normalized){
+			list.innerHTML = "<option value='" + aliasEntry.label + "'>";
+			setDxccSearchStatus("Alias " + normalized + " -> " + aliasEntry.label, false);
+			return;
+		}
 		var prefixes = Object.keys(prefixIndex).sort();
 		var limit = 16;
 		var html = [];
@@ -2409,8 +2504,7 @@ var LAND_OUTLINES = [];
 			setDxccSearchStatus("Type DXCC prefix", true);
 			return;
 		}
-		var prefixIndex = ensureDxccPrefixIndex();
-		var entry = prefixIndex[normalized];
+		var entry = resolveDxccPrefixEntry(normalized);
 		if(!entry){
 			updateDxccSearchSuggestions(normalized);
 			return;
@@ -2422,6 +2516,8 @@ var LAND_OUTLINES = [];
 		}
 		var azimuth = bearingDegrees(center.lat, center.lon, entry.lat, entry.lon);
 		var entryName = entry.name ? " " + entry.name : "";
+		var entryLabel = entry.label || normalized;
+		var statusPrefix = normalized === entryLabel ? entryLabel : normalized + " -> " + entryLabel;
 		var dxccSearchInput = document.getElementById("MapDxccSearchInput");
 		rememberDxccRotate(normalized);
 		setTargetAzimuth(azimuth);
@@ -2429,10 +2525,10 @@ var LAND_OUTLINES = [];
 			dxccSearchInput.value = "";
 			updateDxccSearchSuggestions("");
 		}
-		setDxccSearchStatus("Rotating to " + normalized + entryName + " (" + azimuth + "°)");
+		setDxccSearchStatus("Rotating to " + statusPrefix + entryName + " (" + azimuth + "°)");
 		rotateToAzimuth(azimuth, function(ok, responseText){
 			if(ok){
-				setDxccSearchStatus("Rotating to " + normalized + entryName + " (" + azimuth + "°)");
+				setDxccSearchStatus("Rotating to " + statusPrefix + entryName + " (" + azimuth + "°)");
 			}else{
 				setDxccSearchStatus(responseText || "Rotate request failed", true);
 			}
