@@ -390,6 +390,8 @@ String DxcHost = "";
 uint16_t DxcPort = 7300;
 String DxcCallsign = "";
 String DxcMqttTopic = "";
+const char* DEFAULT_DXC_HOST = "ve7cc.net";
+const uint16_t DEFAULT_DXC_PORT = 23;
 bool DxcTelnetStatus = false;
 bool DxcWsStatus = false;
 bool DxcTelnetLoginPending = false;
@@ -5039,12 +5041,21 @@ void handleSet() {
     }
 
     String newDxcHost = String(ajaxserver.arg("dxchost"));
+    String newDxcPortArg = String(ajaxserver.arg("dxcport"));
     String newDxcCallsign = String(ajaxserver.arg("dxccall"));
     String newDxcMqttTopic = String(ajaxserver.arg("dxcmqtttopic"));
     newDxcHost.trim();
+    newDxcPortArg.trim();
     newDxcCallsign.trim();
     newDxcCallsign.toUpperCase();
     newDxcMqttTopic.trim();
+
+    if(newDxcHost.length() < 1){
+      newDxcHost = DEFAULT_DXC_HOST;
+    }
+    if(newDxcPortArg.length() < 1){
+      newDxcPortArg = String(DEFAULT_DXC_PORT);
+    }
 
     if(newDxcHost.length() > 63){
       dxc_hostERR = " Out of range 0-63 characters";
@@ -5056,11 +5067,11 @@ void handleSet() {
       }
     }
 
-    if ( ajaxserver.arg("dxcport").length()<1 || ajaxserver.arg("dxcport").toInt()<1 || ajaxserver.arg("dxcport").toInt()>65535){
+    if ( newDxcPortArg.toInt()<1 || newDxcPortArg.toInt()>65535){
       dxc_portERR = " Out of range number 1-65535";
     }else{
       dxc_portERR = "";
-      uint16_t newDxcPort = uint16_t(ajaxserver.arg("dxcport").toInt());
+      uint16_t newDxcPort = uint16_t(newDxcPortArg.toInt());
       if(DxcPort != newDxcPort){
         DxcPort = newDxcPort;
         EEPROM.writeUShort(395, DxcPort);
@@ -6217,20 +6228,20 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc +="</table></details>\n";
   HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>DX Cluster</summary><table class='setup-table'>\n";
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='dxchost'>DX cluster IP/host:</label></td><td><input type='text' id='dxchost' name='dxchost' size='24' value='";
-  HtmlSrc += DxcHost;
+  HtmlSrc += (DxcHost.length() > 0 ? DxcHost : String(DEFAULT_DXC_HOST));
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += dxc_hostERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 220px;'>Leave empty to disable DXC. The ESP32 opens a Telnet TCP connection to this host.</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 240px;'>When left empty, setup uses the default host ve7cc.net. The ESP32 opens a Telnet TCP connection to this host.</span></span></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='dxcport'>DX cluster PORT:</label></td><td><input type='text' id='dxcport' name='dxcport' size='6' value='";
-  HtmlSrc += String(DxcPort);
+  HtmlSrc += String((DxcHost.length() > 0) ? DxcPort : DEFAULT_DXC_PORT);
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += dxc_portERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 180px;'>Typical Telnet port is often 23 or 7300.</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 220px;'>When left empty, setup uses the default port 23. Typical Telnet port is often 23 or 7300.</span></span></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='dxccall'>DX cluster callsign:</label></td><td><input type='text' id='dxccall' name='dxccall' size='16' maxlength='16' value='";
   HtmlSrc += DxcCallsign;
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += dxc_callsignERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 210px;'>Sent to the DX cluster after Telnet connects. Required when DXC host is filled.</span></span></td></tr>\n";
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 210px;'>Sent to the DX cluster after Telnet connects. Required when DXC host is used.</span></span></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='dxcmqtttopic'>Send frequency to MQTT topic:</label></td><td><input type='text' id='dxcmqtttopic' name='dxcmqtttopic' size='28' maxlength='63' value='";
   HtmlSrc += DxcMqttTopic;
   HtmlSrc +="'><span style='color:red;'>";
