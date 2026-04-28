@@ -208,6 +208,7 @@ char MACchar[18];
 // #define WIFI                     // Enable ESP32 WIFI (DHCP IPv4) - NOT TESTED
 //-------------------------------------------------------------------------------------------------------
 
+#include "driver/pcnt.h"
 #include "esp_adc_cal.h"
 const int AzimuthPin    = 39;  // analog
 float AzimuthValue      = 0.0;
@@ -231,6 +232,11 @@ const int BrakePin      = 33;
 const int CwInputPin    = 36;
 const int CcwInputPin   = 5;
 int CwCcwInputValue      = 0;
+const pcnt_unit_t CwPulseCounterUnit = PCNT_UNIT_0;
+const pcnt_unit_t CcwPulseCounterUnit = PCNT_UNIT_1;
+long PulseCounterValue = 0;
+unsigned int PulseAzimuthTenths = 0;
+bool PulseCounterConfigured = false;
 const int AZmasterPin   = 32;  // analog
 int AZmaster            = 142;
 int AZmasterValue       = 0;
@@ -285,7 +291,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 419   /*
+#define EEPROM_SIZE 421   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -353,6 +359,7 @@ int i = 0;
 416 - DefaultMapGraylineEnabled
 417 - DefaultMapBordersEnabled
 418 - DefaultMapDxccEnabled
+419-420 - PulseAzimuthTenths UShort
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -553,6 +560,8 @@ void handleADC();
 void handleAZ();
 void handleFrontAZ();
 void handleAZadc();
+void handleAZsource();
+void handlePulseCounter();
 void handleStat();
 void handleTargetUi();
 void handleStart();
@@ -638,6 +647,15 @@ bool IsManualStatusValue(int statusValue);
 bool IsManualPwmKeyControlEnabled();
 void RequestManualStopRamp();
 bool HandleManualPwmStatus(long &PwmTimer);
+bool IsPulseAzimuthSource();
+void ConfigurePulseCounter();
+void ApplyAzimuthSourceMode(bool useStoredPulseAzimuth);
+void UpdatePulseAzimuthFromCounter();
+void PersistPulseAzimuthIfNeeded(bool forceSave);
+unsigned int ClampPulseAzimuthTenths(int valueTenths);
+long ClampPulseCount(long pulseCount);
+int GetPulseVirtualAdcValue();
+int GetPulseCounterValue();
 
 //-------------------------------------------------------------------------------------------------------
 
@@ -647,6 +665,7 @@ void setup() {
   // pinMode(CwCcwButtPin, INPUT);
   pinMode(CwInputPin, INPUT);
   pinMode(CcwInputPin, INPUT);
+  ConfigurePulseCounter();
 
   pinMode(HWidPin, INPUT);
     HWidValue = readADC_Cal(analogRead(HWidPin));
@@ -880,6 +899,11 @@ void setup() {
     DefaultMapDxccEnabled = false;
   }else{
     DefaultMapDxccEnabled = EEPROM.readBool(418);
+  }
+  if(EEPROM.read(419)==0xff){
+    PulseAzimuthTenths = 0;
+  }else{
+    PulseAzimuthTenths = ClampPulseAzimuthTenths(EEPROM.readUShort(419));
   }
 
   // 29  - Endstop
@@ -1143,6 +1167,7 @@ void setup() {
     WebAuthEnabled = EEPROM.readBool(232);
   }
   InitWebAuth();
+  ApplyAzimuthSourceMode(true);
 
   // YOUR_CALL
   // move after ETH init
@@ -1241,10 +1266,12 @@ void setup() {
    // ajaxserver.on("/STOP",HTTP_POST, handlePostStop);
    RegisterAjaxRoute("/", handleRoot);      //This is display page
    RegisterAjaxRoute("/readADC", handleADC);//To get update of ADC Value only
-   RegisterAjaxRoute("/readAZ", handleAZ);
-   RegisterAjaxRoute("/readFrontAZ", handleFrontAZ);
-   RegisterAjaxRoute("/readAZadc", handleAZadc);
-   RegisterAjaxRoute("/readStat", handleStat);
+  RegisterAjaxRoute("/readAZ", handleAZ);
+  RegisterAjaxRoute("/readFrontAZ", handleFrontAZ);
+  RegisterAjaxRoute("/readAZadc", handleAZadc);
+  RegisterAjaxRoute("/readAZsource", handleAZsource);
+  RegisterAjaxRoute("/readPulseCounter", handlePulseCounter);
+  RegisterAjaxRoute("/readStat", handleStat);
    RegisterAjaxRoute("/readTargetUi", handleTargetUi);
    RegisterAjaxRoute("/readStart", handleStart);
    RegisterAjaxRoute("/readElevation", handleElevation);
@@ -1378,6 +1405,8 @@ void Watchdog(){
       }
       AzimuthNoiseDeg = AzimuthNoiseDeg * 0.92 + abs(AzimuthRawDeg - AzimuthControlDeg) * 0.08;
       Azimuth=int(round(AzimuthRawDeg));
+    }else if(IsPulseAzimuthSource()){
+      UpdatePulseAzimuthFromCounter();
     }else{
       AzimuthRawDeg=Azimuth;
       AzimuthControlDeg=Azimuth;
@@ -1393,7 +1422,7 @@ void Watchdog(){
   }
 
   // KEY
-  if(AZsource<=1){ // potentiometer
+  if(AZsource==0){ // potentiometer
     static bool RunByKey = false;
     if(IsManualPwmKeyControlEnabled()){
       RunByKey=false;
@@ -1424,9 +1453,6 @@ void Watchdog(){
       RequestStopRamp(true);
       RunByKey=false;
     }
-  }else{
-    // pulse
-    // PulsePerDegree
   }
 
   static long AZchangeTimer = 0;
@@ -1457,6 +1483,9 @@ void Watchdog(){
     }
     MqttPubString("StatusHuman", StatusStr, false);
     MqttPubString("Status", String(Status+0), false); // +4)
+    if(Status == 0 && StatusTmp != 0){
+      PersistPulseAzimuthIfNeeded(true);
+    }
     StatusTmp=Status;
     LedStatus();
   }
@@ -1490,6 +1519,7 @@ void Watchdog(){
     }
     TxMqttAzimuthTimer=millis();
   }
+  PersistPulseAzimuthIfNeeded(false);
 
   static long PwmTelemetryTimer = 0;
   static float PwmSlowWindowPrev = -1.0;
@@ -2535,6 +2565,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
 
   digitalWrite(AZtwoWirePin, AZtwoWire);
   digitalWrite(AZpreampPin, AZpreamp);
+  ApplyAzimuthSourceMode(false);
   ApplyGraylineNtpConfig();
   return "";
 }
@@ -2602,7 +2633,7 @@ bool IsManualStatusValue(int statusValue){
 }
 
 bool IsManualPwmKeyControlEnabled(){
-  return AZsource <= 1 && PWMenable == true && ACmotor == false;
+  return AZsource == 0 && PWMenable == true && ACmotor == false;
 }
 
 void RequestManualStopRamp(){
@@ -2611,6 +2642,147 @@ void RequestManualStopRamp(){
   }else if(Status == 21 || Status == 22 || Status == 23){
     Status = 23;
   }
+}
+
+bool IsPulseAzimuthSource(){
+  return AZsource == 1;
+}
+
+unsigned int ClampPulseAzimuthTenths(int valueTenths){
+  if(valueTenths < 0){
+    return 0;
+  }
+  int maxTenths = int(MaxRotateDegree) * 10;
+  if(valueTenths > maxTenths){
+    return (unsigned int)maxTenths;
+  }
+  return (unsigned int)valueTenths;
+}
+
+long ClampPulseCount(long pulseCount){
+  long maxCount = long(MaxRotateDegree) * long(max(PulsePerDegree, short(1)));
+  if(pulseCount < 0){
+    return 0;
+  }
+  if(pulseCount > maxCount){
+    return maxCount;
+  }
+  return pulseCount;
+}
+
+void ConfigureSinglePulseCounter(pcnt_unit_t unit, int gpioPin){
+  pcnt_config_t pulseCounterConfig = {};
+  pulseCounterConfig.pulse_gpio_num = gpioPin;
+  pulseCounterConfig.ctrl_gpio_num = PCNT_PIN_NOT_USED;
+  pulseCounterConfig.lctrl_mode = PCNT_MODE_KEEP;
+  pulseCounterConfig.hctrl_mode = PCNT_MODE_KEEP;
+  pulseCounterConfig.pos_mode = PCNT_COUNT_INC;
+  pulseCounterConfig.neg_mode = PCNT_COUNT_DIS;
+  pulseCounterConfig.counter_h_lim = 32767;
+  pulseCounterConfig.counter_l_lim = 0;
+  pulseCounterConfig.unit = unit;
+  pulseCounterConfig.channel = PCNT_CHANNEL_0;
+  pcnt_unit_config(&pulseCounterConfig);
+  pcnt_set_filter_value(unit, 1000);
+  pcnt_filter_enable(unit);
+  pcnt_counter_pause(unit);
+  pcnt_counter_clear(unit);
+}
+
+void ConfigurePulseCounter(){
+  ConfigureSinglePulseCounter(CwPulseCounterUnit, CwInputPin);
+  ConfigureSinglePulseCounter(CcwPulseCounterUnit, CcwInputPin);
+  PulseCounterConfigured = true;
+}
+
+void ApplyAzimuthSourceMode(bool useStoredPulseAzimuth){
+  if(PulseCounterConfigured == false){
+    return;
+  }
+
+  pcnt_counter_pause(CwPulseCounterUnit);
+  pcnt_counter_pause(CcwPulseCounterUnit);
+  pcnt_counter_clear(CwPulseCounterUnit);
+  pcnt_counter_clear(CcwPulseCounterUnit);
+
+  if(IsPulseAzimuthSource()){
+    float seedAzimuthDeg = float(Azimuth);
+    if(useStoredPulseAzimuth){
+      seedAzimuthDeg = float(PulseAzimuthTenths) / 10.0f;
+    }
+    seedAzimuthDeg = ClampFloat(seedAzimuthDeg, 0.0f, float(MaxRotateDegree));
+    PulseCounterValue = ClampPulseCount(lroundf(seedAzimuthDeg * float(max(PulsePerDegree, short(1)))));
+    AzimuthRawDeg = seedAzimuthDeg;
+    AzimuthControlDeg = seedAzimuthDeg;
+    AzimuthNoiseDeg = 0.2f;
+    Azimuth = int(round(seedAzimuthDeg));
+    pcnt_counter_resume(CwPulseCounterUnit);
+    pcnt_counter_resume(CcwPulseCounterUnit);
+  }
+}
+
+void UpdatePulseAzimuthFromCounter(){
+  if(PulseCounterConfigured == false || PulsePerDegree < 1){
+    return;
+  }
+
+  int16_t cwDelta = 0;
+  int16_t ccwDelta = 0;
+  pcnt_get_counter_value(CwPulseCounterUnit, &cwDelta);
+  pcnt_get_counter_value(CcwPulseCounterUnit, &ccwDelta);
+  pcnt_counter_clear(CwPulseCounterUnit);
+  pcnt_counter_clear(CcwPulseCounterUnit);
+
+  long signedPulseDelta = long(cwDelta) - long(ccwDelta);
+  if(ReverseAZ){
+    signedPulseDelta = -signedPulseDelta;
+  }
+  if(signedPulseDelta != 0){
+    PulseCounterValue = ClampPulseCount(PulseCounterValue + signedPulseDelta);
+  }
+
+  float pulseAzimuthDeg = float(PulseCounterValue) / float(PulsePerDegree);
+  pulseAzimuthDeg = ClampFloat(pulseAzimuthDeg, 0.0f, float(MaxRotateDegree));
+  AzimuthRawDeg = pulseAzimuthDeg;
+  AzimuthControlDeg = pulseAzimuthDeg;
+  AzimuthNoiseDeg = 0.2f;
+  Azimuth = int(round(pulseAzimuthDeg));
+}
+
+void PersistPulseAzimuthIfNeeded(bool forceSave){
+  static unsigned int lastSavedPulseAzimuthTenths = 65535;
+  static long lastPulseAzimuthSave = 0;
+
+  if(IsPulseAzimuthSource() == false){
+    return;
+  }
+
+  unsigned int currentTenths = ClampPulseAzimuthTenths(int(round(AzimuthRawDeg * 10.0f)));
+  if(lastSavedPulseAzimuthTenths == 65535){
+    lastSavedPulseAzimuthTenths = EEPROM.readUShort(419);
+  }
+
+  bool changed = currentTenths != lastSavedPulseAzimuthTenths;
+  bool enoughTimeElapsed = millis() - lastPulseAzimuthSave > 60000;
+  if(changed && (forceSave || (Status == 0 && enoughTimeElapsed))){
+    EEPROM.writeUShort(419, currentTenths);
+    EEPROM.commit();
+    lastSavedPulseAzimuthTenths = currentTenths;
+    PulseAzimuthTenths = currentTenths;
+    lastPulseAzimuthSave = millis();
+    MqttPubString("PulseAzimuth", String(float(currentTenths) / 10.0f, 1), true);
+  }
+}
+
+int GetPulseVirtualAdcValue(){
+  if(IsPulseAzimuthSource() == false || MaxRotateDegree == 0){
+    return int(AzimuthValue);
+  }
+  return int(lroundf(142.0f + (3013.0f * ClampFloat(AzimuthRawDeg, 0.0f, float(MaxRotateDegree)) / float(MaxRotateDegree))));
+}
+
+int GetPulseCounterValue(){
+  return int(PulseCounterValue);
 }
 
 void PersistAutoSlowWindowIfNeeded(){
@@ -4641,6 +4813,9 @@ void handleSet() {
   String mapThemeSELECT4= "";
   String mapThemeSELECT5= "";
   String webauthCHECKED= "";
+  byte previousAzSource = AZsource;
+  short previousPulsePerDegree = PulsePerDegree;
+  unsigned int previousMaxRotateDegree = MaxRotateDegree;
 
   if ( ajaxserver.hasArg("yourcall") == false \
     && ajaxserver.hasArg("rotid") == false \
@@ -5139,6 +5314,9 @@ void handleSet() {
         // EEPROM.commit();
         MqttPubString("PulsePerDegree", String(PulsePerDegree), true);
       }
+    }
+    if(previousAzSource != AZsource || (AZsource == 1 && (previousPulsePerDegree != PulsePerDegree || previousMaxRotateDegree != MaxRotateDegree))){
+      ApplyAzimuthSourceMode(false);
     }
 
     // 29  - Endstop
@@ -5820,7 +5998,7 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc += sourceSELECT1;
   HtmlSrc +=">CW/CCW pulse</option><option value='2'";
   HtmlSrc += sourceSELECT2;
-  HtmlSrc +=">MQTT</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 300px;'>Pulse deactivate control with KEY, and SW endstop<BR>PULSE NOT IMPLEMENTED!<BR>MQTT rx on topic " + String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/RxAzimuth</span></span></td></tr>\n";
+  HtmlSrc +=">MQTT</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 320px;'>CW/CCW pulse uses the 3.5mm jack connector inputs on GPIO36 and GPIO5.<br>In pulse mode the manual KEY input on these pins is disabled.<br>MQTT rx on topic " + String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/RxAzimuth</span></span></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='pulseperdegree'><span";
   HtmlSrc += pulseperdegreeSTYLE;
   HtmlSrc +=">Pulse count per degree:</span></label></td><td><input type='text' id='pulseperdegree' name='pulseperdegree' size='3' value='";
@@ -6062,19 +6240,22 @@ void handleCal() {
   }
 
   if ( ajaxserver.hasArg("clear")==1 ){
-    CcwRaw=142;
-    CwRaw = 3155;
-    EEPROM.writeUShort(31, CcwRaw);
-    EEPROM.writeUShort(33, CwRaw);
-    EEPROM.commit();
-    MqttPubString("CcwRaw", String(CcwRaw), true);
-    MqttPubString("CwRaw", String(CwRaw), true);
+    if(AZsource == 0){
+      CcwRaw=142;
+      CwRaw = 3155;
+      EEPROM.writeUShort(31, CcwRaw);
+      EEPROM.writeUShort(33, CwRaw);
+      EEPROM.commit();
+      MqttPubString("CcwRaw", String(CcwRaw), true);
+      MqttPubString("CwRaw", String(CwRaw), true);
+    }
   }
 
   long RawTmp = 0;
 
   // 31-32 CcwRaw
   if ( ajaxserver.hasArg("setccw")==1 ){
+    if(AZsource == 0){
     // RawTmp = 0;
     // for (int i=0; i<10; i++){
     //   RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
@@ -6085,10 +6266,12 @@ void handleCal() {
     EEPROM.writeUShort(31, CcwRaw);
     EEPROM.commit();
     MqttPubString("CcwRaw", String(CcwRaw), true);
+    }
   }
 
   // 33-34  CwRaw
   if ( ajaxserver.hasArg("setcw")==1 ){
+    if(AZsource == 0){
     // RawTmp = 0;
     // for (int i=0; i<10; i++){
     //   RawTmp = RawTmp + readADC_Cal(analogRead(AzimuthPin));
@@ -6099,6 +6282,7 @@ void handleCal() {
     EEPROM.writeUShort(33, CwRaw);
     EEPROM.commit();
     MqttPubString("CwRaw", String(CwRaw), true);
+    }
   }
 
     // MqttPubString("Debug setcw", String(ajaxserver.arg("setcw")), false);
@@ -6170,7 +6354,9 @@ void handleCal() {
   HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td></tr>";
 
   HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>";
-  if(ELEVATION==false){
+  if(AZsource == 1){
+    HtmlSrc +="2. Pulse counter monitor";
+  }else if(ELEVATION==false){
     HtmlSrc +="2. Azimuth calibrate";  
   }else{
       HtmlSrc +="2. Elevation calibrate";
@@ -6178,10 +6364,22 @@ void handleCal() {
   HtmlSrc +="</span></td></tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='140'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
   HtmlSrc +="</tr><tr style='background-color: #666;'>";
-  HtmlSrc +="<td class='tdl'><button id='setccw' name='setccw'>&#8676; SAVE CCW</button></td>";
-  HtmlSrc +="<td class='tdc' style='background-color: #666;'><button id='clear' name='clear'>";
-  HtmlSrc +="RESET CW/CCW SAVE</button></td>";
-  HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'>SAVE CW &#8677;</button></td>";
+  HtmlSrc +="<td class='tdl'><button id='setccw' name='setccw'";
+  if(AZsource == 1){
+    HtmlSrc +=" disabled";
+  }
+  HtmlSrc +=">&#8676; SAVE CCW</button></td>";
+  HtmlSrc +="<td class='tdc' style='background-color: #666;'><button id='clear' name='clear'";
+  if(AZsource == 1){
+    HtmlSrc +=" disabled>COUNTER AUTO-SAVE</button></td>";
+  }else{
+    HtmlSrc +=">RESET CW/CCW SAVE</button></td>";
+  }
+  HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'";
+  if(AZsource == 1){
+    HtmlSrc +=" disabled";
+  }
+  HtmlSrc +=">SAVE CW &#8677;</button></td>";
   HtmlSrc +="</tr><tr>";
   HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><button id='reverseaz' name='reverseaz'";
   HtmlSrc +=ReverseAzCOLOR;
@@ -6197,7 +6395,9 @@ void handleCal() {
   if( AZsource == 0 && AZtwoWire == true && CwRaw < 1577 ){
     HtmlSrc +="<span style='color: #ccc;'>Recommendation: </span><span style='color: #0c0;'>If you are using a 2 wire potentiometer less than 500Ω,<br>you can increase the sensitivity if you short the J16 jumper on the back side PCB.<br><br></span>";
   }
-  if(ELEVATION==false){
+  if(AZsource == 1){
+    HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; The CW/CCW pulse counter is available on the 3.5mm jack connector<br>&#8226; CW pulses increase the counter and CCW pulses decrease it<br>&#8226; If the counter changes in the opposite direction, activate REVERSE-AZIMUTH<br>&#8226; The last azimuth is saved automatically after the rotator stops</td>";
+  }else if(ELEVATION==false){
     HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If azimuth potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-AZIMUTH button<br>&#8226; Rotate to both CCW ";
     HtmlSrc +=StartAzimuth;
     HtmlSrc +="&deg; and CW ";
@@ -6335,7 +6535,13 @@ void handleFrontAZ() {
   }
 }
 void handleAZadc() {
-  ajaxserver.send(200, "text/plane", String(AzimuthValue) );
+  ajaxserver.send(200, "text/plane", String(GetPulseVirtualAdcValue()) );
+}
+void handleAZsource() {
+  ajaxserver.send(200, "text/plane", String(AZsource) );
+}
+void handlePulseCounter() {
+  ajaxserver.send(200, "text/plane", String(GetPulseCounterValue()) );
 }
 void handleStat() {
   ajaxserver.send(200, "text/plane", String(Status+4) );
@@ -6592,10 +6798,18 @@ void handleSetEndstopZones() {
   ajaxserver.send(200, "text/plain", "OK");
 }
 void handleCwraw() {
-  ajaxserver.send(200, "text/plane", String(CwRaw) );
+  if(IsPulseAzimuthSource()){
+    ajaxserver.send(200, "text/plane", "3155" );
+  }else{
+    ajaxserver.send(200, "text/plane", String(CwRaw) );
+  }
 }
 void handleCcwraw() {
-  ajaxserver.send(200, "text/plane", String(CcwRaw) );
+  if(IsPulseAzimuthSource()){
+    ajaxserver.send(200, "text/plane", "142" );
+  }else{
+    ajaxserver.send(200, "text/plane", String(CcwRaw) );
+  }
 }
 void handleMAC() {
   ajaxserver.send(200, "text/plane", String(MACString) );

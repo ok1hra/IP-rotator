@@ -5,6 +5,8 @@
 	var TimeOutSec = 1200;
 	var BoxSize = 600;
 	var AzimuthADC = 0;
+	var AzSource = 0;
+	var PulseCounter = 0;
 	var Endstop = 0;
 	var Status = 4;
 	var StatusTmp = 0;
@@ -296,6 +298,16 @@
 	  };
 	  khttp.open("GET", "readCwraw", true);
 	  khttp.send();
+
+	  var sourceHttp = new XMLHttpRequest();
+	  sourceHttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				AzSource = Number(this.responseText);
+				renderCanvas();
+	    }
+	  };
+	  sourceHttp.open("GET", "readAZsource", true);
+	  sourceHttp.send();
 	}
 
 	function getData() {
@@ -324,6 +336,18 @@
 	  };
 	  whttp.open("GET", "readAZadc", true);
 	  whttp.send();
+
+	  var pulseHttp = new XMLHttpRequest();
+	  pulseHttp.onreadystatechange = function() {
+	    if (this.readyState == 4 && this.status == 200) {
+				PulseCounter = Number(this.responseText);
+				if(StaticInitialized){
+					POINTER(AzimuthADC);
+				}
+	    }
+	  };
+	  pulseHttp.open("GET", "readPulseCounter", true);
+	  pulseHttp.send();
 
 	  var xhttp = new XMLHttpRequest();
 	  xhttp.onreadystatechange = function() {
@@ -401,6 +425,8 @@
 			// console.log ('NoEndstopLowZone ' + NoEndstopLowZone);
 			if (Status != 4) {
 				pointer.fillStyle = "#c00000";
+			}else if(AzSource === 1){
+				pointer.fillStyle = "#00c000";
 			}else{
 				if(Number(PointerValue)/1000 > Number(NoEndstopLowZone) && Number(PointerValue)/1000 < Number(NoEndstopHighZone)){
 					pointer.fillStyle = "#00c000";
@@ -408,7 +434,11 @@
 					pointer.fillStyle = "orange";
 				}
 			}
-			pointer.fillText( Number(PointerValue)/1000 + "V", Number(Position), 90);
+			if(AzSource === 1){
+				pointer.fillText( Math.round(Number(PulseCounter)) + " cnt", Number(Position), 90);
+			}else{
+				pointer.fillText( Number(PointerValue)/1000 + "V", Number(Position), 90);
+			}
 		pointer.fill();
 
 		if(Uptime<TimeOutSec){
