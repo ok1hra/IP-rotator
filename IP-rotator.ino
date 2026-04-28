@@ -291,7 +291,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 421   /*
+#define EEPROM_SIZE 485   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -360,6 +360,7 @@ int i = 0;
 417 - DefaultMapBordersEnabled
 418 - DefaultMapDxccEnabled
 419-420 - PulseAzimuthTenths UShort
+421-484 - DXC MQTT publish topic
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -388,6 +389,7 @@ WiFiClient DxcWsClient;
 String DxcHost = "";
 uint16_t DxcPort = 7300;
 String DxcCallsign = "";
+String DxcMqttTopic = "";
 bool DxcTelnetStatus = false;
 bool DxcWsStatus = false;
 bool DxcTelnetLoginPending = false;
@@ -511,6 +513,7 @@ bool GraylineUtcAvailable(time_t* nowOut = nullptr){
 // if the large comment header is malformed or contains unusual content.
 uint32_t readADC_Cal(int ADC_Raw);
 bool IsSafeWebAuthPasswordValue(const String& value);
+bool IsSafeMqttPublishTopicValue(const String& value);
 bool LooksLikeLegacyWebAuthKey(const String& value);
 void Watchdog();
 void LedStatus();
@@ -537,6 +540,7 @@ bool mqttReconnect();
 void reSubscribe();
 void MqttRx(char *topic, byte *payload, unsigned int length);
 void AfterMQTTconnect();
+bool MqttPublishRawTopic(const String& topic, const String& data, bool retain);
 void MqttPubString(String TOPIC, String DATA, bool RETAIN);
 String UtcTime(int format);
 void InitWebAuth();
@@ -573,6 +577,7 @@ void handleMapUrl();
 void handleMapSource();
 void handleMapLocator();
 void handleMapZoomKm();
+void handleReadDxcMqttTopic();
 void handleSetMapLocator();
 void handleSetMapZoomKm();
 void handleMapTheme();
@@ -599,6 +604,7 @@ void handleCcwraw();
 void handleMAC();
 void handleUptime();
 void handleDxcHtml();
+void handleDxcPublishFreq();
 void DxcLoop();
 void DxcDisconnectTelnet();
 void DxcDisconnectWebSocket();
@@ -1124,6 +1130,17 @@ void setup() {
     DxcCallsign = ReadFixedStringFromEeprom(397, 16);
   }
 
+  // 421-484 DXC MQTT publish topic
+  if(EEPROM.read(421)==0xff){
+    DxcMqttTopic = "";
+  }else{
+    DxcMqttTopic = ReadFixedStringFromEeprom(421, 64);
+    DxcMqttTopic.trim();
+    if(!IsSafeMqttPublishTopicValue(DxcMqttTopic)){
+      DxcMqttTopic = "";
+    }
+  }
+
   // 236-245 - MQTT_USER
   if(EEPROM.read(236)==0xff){
     MQTT_USER="Login";
@@ -1282,6 +1299,7 @@ void setup() {
    RegisterAjaxRoute("/readMapSource", handleMapSource);
    RegisterAjaxRoute("/readMapLocator", handleMapLocator);
    RegisterAjaxRoute("/readMapZoomKm", handleMapZoomKm);
+   RegisterAjaxRoute("/readDxcMqttTopic", handleReadDxcMqttTopic);
    RegisterAjaxRoute("/setMapLocator", handleSetMapLocator);
   RegisterAjaxRoute("/setMapZoomKm", handleSetMapZoomKm);
   RegisterAjaxRoute("/readMapTheme", handleMapTheme);
@@ -1299,6 +1317,7 @@ void setup() {
   RegisterAjaxRoute("/RC-R.ttf", handleFontRegular);
   RegisterAjaxRoute("/RC-B.ttf", handleFontBold);
   RegisterAjaxRoute("/dxc.html", handleDxcHtml);
+  RegisterAjaxRoute("/dxcPublishFreq", HTTP_POST, handleDxcPublishFreq);
   RegisterAjaxRoute("/set", handleSet);
   RegisterAjaxRoute("/cal", handleCal);
   RegisterAjaxRoute("/readEndstop", handleEndstop);
@@ -2022,6 +2041,19 @@ bool IsSafeWebAuthPasswordValue(const String& value){
   return true;
 }
 
+bool IsSafeMqttPublishTopicValue(const String& value){
+  if(value.length() > 63){
+    return false;
+  }
+  for(size_t i = 0; i < value.length(); i++){
+    char c = value[i];
+    if(c < 32 || c > 126 || c == '+' || c == '#'){
+      return false;
+    }
+  }
+  return true;
+}
+
 bool LooksLikeLegacyWebAuthKey(const String& value){
   if(value.length() != 100){
     return false;
@@ -2233,6 +2265,7 @@ String ExportConfigBackupJson(){
   json += "    \"dxc_host\": \"" + JsonEscape(DxcHost) + "\",\n";
   json += "    \"dxc_port\": " + String(DxcPort) + ",\n";
   json += "    \"dxc_callsign\": \"" + JsonEscape(DxcCallsign) + "\",\n";
+  json += "    \"dxc_mqtt_topic\": \"" + JsonEscape(DxcMqttTopic) + "\",\n";
   json += "    \"elevation\": " + String(ELEVATION ? "true" : "false") + ",\n";
   json += "    \"map_url\": \"" + JsonEscape(MapUrl) + "\",\n";
   json += "    \"map_source\": " + String(MapSource) + ",\n";
@@ -2263,7 +2296,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
     return "Unsupported backup version";
   }
 
-  String newNetId, newRotName, newYourCall, newMapUrl, newMqttUser, newMqttPass, newMapLocator, newGraylineNtp, mqttIpText, newDxcHost, newDxcCallsign, newWebAuthPassword;
+  String newNetId, newRotName, newYourCall, newMapUrl, newMqttUser, newMqttPass, newMapLocator, newGraylineNtp, mqttIpText, newDxcHost, newDxcCallsign, newDxcMqttTopic, newWebAuthPassword;
   long startAzimuthValue = 0, maxRotateValue = 0, antAngleValue = 0, ccwRawValue = 0, cwRawValue = 0;
   long azSourceValue = 0, pulsePerDegreeValue = 0, baudRateValue = 0, pwmRampStepsValue = 0, pwmMaxDutyValue = 0;
   long pwmTuneValue = 0, mqttPortValue = 0, dxcPortValue = 0, mapSourceValue = 0, mapZoomValue = 0, graylineDarknessValue = 0, mapThemeValue = 0, oneTurnLimitValue = 0;
@@ -2380,11 +2413,18 @@ String ImportConfigBackupJson(const String& jsonPayload){
   if(!JsonExtractString(jsonPayload, "dxc_callsign", newDxcCallsign) || newDxcCallsign.length() > 16){
     return "Invalid dxc_callsign";
   }
+  if(!JsonExtractString(jsonPayload, "dxc_mqtt_topic", newDxcMqttTopic)){
+    newDxcMqttTopic = "";
+  }
   newDxcHost.trim();
   newDxcCallsign.trim();
   newDxcCallsign.toUpperCase();
+  newDxcMqttTopic.trim();
   if(newDxcHost.length() > 0 && newDxcCallsign.length() < 1){
     return "DXC callsign is required when dxc_host is set";
+  }
+  if(!IsSafeMqttPublishTopicValue(newDxcMqttTopic)){
+    return "Invalid dxc_mqtt_topic";
   }
   if(!JsonExtractBool(jsonPayload, "elevation", elevationValue)){
     return "Invalid elevation";
@@ -2490,6 +2530,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   DxcHost = newDxcHost;
   DxcPort = uint16_t(dxcPortValue);
   DxcCallsign = newDxcCallsign;
+  DxcMqttTopic = newDxcMqttTopic;
   ELEVATION = elevationValue;
   MapUrl = newMapUrl;
   MapSource = byte(mapSourceValue);
@@ -2555,6 +2596,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   WriteFixedStringToEeprom(331, 64, DxcHost);
   EEPROM.writeUShort(395, DxcPort);
   WriteFixedStringToEeprom(397, 16, DxcCallsign);
+  WriteFixedStringToEeprom(421, 64, DxcMqttTopic);
   EEPROM.writeBool(413, DefaultDegOverlayEnabled);
   EEPROM.writeBool(414, DefaultAntOverlayEnabled);
   EEPROM.writeBool(415, DefaultMapLocGridEnabled);
@@ -4468,29 +4510,27 @@ void AfterMQTTconnect(){
   #endif
 }
 //-----------------------------------------------------------------------------------
-void MqttPubString(String TOPIC, String DATA, bool RETAIN){
-  char charbuf[50];
-   // // memcpy( charbuf, mac, 6);
-   // ETH.macAddress().toCharArray(charbuf, 10);
-   // charbuf[6] = 0;
-  // if(EnableEthernet==1 && MQTT_ENABLE==1 && EthLinkStatus==1 && mqttClient.connected()==true){
-  if(mqttClient.connected()==true){
-    if(MQTT_LOGIN == true){
-      if (mqttClient.connect(MACchar,MQTT_USER.c_str(),MQTT_PASS.c_str())){
-        String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/"+TOPIC;
-        topic.toCharArray( mqttPath, 50 );
-        DATA.toCharArray( mqttTX, 50 );
-        mqttClient.publish(mqttPath, mqttTX, RETAIN);
-      }
-    }else{
-      if (mqttClient.connect(MACchar)) {
-        String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/"+TOPIC;
-        topic.toCharArray( mqttPath, 50 );
-        DATA.toCharArray( mqttTX, 50 );
-        mqttClient.publish(mqttPath, mqttTX, RETAIN);
-      }
+bool MqttPublishRawTopic(const String& topic, const String& data, bool retain){
+  if(topic.length() < 1 || mqttClient.connected()!=true){
+    return false;
+  }
+  if(MQTT_LOGIN == true){
+    if(!mqttClient.connect(MACchar,MQTT_USER.c_str(),MQTT_PASS.c_str())){
+      return false;
+    }
+  }else{
+    if(!mqttClient.connect(MACchar)) {
+      return false;
     }
   }
+  topic.toCharArray(mqttPath, MqttBuferSize);
+  data.toCharArray(mqttTX, MqttBuferSize);
+  return mqttClient.publish(mqttPath, mqttTX, retain);
+}
+
+void MqttPubString(String TOPIC, String DATA, bool RETAIN){
+  String topic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/" + TOPIC;
+  MqttPublishRawTopic(topic, DATA, RETAIN);
 }
 //-------------------------------------------------------------------------------------------------------
 String UtcTime(int format){
@@ -4786,6 +4826,7 @@ void handleSet() {
   String dxc_hostERR= "";
   String dxc_portERR= "";
   String dxc_callsignERR= "";
+  String dxc_mqtt_topicERR= "";
   String mapsourceERR= "";
   String maplocatorERR= "";
   String mapzoomkmERR= "";
@@ -4837,6 +4878,7 @@ void handleSet() {
     && ajaxserver.hasArg("dxchost") == false \
     && ajaxserver.hasArg("dxcport") == false \
     && ajaxserver.hasArg("dxccall") == false \
+    && ajaxserver.hasArg("dxcmqtttopic") == false \
     && ajaxserver.hasArg("webauth") == false \
     && ajaxserver.hasArg("webpass") == false \
   ) {
@@ -4998,9 +5040,11 @@ void handleSet() {
 
     String newDxcHost = String(ajaxserver.arg("dxchost"));
     String newDxcCallsign = String(ajaxserver.arg("dxccall"));
+    String newDxcMqttTopic = String(ajaxserver.arg("dxcmqtttopic"));
     newDxcHost.trim();
     newDxcCallsign.trim();
     newDxcCallsign.toUpperCase();
+    newDxcMqttTopic.trim();
 
     if(newDxcHost.length() > 63){
       dxc_hostERR = " Out of range 0-63 characters";
@@ -5032,6 +5076,16 @@ void handleSet() {
       if(DxcCallsign != newDxcCallsign){
         DxcCallsign = newDxcCallsign;
         WriteFixedStringToEeprom(397, 16, DxcCallsign);
+      }
+    }
+
+    if(!IsSafeMqttPublishTopicValue(newDxcMqttTopic)){
+      dxc_mqtt_topicERR = " Out of range 0-63 chars, + and # not allowed";
+    }else{
+      dxc_mqtt_topicERR = "";
+      if(DxcMqttTopic != newDxcMqttTopic){
+        DxcMqttTopic = newDxcMqttTopic;
+        WriteFixedStringToEeprom(421, 64, DxcMqttTopic);
       }
     }
 
@@ -6177,6 +6231,11 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc +="'><span style='color:red;'>";
   HtmlSrc += dxc_callsignERR;
   HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 210px;'>Sent to the DX cluster after Telnet connects. Required when DXC host is filled.</span></span></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='dxcmqtttopic'>Send frequency to MQTT topic:</label></td><td><input type='text' id='dxcmqtttopic' name='dxcmqtttopic' size='28' maxlength='63' value='";
+  HtmlSrc += DxcMqttTopic;
+  HtmlSrc +="'><span style='color:red;'>";
+  HtmlSrc += dxc_mqtt_topicERR;
+  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 260px;'>Optional custom MQTT topic used when you click a frequency in the DXC window. Payload is sent as Hz without spaces. Leave empty to disable.</span></span></td></tr>\n";
   HtmlSrc +="</table></details>\n";
   HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Web authentication</summary><table class='setup-table'>\n";
   HtmlSrc +="<tr class='b'><td class='tdr'><label for='webauth'>Enable web authentication:</label></td><td><input type='checkbox' id='webauth' name='webauth' value='1' ";
@@ -6521,6 +6580,33 @@ void handleDxcHtml() {
   }
   ajaxserver.send(404, "text/plain", "Missing /dxc.html in SPIFFS");
 }
+void handleDxcPublishFreq() {
+  if(DxcMqttTopic.length() < 1){
+    ajaxserver.send(409, "text/plain", "DXC MQTT topic inactive");
+    return;
+  }
+  if(!ajaxserver.hasArg("freq")){
+    ajaxserver.send(400, "text/plain", "Missing freq");
+    return;
+  }
+  String freqHz = String(ajaxserver.arg("freq"));
+  freqHz.trim();
+  if(freqHz.length() < 1){
+    ajaxserver.send(400, "text/plain", "Missing freq");
+    return;
+  }
+  for(size_t i = 0; i < freqHz.length(); i++){
+    if(freqHz[i] < '0' || freqHz[i] > '9'){
+      ajaxserver.send(400, "text/plain", "Invalid freq");
+      return;
+    }
+  }
+  if(!MqttPublishRawTopic(DxcMqttTopic, freqHz, false)){
+    ajaxserver.send(503, "text/plain", "MQTT publish failed");
+    return;
+  }
+  ajaxserver.send(200, "text/plain", "OK");
+}
 void handleADC() {
  ajaxserver.send(200, "text/plane", String(VoltageValue)); //Send ADC value only to client ajax request
 }
@@ -6579,6 +6665,9 @@ void handleMapLocator() {
 }
 void handleMapZoomKm() {
   ajaxserver.send(200, "text/plane", String(MapZoomKm) );
+}
+void handleReadDxcMqttTopic() {
+  ajaxserver.send(200, "text/plane", DxcMqttTopic );
 }
 void handleSetMapLocator() {
   if(!ajaxserver.hasArg("value")){
