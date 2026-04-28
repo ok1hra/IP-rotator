@@ -215,7 +215,7 @@ int Azimuth             = 0;
 int AzimuthTarget       = -1;
 int UiTargetAzimuth     = -1;
 int RxAzimuth           = 0;
-int Status              = 0; // -3 PwmDwnCCW|-2 CCW|-1 PwmUpCCW|0 off|1 PwmUpCW|2 CW|3 PwmDwnCW
+int Status              = 0; // -23 ManualPwmDwnCCW|-22 ManualCCW|-21 ManualStartCCW|-3 PwmDwnCCW|-2 CCW|-1 StartCCW|0 off|1 StartCW|2 CW|3 PwmDwnCW|21 ManualStartCW|22 ManualCW|23 ManualPwmDwnCW
 const int VoltagePin    = 35;  // analog
 float VoltageValue      = 0.0;
 const float VoltageLimit = 11.5; // Keep in sync with the client-side undervoltage warning shown in data/index.html.
@@ -634,6 +634,10 @@ String ImportConfigBackupJson(const String& jsonPayload);
 float GetPwmTuneLeadOffsetDeg();
 bool ShouldForceStopFromPwmStall(int directionSign, byte currentDuty, float rawAzimuthDeg, byte maxDuty);
 void RequestStopRamp(bool suppressBrakeLearning);
+bool IsManualStatusValue(int statusValue);
+bool IsManualPwmKeyControlEnabled();
+void RequestManualStopRamp();
+bool HandleManualPwmStatus(long &PwmTimer);
 
 //-------------------------------------------------------------------------------------------------------
 
@@ -1391,7 +1395,20 @@ void Watchdog(){
   // KEY
   if(AZsource<=1){ // potentiometer
     static bool RunByKey = false;
-    if(CwCcwInputValue==1 && Status>=0){
+    if(IsManualPwmKeyControlEnabled()){
+      RunByKey=false;
+      if(CwCcwInputValue==1){
+        if(Status==0){
+          Status=21;
+        }
+      }else if(CwCcwInputValue==2){
+        if(Status==0){
+          Status=-21;
+        }
+      }else if(IsManualStatusValue(Status)){
+        RequestManualStopRamp();
+      }
+    }else if(CwCcwInputValue==1 && Status>=0){
       if(Status==0){
         Status=1; //digitalWrite(BrakePin, HIGH); delay(24);
         RunByKey=true;
@@ -1422,12 +1439,18 @@ void Watchdog(){
   // Status change
   if(StatusTmp!=Status){
     switch (Status) {
+      case -23: {StatusStr = "ManualPwmDwn-CCW"; break; }
+      case -22: {StatusStr = "Manual-CCW"; break; }
+      case -21: {StatusStr = "ManualStart-CCW"; break; }
       case -3: {StatusStr = "PwmDwn-CCW"; break; }
       case -2: {StatusStr = "CCW"; break; }
       case -11: {StatusStr = "PwmUp-CCW"; break; }
       case -1: {StatusStr = "START-CCW"; break; }
       case  0: {StatusStr = "STOP"; break; }
       case  1: {StatusStr = "START-CW"; break; }
+      case  21: {StatusStr = "ManualStart-CW"; break; }
+      case  22: {StatusStr = "Manual-CW"; break; }
+      case  23: {StatusStr = "ManualPwmDwn-CW"; break; }
       case  11: {StatusStr = "PwmUp-CW"; break; }
       case  2: {StatusStr = "CW"; break; }
       case  3: {StatusStr = "PwmDwn-CW"; break; }
@@ -1487,7 +1510,9 @@ void Watchdog(){
   if(Status!=0){
     // status watchdog timeout
     if(millis()-StatusWatchdogTimer > 120000){ // after 90sec
-      if(Status<0){
+      if(IsManualStatusValue(Status)){
+        RequestManualStopRamp();
+      }else if(Status<0){
         Status=-3;
       }else{
         Status=3;
@@ -1502,7 +1527,9 @@ void Watchdog(){
         RotateWatchdogTimer=millis();
         AzimuthWatchdog=Azimuth;
       }else{
-        if(Status<0){
+        if(IsManualStatusValue(Status)){
+          RequestManualStopRamp();
+        }else if(Status<0){
           Status=-3;
         }else{
           Status=3;
@@ -1517,9 +1544,11 @@ void Watchdog(){
   //POE voltage check
   static long DCunderVoltageWatchdog = 0;
   if(millis()-DCunderVoltageWatchdog > 1000){
-    if(Status==1 || Status==2 || Status==-1 || Status==-2){
+    if(Status==1 || Status==2 || Status==-1 || Status==-2 || Status==21 || Status==22 || Status==-21 || Status==-22){
         if(VoltageValue < VoltageLimit){
-          if(Status<0){
+          if(IsManualStatusValue(Status)){
+            RequestManualStopRamp();
+          }else if(Status<0){
             Status=-3;
           }else{
             Status=3;
@@ -1595,6 +1624,18 @@ void Watchdog(){
 // LED
 void LedStatus(){
   switch (Status) {
+    case -23: {
+      digitalWrite(LedRPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
+      break; }
+    case -22: {
+      digitalWrite(LedRPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
+      break; }
+    case -21: {
+      digitalWrite(LedRPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
+      break; }
     case -3: {
       digitalWrite(LedRPin, HIGH);
       ledcWrite(greenPWMChannel, 0);
@@ -1612,6 +1653,18 @@ void LedStatus(){
       digitalWrite(LedBPin, LOW);
       break; }
     case  1: {
+      digitalWrite(LedRPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
+      break; }
+    case  21: {
+      digitalWrite(LedRPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
+      break; }
+    case  22: {
+      digitalWrite(LedRPin, HIGH);
+      ledcWrite(greenPWMChannel, 0);
+      break; }
+    case  23: {
       digitalWrite(LedRPin, HIGH);
       ledcWrite(greenPWMChannel, 0);
       break; }
@@ -1700,7 +1753,7 @@ void RunTimer(){
 //-------------------------------------------------------------------------------------------------------
 void DetectEndstopZone(){
   if(Endstop==false){
-    if(Status==-1 || Status==-11 || Status==-2){  // run status CCW
+    if(Status==-1 || Status==-11 || Status==-2 || Status==-21 || Status==-22 || Status==-23){  // run status CCW
       if(CcwRaw<CwRaw){ // standard az potentiometer
         if(AzimuthValue/1000>NoEndstopLowZone){
           // run
@@ -1717,7 +1770,7 @@ void DetectEndstopZone(){
         }
       }
     }
-    if(Status==1 || Status==11 || Status==2){  // run status CW
+    if(Status==1 || Status==11 || Status==2 || Status==21 || Status==22 || Status==23){  // run status CW
       if(CcwRaw<CwRaw){ // standard az potentiometer
         if(AzimuthValue/1000<NoEndstopHighZone){
           // run
@@ -2527,6 +2580,10 @@ void UpdateAutoSlowWindow(float brakeStartDistance, float finalDistance){
 }
 
 void RequestStopRamp(bool suppressBrakeLearning){
+  if(IsManualStatusValue(Status)){
+    RequestManualStopRamp();
+    return;
+  }
   if(Status<0){
     if(suppressBrakeLearning){
       SkipBrakeLearningOnManualStop = true;
@@ -2537,6 +2594,22 @@ void RequestStopRamp(bool suppressBrakeLearning){
       SkipBrakeLearningOnManualStop = true;
     }
     Status=3;
+  }
+}
+
+bool IsManualStatusValue(int statusValue){
+  return statusValue == -23 || statusValue == -22 || statusValue == -21 || statusValue == 21 || statusValue == 22 || statusValue == 23;
+}
+
+bool IsManualPwmKeyControlEnabled(){
+  return AZsource <= 1 && PWMenable == true && ACmotor == false;
+}
+
+void RequestManualStopRamp(){
+  if(Status == -21 || Status == -22 || Status == -23){
+    Status = -23;
+  }else if(Status == 21 || Status == 22 || Status == 23){
+    Status = 23;
   }
 }
 
@@ -2556,6 +2629,77 @@ void PersistAutoSlowWindowIfNeeded(){
 }
 //-------------------------------------------------------------------------------------------------------
 
+bool HandleManualPwmStatus(long &PwmTimer){
+  if(IsManualPwmKeyControlEnabled() == false || IsManualStatusValue(Status) == false){
+    return false;
+  }
+
+  switch (Status) {
+    case -21: {
+      ErrorDetect=0;
+      ReverseProcedure(true);
+      RunTimer();
+      AzimuthTarget=-1;
+      UiTargetAzimuth=-1;
+      Status=-22;
+      PwmTimer=millis();
+      return true;
+    }
+    case -22: {
+      ErrorDetect=0;
+      ApplyDutySlew(PwmMaxDuty, PwmTimer);
+      return true;
+    }
+    case -23: {
+      ApplyDutySlew(0, PwmTimer);
+      if(dutyCycle==0){
+        ledcWrite(mosfetPWMChannel, 0);
+        digitalWrite(BrakePin, LOW);
+        delay(24);
+        digitalWrite(ReversePin, LOW);
+        Status=0;
+        AzimuthTarget=-1;
+        UiTargetAzimuth=-1;
+        AzimuthControlDeg=AzimuthRawDeg;
+      }
+      return true;
+    }
+    case 21: {
+      ErrorDetect=0;
+      ReverseProcedure(false);
+      RunTimer();
+      AzimuthTarget=-1;
+      UiTargetAzimuth=-1;
+      Status=22;
+      PwmTimer=millis();
+      return true;
+    }
+    case 22: {
+      ErrorDetect=0;
+      ApplyDutySlew(PwmMaxDuty, PwmTimer);
+      return true;
+    }
+    case 23: {
+      ApplyDutySlew(0, PwmTimer);
+      if(dutyCycle==0){
+        ledcWrite(mosfetPWMChannel, 0);
+        digitalWrite(BrakePin, LOW);
+        delay(24);
+        digitalWrite(ReversePin, LOW);
+        Status=0;
+        AzimuthTarget=-1;
+        UiTargetAzimuth=-1;
+        AzimuthControlDeg=AzimuthRawDeg;
+      }
+      return true;
+    }
+  }
+
+  return false;
+}
+
+//-------------------------------------------------------------------------------------------------------
+
 void RunByStatus(){
   static long PwmTimer = 0;
   static bool OneTimeSend = false;
@@ -2564,6 +2708,10 @@ void RunByStatus(){
   static float BrakeStartDistance = 0.0;
   DetectEndstopZone();
   EthTest();
+
+  if(HandleManualPwmStatus(PwmTimer)){
+    return;
+  }
 
   // }else if( (Azimuth>=0 && Azimuth<=450) ){
     switch (Status) {
