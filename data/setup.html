@@ -149,6 +149,23 @@
         </div>
       </details>
 
+      <details class="setup-section">
+        <summary class="setup-summary">System status</summary>
+        <div class="backup-box">
+          <p>Filesystem diagnostics available from the current firmware and SPIFFS state.</p>
+          <table class="setup-table">
+            <tr><td class="tdr">FW revision:</td><td>{{REV}}</td></tr>
+            <tr><td class="tdr">Filesystem:</td><td>{{FS_STATUS}}</td></tr>
+            <tr><td class="tdr">FS build rev:</td><td>{{FS_BUILD_REV}}</td></tr>
+            <tr><td class="tdr">FS offset:</td><td>{{FS_OFFSET}}</td></tr>
+            <tr><td class="tdr">FS size:</td><td>{{FS_SIZE}}</td></tr>
+            <tr><td class="tdr">Used / total:</td><td>{{FS_USAGE}}</td></tr>
+          </table>
+          <p>{{FS_DETAIL}}</p>
+          <div class="backup-actions"><a href="/readFsDiag"><button type="button" id="go">Read FS diagnostics</button></a></div>
+        </div>
+      </details>
+
       <div class="setup-actions"><button id="go">&#10004; Change</button></form>&nbsp;
         <a href="/cal" onclick="window.open(this.href, this.href, 'width=700,height=1150,left=0,top=0,menubar=no,location=no,status=no'); return false;"><button id="go">Calibrate &#8618;</button></a>
       </div>

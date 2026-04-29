@@ -37,15 +37,15 @@ The project now uses SPIFFS for the web UI assets in [`data/`](/home/dan/inst/IP
 
 ### Web routes
 
-The firmware now separates recovery pages from the full SPIFFS web UI:
+Current route layout:
 
-- `/` recovery page stored in firmware
-- `/update` ElegantOTA page stored in firmware
-- `/app` main control UI from SPIFFS
-- `/setup` setup UI from SPIFFS
-- `/cal` calibration UI from SPIFFS
-
-If SPIFFS is missing or mismatched, `/` and `/update` should still remain available for recovery.
+- `:80 /` MQTT Wall
+- `:82 /update` ElegantOTA
+- `:88 /` redirect to `/app`
+- `:88 /app` main control UI from SPIFFS
+- `:88 /dxc.html?ws_port=80` DX Cluster window
+- `:88 /setup` setup UI from SPIFFS
+- `:88 /cal` calibration UI from SPIFFS
 
 ### Build `firmware.bin`
 

@@ -4,7 +4,7 @@
 ----------------------
 1. Compile for HARDWARE ESP32-POE + Tools/Partition Scheme:"Default" | export bin or upload
 2. $ python3 tools/generate_map_dataset.py
-3. ~/inst/IP-rotator$ tools/build_spiffs_image.sh | generate bin
+3. $ tools/build_spiffs_image.sh | generate bin
 4. Tools/ESP32 Sketch Data Upload | upload map or use OTA
 
  ___               _        ___ _____ _  _
@@ -121,7 +121,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260423";
+const char* REV = "20260429";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -5967,6 +5967,24 @@ switch (PwmTuneAggressiveness) {
     String dxcPortValue = String((DxcHost.length() > 0) ? DxcPort : DEFAULT_DXC_PORT);
     String twoWirePreampHint = (AZtwoWire==true && AZpreamp==true) ? "<br><span style='color: red;'>Recommend using a 3-wire potentiometer with the preamplifier ON</span>" : "";
     String mqttRxTopic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/RxAzimuth";
+    String fsStatus = "missing";
+    String fsDetail = "Filesystem unavailable. Upload matching spiffs.bin after firmware update if the UI is incomplete.";
+    if(!FsMounted){
+      fsStatus = "mount-failed";
+    }else if(FsBuildInfoPresent && FsBuildMatchesFirmware){
+      fsStatus = "ok";
+      fsDetail = "Filesystem mounted and matches the running firmware.";
+    }else if(FsBuildInfoPresent){
+      fsStatus = "mismatch";
+      fsDetail = "Filesystem mounted, but its build revision does not match the running firmware.";
+    }else{
+      fsStatus = "build-info-missing";
+      fsDetail = "Filesystem mounted, but /fs_build.txt is missing.";
+    }
+    String fsBuild = FsBuildRev.length() > 0 ? FsBuildRev : String("-");
+    String fsOffset = FsBuildOffset.length() > 0 ? FsBuildOffset : String("-");
+    String fsSize = FsBuildSize.length() > 0 ? FsBuildSize : String("-");
+    String fsUsage = String((unsigned long)FsUsedBytes) + " / " + String((unsigned long)FsTotalBytes) + " bytes";
 
     HtmlSrc.replace("{{MAC_STRING}}", MACString);
     HtmlSrc.replace("{{REV}}", String(REV));
@@ -6096,6 +6114,12 @@ switch (PwmTuneAggressiveness) {
     HtmlSrc.replace("{{WEB_AUTH_USER}}", WEB_AUTH_USER);
     HtmlSrc.replace("{{WEB_AUTH_PASSWORD}}", WebAuthPassword);
     HtmlSrc.replace("{{WEBPASS_ERR}}", webpassERR);
+    HtmlSrc.replace("{{FS_STATUS}}", fsStatus);
+    HtmlSrc.replace("{{FS_BUILD_REV}}", fsBuild);
+    HtmlSrc.replace("{{FS_OFFSET}}", fsOffset);
+    HtmlSrc.replace("{{FS_SIZE}}", fsSize);
+    HtmlSrc.replace("{{FS_USAGE}}", fsUsage);
+    HtmlSrc.replace("{{FS_DETAIL}}", fsDetail);
 
     ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
   };
@@ -6358,63 +6382,8 @@ void handleApp() {
   }
 }
 void handleRoot() {
-  String fsStatus = "Missing";
-  String fsDetail = "Filesystem unavailable. Upload spiffs.bin from /update to restore the full web UI.";
-  String fsLinks = "";
-  if(!FsMounted){
-    fsStatus = "Mount failed";
-  }else if(FsBuildInfoPresent && FsBuildMatchesFirmware){
-    fsStatus = "OK";
-    fsDetail = "Filesystem is ready. Full control page is available.";
-    fsLinks = "<p><a class='btn primary' href='/app'>Open full control UI</a><a class='btn' href='/setup'>Open setup</a><a class='btn' href='/cal'>Open calibrate</a></p>";
-  }else if(FsBuildInfoPresent){
-    fsStatus = "FW/FS mismatch";
-    fsDetail = "Filesystem mounted, but build revision does not match the running firmware. Upload matching firmware.bin and spiffs.bin if something looks wrong.";
-    fsLinks = "<p><a class='btn' href='/app'>Try current UI</a><a class='btn' href='/setup'>Try setup</a><a class='btn' href='/cal'>Try calibrate</a></p>";
-  }else{
-    fsStatus = "Build info missing";
-    fsDetail = "Filesystem mounted, but /fs_build.txt is missing. UI may still work, but the image cannot be verified.";
-    fsLinks = "<p><a class='btn' href='/app'>Try current UI</a><a class='btn' href='/setup'>Try setup</a><a class='btn' href='/cal'>Try calibrate</a></p>";
-  }
-
-  String fsBuild = FsBuildRev.length() > 0 ? FsBuildRev : String("-");
-  String fsOffset = FsBuildOffset.length() > 0 ? FsBuildOffset : String("-");
-  String fsSize = FsBuildSize.length() > 0 ? FsBuildSize : String("-");
-
-  String html = "<!DOCTYPE html><html><head><title>IP Rotator recovery</title>";
-  html += "<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>";
-  html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
-  html += "<style>";
-  html += "body{margin:0;background:#20242b;color:#e7edf6;font-family:Arial,sans-serif;}";
-  html += ".wrap{max-width:760px;margin:0 auto;padding:24px 18px 40px;}";
-  html += ".card{background:#2b313b;border:1px solid #46515f;border-radius:14px;padding:18px 20px;margin:0 0 16px 0;}";
-  html += "h1{margin:0 0 8px 0;font-size:28px;}h2{margin:0 0 10px 0;font-size:20px;color:#b8c7db;}";
-  html += "p{line-height:1.5;color:#d5deea;}strong{color:#fff;}code{color:#ffd38a;}";
-  html += ".btn{display:inline-block;padding:10px 16px;border-radius:10px;border:1px solid #66778b;color:#eef5ff;text-decoration:none;background:#374252;margin:0 10px 10px 0;}";
-  html += ".btn.primary{background:#ca8d1d;border-color:#ca8d1d;color:#111;}";
-  html += ".diag{margin:0;padding:0;list-style:none;}.diag li{padding:6px 0;border-top:1px solid #3b4654;}";
-  html += ".diag li:first-child{border-top:0;}.muted{color:#9fb0c6;}";
-  html += "</style></head><body><div class='wrap'>";
-  html += "<div class='card'><h1>IP Rotator</h1><p>Recovery page stored in firmware. Use this page when the main web UI in <code>SPIFFS</code> is missing, mismatched, or needs an update.</p>";
-  html += "<p><a class='btn primary' href='/update'>Open ElegantOTA</a>";
-  html += "<a class='btn' href='/readFsDiag'>Read FS diagnostics</a></p>";
-  html += fsLinks;
-  html += "</div>";
-  html += "<div class='card'><h2>System status</h2><ul class='diag'>";
-  html += "<li><strong>FW revision:</strong> " + String(REV) + "</li>";
-  html += "<li><strong>Filesystem:</strong> " + fsStatus + "</li>";
-  html += "<li><strong>FS build rev:</strong> " + fsBuild + "</li>";
-  html += "<li><strong>FS offset:</strong> " + fsOffset + "</li>";
-  html += "<li><strong>FS size:</strong> " + fsSize + "</li>";
-  html += "<li><strong>Used / total:</strong> " + String((unsigned long)FsUsedBytes) + " / " + String((unsigned long)FsTotalBytes) + " bytes</li>";
-  html += "</ul><p>" + fsDetail + "</p></div>";
-  html += "<div class='card'><h2>Recovery steps</h2>";
-  html += "<p>1. Open <code>/update</code>.</p>";
-  html += "<p>2. Upload <code>firmware.bin</code> for firmware updates.</p>";
-  html += "<p>3. Upload <code>spiffs.bin</code> as filesystem image when web files changed or the filesystem is damaged.</p>";
-  html += "<p class='muted'>If the filesystem is healthy, the normal control page now lives at <code>/app</code>.</p>";
-  html += "</div></div></body></html>";
-  ajaxserver.send(200, "text/html", html);
+  ajaxserver.sendHeader("Location", "/app");
+  ajaxserver.send(302, "text/plain", "");
 }
 void handleDxcHtml() {
   if(streamStaticFile("/dxc.html", "text/html")){
