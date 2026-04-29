@@ -528,6 +528,10 @@
 				<input type="checkbox" id="MapDxccToggle">
 				<span>D<span class="kbdhint">X</span>CC prefixes</span>
 			</label>
+			<label class="togglelabel" for="MapDxcSpotsToggle" id="MapDxcSpotsToggleLabel">
+				<input type="checkbox" id="MapDxcSpotsToggle">
+				<span>DX <span class="kbdhint">C</span>luster</span>
+			</label>
 		</div>
 		<div class="maphint" id="MapHint"></div>
 		<div class="second">
@@ -589,6 +593,7 @@
 	var DefaultMapGraylineEnabled = true;
 	var DefaultMapBordersEnabled = false;
 	var DefaultMapDxccEnabled = false;
+	var DefaultMapDxcSpotsEnabled = false;
 	var AzimuthPulseStart = 0;
 	var OnlineTimeStamp = 0;
 	var Elevation = 0; 
@@ -605,6 +610,11 @@
 	var PwmMaxDuty = 255;
 	var PwmActualDuty = 0;
 	var PwmSaveTimer = 0;
+	var MapDxcSpotsEnabled = false;
+	var DxcSpotCounts = {};
+	var DxcSpotCountsUpdatedAt = 0;
+	var DxcSpotMaxAgeMs = 15000;
+	var DxcSpotChannel = null;
 	
 	var Xcenter = BoxSize/2;
 	var Ycenter = BoxSize/2;
@@ -615,6 +625,8 @@
 	setInterval(function() { CheckOnline();}, 2000); //mSeconds update rate
 	setInterval(function() { getGraylineInfo();}, 30000); // update UTC/NTP status for grayline
 	setInterval(function() { checkLatestRelease();}, 21600000); // 6h release check
+	setInterval(function() { refreshDxcSpotHeartbeat();}, 5000);
+	initDxcSpotBridge();
 	getSet();
 //	setTimeout(() => { map(); }, 1000);
 	Static();
@@ -836,7 +848,9 @@
 		var bordersLabel = document.getElementById("MapBordersToggleLabel");
 		var dxccToggle = document.getElementById("MapDxccToggle");
 		var dxccLabel = document.getElementById("MapDxccToggleLabel");
-		if(!wrap || !degToggle || !antToggle || !antLabel || !locGridToggle || !locGridLabel || !graylineToggle || !graylineLabel || !toggle || !bordersLabel || !dxccToggle || !dxccLabel){ return; }
+		var dxcSpotsToggle = document.getElementById("MapDxcSpotsToggle");
+		var dxcSpotsLabel = document.getElementById("MapDxcSpotsToggleLabel");
+		if(!wrap || !degToggle || !antToggle || !antLabel || !locGridToggle || !locGridLabel || !graylineToggle || !graylineLabel || !toggle || !bordersLabel || !dxccToggle || !dxccLabel || !dxcSpotsToggle || !dxcSpotsLabel){ return; }
 		if(Number(Elevation) !== 1){
 			wrap.style.display = "block";
 			degToggle.checked = !!DegOverlayEnabled;
@@ -847,10 +861,12 @@
 			graylineLabel.style.display = mapOptionsVisible ? "flex" : "none";
 			bordersLabel.style.display = mapOptionsVisible ? "flex" : "none";
 			dxccLabel.style.display = mapOptionsVisible ? "flex" : "none";
+			dxcSpotsLabel.style.display = mapOptionsVisible ? "flex" : "none";
 			locGridToggle.checked = !!MapLocGridEnabled;
 			graylineToggle.checked = !!MapGraylineEnabled;
 			toggle.checked = !!MapBordersEnabled;
 			dxccToggle.checked = !!MapDxccEnabled;
+			dxcSpotsToggle.checked = !!MapDxcSpotsEnabled;
 		}else{
 			wrap.style.display = "none";
 		}
@@ -894,6 +910,12 @@
 		map();
 	}
 
+	function setMapDxcSpotsEnabled(enabled){
+		MapDxcSpotsEnabled = !!enabled;
+		updateMapBordersControl();
+		map();
+	}
+
 	function applyMapDisplayDefaults(){
 		DegOverlayEnabled = !!DefaultDegOverlayEnabled;
 		AntOverlayEnabled = !!DefaultAntOverlayEnabled;
@@ -901,6 +923,7 @@
 		MapGraylineEnabled = !!DefaultMapGraylineEnabled;
 		MapBordersEnabled = !!DefaultMapBordersEnabled;
 		MapDxccEnabled = !!DefaultMapDxccEnabled;
+		MapDxcSpotsEnabled = !!DefaultMapDxcSpotsEnabled;
 		updateMapBordersControl();
 		updateMapDxccSearchControl();
 		AZ(Azimuth);
@@ -942,6 +965,78 @@
 		};
 		http.open("GET", "setMapLocator?value=" + encodeURIComponent(locator), true);
 		http.send();
+	}
+
+	function clearDxcSpotCounts(){
+		DxcSpotCounts = {};
+		DxcSpotCountsUpdatedAt = 0;
+	}
+
+	function refreshDxcSpotHeartbeat(){
+		if(!DxcSpotCountsUpdatedAt){
+			return;
+		}
+		if(Date.now() - Number(DxcSpotCountsUpdatedAt) <= Number(DxcSpotMaxAgeMs)){
+			return;
+		}
+		if(Object.keys(DxcSpotCounts || {}).length === 0){
+			DxcSpotCountsUpdatedAt = 0;
+			return;
+		}
+		clearDxcSpotCounts();
+		if(Number(MapSource) === 1 && Number(Elevation) !== 1){
+			map();
+		}
+	}
+
+	function applyDxcSpotPayload(payload){
+		var nextCounts = {};
+		var source = payload && payload.spotsByPrefix ? payload.spotsByPrefix : null;
+		if(source){
+			for(var key in source){
+				if(!Object.prototype.hasOwnProperty.call(source, key)){
+					continue;
+				}
+				var normalized = canonicalizeDxccPrefix(String(key || "").toUpperCase());
+				var count = Number(source[key]);
+				if(!normalized || !isFinite(count) || count <= 0){
+					continue;
+				}
+				nextCounts[normalized] = Math.round(count);
+			}
+		}
+		DxcSpotCounts = nextCounts;
+		DxcSpotCountsUpdatedAt = Number(payload && payload.ts) || Date.now();
+		if(Number(MapSource) === 1 && Number(Elevation) !== 1){
+			map();
+		}
+	}
+
+	function initDxcSpotBridge(){
+		if(typeof BroadcastChannel === "function"){
+			try{
+				DxcSpotChannel = new BroadcastChannel("iprotator-dxc-spots");
+				DxcSpotChannel.onmessage = function(evt){
+					applyDxcSpotPayload(evt && evt.data ? evt.data : null);
+				};
+			}catch(err){
+				DxcSpotChannel = null;
+			}
+		}
+		window.addEventListener("storage", function(evt){
+			if(!evt || evt.key !== "iprotator-dxc-spots" || !evt.newValue){
+				return;
+			}
+			try{
+				applyDxcSpotPayload(JSON.parse(evt.newValue));
+			}catch(err){}
+		});
+		try{
+			var storedPayload = localStorage.getItem("iprotator-dxc-spots");
+			if(storedPayload){
+				applyDxcSpotPayload(JSON.parse(storedPayload));
+			}
+		}catch(err){}
 	}
 
 	function scheduleMapZoomSave(){
@@ -1120,6 +1215,10 @@
 		}
 		if(keyLower === "x"){
 			setMapDxccEnabled(!MapDxccEnabled);
+			return true;
+		}
+		if(keyLower === "c"){
+			setMapDxcSpotsEnabled(!MapDxcSpotsEnabled);
 			return true;
 		}
 		if(keyLower === "t"){
@@ -1443,13 +1542,14 @@
 	  defaultsHttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 				var parts = String(this.responseText || "").split("|");
-				if(parts.length >= 6){
+				if(parts.length >= 7){
 					DefaultDegOverlayEnabled = parts[0] === "1";
 					DefaultAntOverlayEnabled = parts[1] === "1";
 					DefaultMapLocGridEnabled = parts[2] === "1";
 					DefaultMapGraylineEnabled = parts[3] === "1";
 					DefaultMapBordersEnabled = parts[4] === "1";
 					DefaultMapDxccEnabled = parts[5] === "1";
+					DefaultMapDxcSpotsEnabled = parts[6] === "1";
 					applyMapDisplayDefaults();
 				}
 	    }
@@ -1605,6 +1705,13 @@
 			dxccToggle.checked = false;
 			dxccToggle.addEventListener("change", function(){
 				setMapDxccEnabled(this.checked);
+			});
+		}
+		var dxcSpotsToggle = document.getElementById("MapDxcSpotsToggle");
+		if(dxcSpotsToggle){
+			dxcSpotsToggle.checked = false;
+			dxcSpotsToggle.addEventListener("change", function(){
+				setMapDxcSpotsEnabled(this.checked);
 			});
 		}
 		var dxccSearchInput = document.getElementById("MapDxccSearchInput");
@@ -3392,6 +3499,61 @@ var LAND_OUTLINES = [];
 		drawMoonPoint(ctx, getSublunarPoint(minuteEpoch), centerLat, centerLon, mapRadiusPx, zoomKm);
 	}
 
+	function drawDxcSpotOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm){
+		if(!MapDxcSpotsEnabled || !DxcSpotCountsUpdatedAt){
+			return;
+		}
+		if(Date.now() - Number(DxcSpotCountsUpdatedAt) > Number(DxcSpotMaxAgeMs)){
+			return;
+		}
+		var keys = Object.keys(DxcSpotCounts || {});
+		if(keys.length === 0){
+			return;
+		}
+		var prefixIndex = ensureDxccPrefixIndex();
+		var maxCount = 0;
+		var sunRadiusPx = 5.2;
+		var minScale = 1;
+		var maxScale = 15;
+		var drawable = [];
+		for(var i = 0; i < keys.length; i++){
+			var prefix = keys[i];
+			var count = Number(DxcSpotCounts[prefix]);
+			var entry = prefixIndex[prefix];
+			if(!entry || !isFinite(count) || count <= 0){
+				continue;
+			}
+			var projected = projectAzimuthal(entry.lat, entry.lon, centerLat, centerLon, mapRadiusPx, zoomKm);
+			if(!projected){
+				continue;
+			}
+			drawable.push({ x: projected.x, y: projected.y, count: count });
+			if(count > maxCount){
+				maxCount = count;
+			}
+		}
+		if(drawable.length === 0 || maxCount <= 0){
+			return;
+		}
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(Xcenter, Ycenter, mapRadiusPx, 0, 2 * Math.PI);
+		ctx.clip();
+		for(var j = 0; j < drawable.length; j++){
+			var item = drawable[j];
+			var scale = minScale;
+			if(maxCount > 1){
+				scale += (Math.max(1, item.count) - 1) / (maxCount - 1) * (maxScale - minScale);
+			}
+			var radius = sunRadiusPx * Math.sqrt(scale);
+			ctx.fillStyle = "rgba(255, 214, 82, 0.20)";
+			ctx.beginPath();
+			ctx.arc(item.x, item.y, radius, 0, 2 * Math.PI);
+			ctx.fill();
+		}
+		ctx.restore();
+	}
+
 	function drawBitmapSunOverlay(ctx){
 		if(!GraylineNtpOk || GraylineEpoch <= 0){
 			return;
@@ -3623,6 +3785,7 @@ var LAND_OUTLINES = [];
 			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawLocGridOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawSunMoonOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawDxcSpotOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawOutsideCircleMask(ctx, mapRadiusPx);
 
@@ -3654,6 +3817,7 @@ var LAND_OUTLINES = [];
 			drawGrayline(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawLocGridOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawSunMoonOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
+			drawDxcSpotOverlay(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, centerLat, centerLon, mapRadiusPx, zoomKm);
 			ctx.restore();
 		}
@@ -3690,6 +3854,7 @@ var LAND_OUTLINES = [];
 			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawLocGridOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawSunMoonOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
+			drawDxcSpotOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			return;
 		}
@@ -3709,6 +3874,7 @@ var LAND_OUTLINES = [];
 			drawGrayline(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawLocGridOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawSunMoonOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
+			drawDxcSpotOverlay(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 			drawDxccPrefixes(ctx, center.lat, center.lon, mapRadiusPx, zoomKm);
 		};
 		img.onerror = function(){

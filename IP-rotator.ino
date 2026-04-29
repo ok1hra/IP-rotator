@@ -154,6 +154,7 @@ bool DefaultMapLocGridEnabled = false;
 bool DefaultMapGraylineEnabled = true;
 bool DefaultMapBordersEnabled = false;
 bool DefaultMapDxccEnabled = false;
+bool DefaultMapDxcSpotsEnabled = false;
 bool FsMounted = false;
 bool FsBuildInfoPresent = false;
 bool FsBuildMatchesFirmware = false;
@@ -291,7 +292,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 485   /*
+#define EEPROM_SIZE 486   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -359,8 +360,9 @@ int i = 0;
 416 - DefaultMapGraylineEnabled
 417 - DefaultMapBordersEnabled
 418 - DefaultMapDxccEnabled
-419-420 - PulseAzimuthTenths UShort
-421-484 - DXC MQTT publish topic
+419 - DefaultMapDxcSpotsEnabled
+420-421 - PulseAzimuthTenths UShort
+422-485 - DXC MQTT publish topic
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -909,9 +911,14 @@ void setup() {
     DefaultMapDxccEnabled = EEPROM.readBool(418);
   }
   if(EEPROM.read(419)==0xff){
+    DefaultMapDxcSpotsEnabled = false;
+  }else{
+    DefaultMapDxcSpotsEnabled = EEPROM.readBool(419);
+  }
+  if(EEPROM.read(420)==0xff){
     PulseAzimuthTenths = 0;
   }else{
-    PulseAzimuthTenths = ClampPulseAzimuthTenths(EEPROM.readUShort(419));
+    PulseAzimuthTenths = ClampPulseAzimuthTenths(EEPROM.readUShort(420));
   }
 
   // 29  - Endstop
@@ -1132,11 +1139,11 @@ void setup() {
     DxcCallsign = ReadFixedStringFromEeprom(397, 16);
   }
 
-  // 421-484 DXC MQTT publish topic
-  if(EEPROM.read(421)==0xff){
+  // 422-485 DXC MQTT publish topic
+  if(EEPROM.read(422)==0xff){
     DxcMqttTopic = "";
   }else{
-    DxcMqttTopic = ReadFixedStringFromEeprom(421, 64);
+    DxcMqttTopic = ReadFixedStringFromEeprom(422, 64);
     DxcMqttTopic.trim();
     if(!IsSafeMqttPublishTopicValue(DxcMqttTopic)){
       DxcMqttTopic = "";
@@ -2282,6 +2289,7 @@ String ExportConfigBackupJson(){
   json += "    \"default_grayline\": " + String(DefaultMapGraylineEnabled ? "true" : "false") + ",\n";
   json += "    \"default_state_borders\": " + String(DefaultMapBordersEnabled ? "true" : "false") + ",\n";
   json += "    \"default_dxcc_prefixes\": " + String(DefaultMapDxccEnabled ? "true" : "false") + ",\n";
+  json += "    \"default_dxc_spots\": " + String(DefaultMapDxcSpotsEnabled ? "true" : "false") + ",\n";
   json += "    \"one_turn_limit_sec\": " + String(OneTurnLimitSec) + "\n";
   json += "  }\n";
   json += "}\n";
@@ -2305,7 +2313,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   float lowZoneValue = 0.0f, highZoneValue = 0.0f, pwmSlowWindowValue = 0.0f;
   bool endstopValue = false, acMotorValue = false, reverseValue = false, azTwoWireValue = false, azPreampValue = false;
   bool reverseAzValue = false, webAuthEnabledValue = false, pwmEnableValue = false, mqttLoginValue = false, elevationValue = false;
-  bool defaultDegOverlayValue = true, defaultAntOverlayValue = true, defaultLocGridValue = false, defaultGraylineValue = true, defaultStateBordersValue = false, defaultDxccPrefixesValue = false;
+  bool defaultDegOverlayValue = true, defaultAntOverlayValue = true, defaultLocGridValue = false, defaultGraylineValue = true, defaultStateBordersValue = false, defaultDxccPrefixesValue = false, defaultDxcSpotsValue = false;
 
   if(!JsonExtractString(jsonPayload, "net_id", newNetId) || newNetId.length() < 1 || newNetId.length() > 2){
     return "Invalid net_id";
@@ -2475,6 +2483,9 @@ String ImportConfigBackupJson(const String& jsonPayload){
   if(!JsonExtractBool(jsonPayload, "default_dxcc_prefixes", defaultDxccPrefixesValue)){
     defaultDxccPrefixesValue = false;
   }
+  if(!JsonExtractBool(jsonPayload, "default_dxc_spots", defaultDxcSpotsValue)){
+    defaultDxcSpotsValue = false;
+  }
   if(!JsonExtractLong(jsonPayload, "one_turn_limit_sec", oneTurnLimitValue) || oneTurnLimitValue < 20 || oneTurnLimitValue > 600){
     return "Invalid one_turn_limit_sec";
   }
@@ -2547,6 +2558,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   DefaultMapGraylineEnabled = defaultGraylineValue;
   DefaultMapBordersEnabled = defaultStateBordersValue;
   DefaultMapDxccEnabled = defaultDxccPrefixesValue;
+  DefaultMapDxcSpotsEnabled = defaultDxcSpotsValue;
   OneTurnLimitSec = oneTurnLimitValue;
 
   WriteFixedStringToEeprom(0, 2, NET_ID);
@@ -2598,13 +2610,14 @@ String ImportConfigBackupJson(const String& jsonPayload){
   WriteFixedStringToEeprom(331, 64, DxcHost);
   EEPROM.writeUShort(395, DxcPort);
   WriteFixedStringToEeprom(397, 16, DxcCallsign);
-  WriteFixedStringToEeprom(421, 64, DxcMqttTopic);
+  WriteFixedStringToEeprom(422, 64, DxcMqttTopic);
   EEPROM.writeBool(413, DefaultDegOverlayEnabled);
   EEPROM.writeBool(414, DefaultAntOverlayEnabled);
   EEPROM.writeBool(415, DefaultMapLocGridEnabled);
   EEPROM.writeBool(416, DefaultMapGraylineEnabled);
   EEPROM.writeBool(417, DefaultMapBordersEnabled);
   EEPROM.writeBool(418, DefaultMapDxccEnabled);
+  EEPROM.writeBool(419, DefaultMapDxcSpotsEnabled);
   EEPROM.commit();
 
   digitalWrite(AZtwoWirePin, AZtwoWire);
@@ -2803,13 +2816,13 @@ void PersistPulseAzimuthIfNeeded(bool forceSave){
 
   unsigned int currentTenths = ClampPulseAzimuthTenths(int(round(AzimuthRawDeg * 10.0f)));
   if(lastSavedPulseAzimuthTenths == 65535){
-    lastSavedPulseAzimuthTenths = EEPROM.readUShort(419);
+    lastSavedPulseAzimuthTenths = EEPROM.readUShort(420);
   }
 
   bool changed = currentTenths != lastSavedPulseAzimuthTenths;
   bool enoughTimeElapsed = millis() - lastPulseAzimuthSave > 60000;
   if(changed && (forceSave || (Status == 0 && enoughTimeElapsed))){
-    EEPROM.writeUShort(419, currentTenths);
+    EEPROM.writeUShort(420, currentTenths);
     EEPROM.commit();
     lastSavedPulseAzimuthTenths = currentTenths;
     PulseAzimuthTenths = currentTenths;
@@ -4841,6 +4854,7 @@ void handleSet() {
   String mapdefaultgraylineCHECKED= "";
   String mapdefaultbordersCHECKED= "";
   String mapdefaultdxccCHECKED= "";
+  String mapdefaultdxcspotsCHECKED= "";
   String mapSourceSELECT0= "";
   String mapSourceSELECT1= "";
   String mapUrlRowStyle= "";
@@ -5096,7 +5110,7 @@ void handleSet() {
       dxc_mqtt_topicERR = "";
       if(DxcMqttTopic != newDxcMqttTopic){
         DxcMqttTopic = newDxcMqttTopic;
-        WriteFixedStringToEeprom(421, 64, DxcMqttTopic);
+        WriteFixedStringToEeprom(422, 64, DxcMqttTopic);
       }
     }
 
@@ -5301,6 +5315,7 @@ void handleSet() {
     bool newDefaultMapGraylineEnabled = ajaxserver.arg("mapdefaultgrayline").toInt() == 1;
     bool newDefaultMapBordersEnabled = ajaxserver.arg("mapdefaultborders").toInt() == 1;
     bool newDefaultMapDxccEnabled = ajaxserver.arg("mapdefaultdxcc").toInt() == 1;
+    bool newDefaultMapDxcSpotsEnabled = ajaxserver.arg("mapdefaultdxcspots").toInt() == 1;
     if(DefaultDegOverlayEnabled != newDefaultDegOverlayEnabled){
       DefaultDegOverlayEnabled = newDefaultDegOverlayEnabled;
       EEPROM.writeBool(413, DefaultDegOverlayEnabled);
@@ -5324,6 +5339,10 @@ void handleSet() {
     if(DefaultMapDxccEnabled != newDefaultMapDxccEnabled){
       DefaultMapDxccEnabled = newDefaultMapDxccEnabled;
       EEPROM.writeBool(418, DefaultMapDxccEnabled);
+    }
+    if(DefaultMapDxcSpotsEnabled != newDefaultMapDxcSpotsEnabled){
+      DefaultMapDxcSpotsEnabled = newDefaultMapDxcSpotsEnabled;
+      EEPROM.writeBool(419, DefaultMapDxcSpotsEnabled);
     }
 
     // 223 AZsource
@@ -5790,6 +5809,9 @@ if(DefaultMapBordersEnabled==true){
 if(DefaultMapDxccEnabled==true){
   mapdefaultdxccCHECKED = "checked";
 }
+if(DefaultMapDxcSpotsEnabled==true){
+  mapdefaultdxcspotsCHECKED = "checked";
+}
 
 // if(AZsource==true){
 //   sourceSELECT0= "";
@@ -6053,6 +6075,9 @@ switch (PwmTuneAggressiveness) {
   HtmlSrc +="></td></tr>\n";
   HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultdxcc'>Default DXCC prefixes:</label></td><td><input type='checkbox' id='mapdefaultdxcc' name='mapdefaultdxcc' value='1' ";
   HtmlSrc += mapdefaultdxccCHECKED;
+  HtmlSrc +="></td></tr>\n";
+  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultdxcspots'>Default DX cluster overlay:</label></td><td><input type='checkbox' id='mapdefaultdxcspots' name='mapdefaultdxcspots' value='1' ";
+  HtmlSrc += mapdefaultdxcspotsCHECKED;
   HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>These values define how the control page toggles are pre-set after the page is opened or refreshed.</span></span></td></tr>\n";
   HtmlSrc +="</table></details>\n";
 
@@ -6737,7 +6762,8 @@ void handleMapDisplayDefaults() {
     String(DefaultMapLocGridEnabled ? "1" : "0") + "|" +
     String(DefaultMapGraylineEnabled ? "1" : "0") + "|" +
     String(DefaultMapBordersEnabled ? "1" : "0") + "|" +
-    String(DefaultMapDxccEnabled ? "1" : "0")
+    String(DefaultMapDxccEnabled ? "1" : "0") + "|" +
+    String(DefaultMapDxcSpotsEnabled ? "1" : "0")
   );
 }
 void handleGraylineInfo() {
