@@ -1,4 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CALIBRATE</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <style type="text/css">
+    @font-face {font-family: 'Roboto Condensed'; src: url('/RC-R.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap;}
+    @font-face {font-family: 'Roboto Condensed'; src: url('/RC-B.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap;}
+    button {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; border-radius: 5px;}
+    button:hover {background-color: orange;}
+    .red {background-color: #c00; color: #FFF;}
+    table, th, td { color: #fff; border: 0px; border-color: #666; border-style: solid; margin: 0px;}
+    .tdl { text-align: left; padding: 10px;}
+    .tdc { text-align: center; padding: 10px;}
+    .tdr { text-align: right; padding: 10px;}
+    html,body { background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;}
+    a:hover {color: #fff;}
+    a {color: #ccc; text-decoration: underline;}
+  </style>
+</head>
+<body>
+  <h1 style="color: #666; text-align: center;">Calibration steps:<br><span style="font-size: 50%;">(MAC {{MAC_STRING}}|FW {{REV}}|HW {{HARDWARE_REV}})</span></h1>
+  <div style="display: flex; justify-content: center;">
+    <table cellspacing="0" cellpadding="0">
+      <form action="/cal" method="post" style="color: #ccc; margin: 50 0 0 0; text-align: center;">
+        <tr><td class="tdc" colspan="3" style="background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;"><span style="font-size: 200%;">{{STEP_ONE_TITLE}}</span></td></tr>
+        <tr style="background-color: #666;">
+          <td class="tdr"><button id="ccw" name="ccw">&#8630; CCW</button></td>
+          <td class="tdc"><button id="stop" name="stop">&#10008; STOP</button></td>
+          <td class="tdl"><button id="cw" name="cw">CW &#8631;</button></td>
+        </tr>
+        <tr>
+          <td class="tdc" colspan="3" style="background-color: #666;"><button id="reverse" name="reverse"{{REVERSE_COLOR}}>REVERSE-CONTROL-<strong>{{REVERSE_STATUS}}</strong></button></td>
+        </tr>
+        <tr>
+          <td class="tdc" colspan="3" style="color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;"><span style="color: #ccc;">Instruction:</span> if it does not rotate according to the buttons, reverse the control</td>
+        </tr>
+        <tr><td class="tdc" colspan="3" style="height:30px"></td></tr>
 
+        <tr><td class="tdc" colspan="3" style="background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;"><span style="font-size: 200%;">{{STEP_TWO_TITLE}}</span></td></tr>
+        <tr>
+          <td class="tdc" colspan="3" style="background-color: #666;"><div style="position: relative;"><canvas class="top" id="Azimuth" width="600" height="140">Your browser does not support the HTML5 canvas tag.</canvas></div></td>
+        </tr>
+        <tr style="background-color: #666;">
+          <td class="tdl"><button id="setccw" name="setccw"{{SET_SAVE_DISABLED}}>&#8676; SAVE CCW</button></td>
+          <td class="tdc" style="background-color: #666;"><button id="clear" name="clear"{{CLEAR_DISABLED}}>{{CLEAR_BUTTON_LABEL}}</button></td>
+          <td class="tdr"><button id="setcw" name="setcw"{{SET_SAVE_DISABLED}}>SAVE CW &#8677;</button></td>
+        </tr>
+        <tr>
+          <td class="tdc" colspan="3" style="background-color: #666;"><button id="reverseaz" name="reverseaz"{{REVERSE_AZ_COLOR}}>{{REVERSE_AZ_LABEL}}-<strong>{{REVERSE_AZ_STATUS}}</strong></button></td>
+        </tr>
+        <tr>
+          <td class="tdc" colspan="3" style="color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">{{STEP_TWO_INSTRUCTION}}</td>
+        </tr>
+        <tr><td class="tdc" colspan="3" style="height:30px"></td></tr>
+
+        <tr><td class="tdc" colspan="3" style="background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;"><span style="font-size: 200%;">3. Front panel calibrate (optional)</span></td></tr>
+        <tr>
+          <td class="tdc" colspan="3" style="color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">
+            <span style="font-size: 150%;">Panel value <span style="font-weight: bold; color: #0a0;" id="frontAZValue">0</span><br></span>
+            <span style="color: #ccc;"><br>Instruction:</span><br>&#8226; Rotate front panel potentiometer axis without knob to value 360&deg <br>&#8226; Put knob with orientation to north on axis<br>&#8226; Fixate knob to axis on position north
+          </td>
+        </tr>
+      </form>
+    </table>
+  </div>
+  <div style="display: flex; justify-content: center;"><span><p style="text-align: center;"><a href="https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v" target="_blank">More on Wiki &#10138;</a></p></span></div>
 
 	<script>
 
@@ -206,9 +272,7 @@
 	  var ghttp = new XMLHttpRequest();
 	  ghttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				Elevation = this.responseText;
-				// console.log ('Elevation ' + Elevation);
 				renderCanvas();
 	    }
 	  };
@@ -218,9 +282,7 @@
 		var ghttp = new XMLHttpRequest();
 	  ghttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				AzShift = this.responseText;
-				// console.log ('AzShift ' + AzShift);
 				renderCanvas();
 	    }
 	  };
@@ -230,9 +292,7 @@
 	  var hhttp = new XMLHttpRequest();
 	  hhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				AzRange = this.responseText;
-				// console.log ('AzRange ' + AzRange);
 				renderCanvas();
 	    }
 	  };
@@ -242,9 +302,7 @@
 	  var ihttp = new XMLHttpRequest();
 	  ihttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				Endstop = this.responseText;
-				// console.log ('Endstop ' + Endstop);
 				renderCanvas();
 	    }
 	  };
@@ -254,9 +312,7 @@
 	  var lhttp = new XMLHttpRequest();
 	  lhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				NoEndstopLowZone = normalizeZoneValue(this.responseText, LowZoneMin, LowZoneMax);
-				// console.log ('Endstop ' + Endstop);
 				renderCanvas();
 	    }
 	  };
@@ -266,9 +322,7 @@
 	  var mhttp = new XMLHttpRequest();
 	  mhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				NoEndstopHighZone = normalizeZoneValue(this.responseText, HighZoneMin, HighZoneMax);
-				// console.log ('Endstop ' + Endstop);
 				renderCanvas();
 	    }
 	  };
@@ -278,9 +332,7 @@
 	  var jhttp = new XMLHttpRequest();
 	  jhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				CcwRaw = this.responseText;
-				// console.log ('Endstop ' + Endstop);
 				renderCanvas();
 	    }
 	  };
@@ -290,9 +342,7 @@
 	  var khttp = new XMLHttpRequest();
 	  khttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StartValue").innerHTML = this.responseText;
 				CwRaw = this.responseText;
-				// console.log ('Endstop ' + Endstop);
 				renderCanvas();
 	    }
 	  };
@@ -315,7 +365,6 @@
 		fhttp.onreadystatechange = function() {
 			if (this.readyState == 4 && this.status == 200) {
 				document.getElementById("frontAZValue").innerHTML = this.responseText;
-				// console.log ('OnlineTimer ' + OnlineTimer);
 			}
 		};
 		fhttp.open("GET", "readFrontAZ", true);
@@ -324,14 +373,10 @@
 	  var whttp = new XMLHttpRequest();
 	  whttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("AZadcValue").innerHTML = this.responseText;
 				AzimuthADC = this.responseText;
 				if(StaticInitialized){
 					POINTER(AzimuthADC);
 				}
-				// Static();
-				// StaticBot();
-				// console.log ('getData.Azimuth ' + Azimuth);
 	    }
 	  };
 	  whttp.open("GET", "readAZadc", true);
@@ -352,7 +397,6 @@
 	  var xhttp = new XMLHttpRequest();
 	  xhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("AZadcValue").innerHTML = this.responseText;
 				Uptime = this.responseText;
 	    }
 	  };
@@ -362,15 +406,11 @@
 	  var zhttp = new XMLHttpRequest();
 	  zhttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StatValue").innerHTML = this.responseText;
 				Status = this.responseText;
 				if( Number(StatusTmp)!=Number(Status) ){
 					if(StaticInitialized){
 						POINTER(AzimuthADC);
 					}
-				// 	AZ(Azimuth);
-				// 	Static();
-				// 	StaticBot();
 					StatusTmp=Status;
 				}
 	    }
@@ -378,8 +418,6 @@
 	  zhttp.open("GET", "readStat", true);
 	  zhttp.send();
 	}
-
-	//---------------------------------------------------------------
 
 	function POINTER(PointerValue){
 	  var c = document.getElementById("Azimuth");
@@ -395,10 +433,6 @@
 			pointer.fillStyle = "#303030";
 			var CWpos = adcToCanvas(CwRaw);
 			var CCWpos = adcToCanvas(CcwRaw);
-			// console.log ('CcwRaw ' + CcwRaw);
-			// console.log ('CwRaw ' + CwRaw);
-			// console.log ('Ccw ' + CCWpos );
-			// console.log ('Cw ' + CWpos);
 				pointer.moveTo( CCWpos, 55);
 				pointer.lineTo( CCWpos+7, 65);
 				pointer.lineTo( CCWpos, 75);
@@ -407,22 +441,19 @@
 				pointer.lineTo( CWpos-7, 65);
 				pointer.lineTo( CWpos, 75);
 				if(Elevation==0){
-					pointer.fillText( Number(AzShift) + "°", CCWpos, 90+20);
-					pointer.fillText( Number(AzShift) + Number(AzRange) + "°", CWpos, 90+20);
+					pointer.fillText( Number(AzShift) + "°", CCWpos, 110);
+					pointer.fillText( Number(AzShift) + Number(AzRange) + "°", CWpos, 110);
 				}else{
-					pointer.fillText( "0°", CCWpos, 90+20);
-					pointer.fillText( Number(AzRange) + "°", CWpos, 90+20);
+					pointer.fillText( "0°", CCWpos, 110);
+					pointer.fillText( Number(AzRange) + "°", CWpos, 110);
 				}
 		pointer.fill();
 
 		var Position = adcToCanvas(PointerValue);
-		// console.log ('Position ' + Position);
 	  pointer.beginPath();
 			pointer.moveTo( Number(Position), 55);
 		  pointer.lineTo( Number(Position)+5, 75);
 		  pointer.lineTo( Number(Position)-5, 75);
-			// console.log ('PointerValue ' + PointerValue);
-			// console.log ('NoEndstopLowZone ' + NoEndstopLowZone);
 			if (Status != 4) {
 				pointer.fillStyle = "#c00000";
 			}else if(AzSource === 1){
@@ -460,20 +491,15 @@
 	function Static(){
 	  var con = document.getElementById("Azimuth");
 
-	  // endstop
 		if(Endstop==0){
 			var endstop = con.getContext("2d");
 			endstop.beginPath();
-			// endstop.rotate(90 * Math.PI / 180);
 			endstop.lineWidth = 8;
 			endstop.strokeStyle = 'orange';
-			// endstop.moveTo(30, 45);
 			endstop.moveTo(voltageToCanvas(0.142), 45);
 			endstop.lineTo(voltageToCanvas(NoEndstopLowZone), 45);
-			// endstop.moveTo(BoxSize-30, 45);
 			endstop.moveTo(voltageToCanvas(3.155), 45);
 			endstop.lineTo(voltageToCanvas(NoEndstopHighZone), 45);
-			// endstop.lineTo( (Number(BoxSize)-30)-(Number(BoxSize)-60)/3.3*Number(NoEndstopHighZone), 45);
 			endstop.fillStyle = "orange";
 			endstop.font = "bold 10px Arial";
 			endstop.textAlign = 'center';
@@ -494,7 +520,6 @@
 			}
 		}
 
-	  // scale
 	  var scale = con.getContext("2d");
 	  scale.beginPath();
 	  scale.lineWidth = 2;
@@ -539,5 +564,5 @@
 
 
 	</script>
-	</body>
-	</html>
+</body>
+</html>

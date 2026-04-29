@@ -35,6 +35,18 @@ The project now uses SPIFFS for the web UI assets in [`data/`](/home/dan/inst/IP
 - `firmware.bin` for the sketch
 - `spiffs.bin` for the filesystem
 
+### Web routes
+
+The firmware now separates recovery pages from the full SPIFFS web UI:
+
+- `/` recovery page stored in firmware
+- `/update` ElegantOTA page stored in firmware
+- `/app` main control UI from SPIFFS
+- `/setup` setup UI from SPIFFS
+- `/cal` calibration UI from SPIFFS
+
+If SPIFFS is missing or mismatched, `/` and `/update` should still remain available for recovery.
+
 ### Build `firmware.bin`
 
 In Arduino IDE 1.8.19 use:

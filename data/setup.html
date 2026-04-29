@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SETUP</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <style type="text/css">
+    @font-face {font-family: 'Roboto Condensed'; src: url('/RC-R.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap;}
+    @font-face {font-family: 'Roboto Condensed'; src: url('/RC-B.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap;}
+    button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; border-radius: 5px;}
+    button#go:hover {background-color: orange;}
+    table, th, td {color: #fff; border-collapse: collapse; border:0px}
+    .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle; padding-right: 15px}
+    html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;}
+    body {margin: 0; padding: 0 18px 28px 18px;}
+    a:hover {color: #fff;}
+    a { color: #ccc; text-decoration: underline;}
+    .b {border-top: 1px dotted #666;}
+    .tooltip-text {visibility: hidden; position: absolute; z-index: 9999; width: 300px; max-width: calc(100vw - 24px); box-sizing: border-box; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.35);}
+    .hover-text:hover .tooltip-text, .hover-text:focus-within .tooltip-text { visibility: visible; }
+    #right { top: -30px; left: 200%; }
+    #top { top: -60px; left: -150%; }
+    #left { top: -8px; right: 120%; }
+    .hover-text {position: relative; z-index: 2; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; }
+    .setup-wrap {max-width: 980px; margin: 0 auto;}
+    .setup-form {color: #ccc; margin: 0; text-align: center;}
+    .setup-section {position: relative; background: #3b3b3b; border: 1px solid #555; border-radius: 14px; margin: 0 0 10px 0; overflow: visible;}
+    .setup-summary {cursor: pointer; list-style: none; padding: 10px 14px; text-align: left; font-size: 20px; color: #ddd; background: #444; transition: background-color 0.15s ease, color 0.15s ease;}
+    .setup-summary:hover, .setup-summary:focus {background: orange; color: #111;}
+    .setup-summary::-webkit-details-marker {display: none;}
+    .setup-summary:after {content: '\25be'; float: right; color: #aaa;}
+    .setup-summary:hover:after, .setup-summary:focus:after {color: #111;}
+    .setup-section[open] .setup-summary {background: #d8921a; color: #111;}
+    .setup-section[open] .setup-summary:after {content: '\25b4'; color: #111;}
+    .setup-table {width: 100%; table-layout: fixed;}
+    .setup-table td {padding-top: 2px; padding-bottom: 2px;}
+    .setup-table .tdr {width: 50%; box-sizing: border-box;}
+    .setup-table td:last-child {width: 50%; text-align: left; box-sizing: border-box;}
+    .setup-actions {text-align: center; margin-top: 18px;}
+    .setup-note {color: #666; text-align: center; margin-top: 18px;}
+    .backup-box {padding: 16px 18px 18px 18px; text-align: left; color: #ddd;}
+    .backup-box p {margin: 0 0 14px 0; color: #bbb;}
+    .backup-actions {display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px;}
+    .backup-upload {display: flex; flex-wrap: wrap; gap: 10px; align-items: center;}
+    .backup-upload input[type='file'] {max-width: 100%;}
+    .backup-status {display: none; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #2f2f2f; color: #ddd;}
+    .backup-status.is-ok {display: block; background: #16351d; color: #d5ffd8;}
+    .backup-status.is-error {display: block; background: #4a1f1f; color: #ffd9d9;}
+  </style>
+</head>
+<body>
+  <h1 style="color: #666; text-align: center;">Setup<br><span style="font-size: 50%;">(MAC {{MAC_STRING}}|FW {{REV}}|HW {{HARDWARE_REV}})</span><span style="color: #333;">{{HWID_VALUE}}</span></h1>
+  <div class="setup-wrap">
+    <form action="/set" method="post" class="setup-form">
+      <details class="setup-section">
+        <summary class="setup-summary">Station and rotor</summary>
+        <table class="setup-table">
+          <tr class="b"><td class="tdr"><label for="yourcall">Your callsign:</label></td><td><input type="text" id="yourcall" name="yourcall" size="10" value="{{YOUR_CALL}}"><span style="color:red;">{{YOURCALL_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 200px;">Used as part of an MQTT topic</span></span></td></tr>
+          <tr><td class="tdr"><label for="rotid">Rotator ID:</label></td><td><input type="text" id="rotid" name="rotid" size="2" value="{{NET_ID}}"><span style="color:red;">{{ROTID_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 300px;">[1-2 chars]<br>Multiple rotators with the same TOPIC must have different IDs<br>Second part of MQTT topic</span></span></td></tr>
+          <tr><td class="tdr"><label for="rotname">Rotator name:</label></td><td><input type="text" id="rotname" name="rotname" size="20" value="{{ROT_NAME}}"><span style="color:red;">{{ROTNAME_ERR}}</span></td></tr>
+          <tr class="b"><td class="tdr"><label for="elevation">Use only for Elevation:</label></td><td><input type="checkbox" id="elevation" name="elevation" value="1" {{ELEVATION_CHECKED}}><span class="hover-text">?<span class="tooltip-text" id="top">Will be SET<br>Start Azimuth to 270<br>Max Rotate Degree to 180 (may be change to 0-180)<br><br>For map use<br>https://remoteqth.com/xplanet/SKY.jpg</span></span></td></tr>
+          <tr><td class="tdr"><label for="startazimuth"><span{{STARTAZIMUTH_STYLE}}>Start CCW azimuth:</span></label></td><td><input type="text" id="startazimuth" name="startazimuth" size="3" value="{{START_AZIMUTH}}"{{STARTAZIMUTH_DISABLE}}>&deg; <span style="color:red;">{{STARTAZIMUTH_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 100px;">Allowed range<br>[0-359&deg;]</span></span></td></tr>
+          <tr><td class="tdr"><label for="maxrotatedegree">Rotation range in degrees:</label></td><td><input type="text" id="maxrotatedegree" name="maxrotatedegree" size="3" value="{{MAX_ROTATE_DEGREE}}">&deg; <span style="color:red;">{{MAXROTATEDEGREE_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 100px;">Range from CCW to CW endstop in degrees</span></span></td></tr>
+          <tr><td class="tdr"><label for="antradiationangle">Antenna radiation angle in degrees:</label></td><td><input type="text" id="antradiationangle" name="antradiationangle" size="3" value="{{ANT_RADIATION_ANGLE}}">&deg; <span style="color:red;">{{ANTRADIATIONANGLE_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 100px;">Allowed range<br>[1-180&deg;]</span></span></td></tr>
+        </table>
+      </details>
+
+      <details class="setup-section">
+        <summary class="setup-summary">Map and display</summary>
+        <table class="setup-table">
+          <tr><td class="tdr"><label for="mapsource">Map source:</label></td><td><select id="mapsource" name="mapsource" onchange="toggleMapSourceRows()"><option value="0"{{MAPSOURCE_SELECT0}}>URL bitmap</option><option value="1"{{MAPSOURCE_SELECT1}}>Vector map</option></select><span style="color:red;">{{MAPSOURCE_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 240px;">Vector map uses stored continent outlines, locator center and grayline with UTC time from the selected NTP server. Zoom is changed live with the bar below the map.</span></span></td></tr>
+          <tr id="mapUrlRow"{{MAP_URL_ROW_STYLE}}><td class="tdr"><label for="mapurl">Background azimuth map URL:</label></td><td><input type="text" id="mapurl" name="mapurl" size="30" value="{{MAP_URL}}"><span style="color:red;">{{MAPURL_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="left">DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA, or run own services.</span></span> <a href="https://remoteqth.com/xplanet/" target="_blank">Available list</a></td></tr>
+          <tr id="mapLocatorRow"{{MAP_LOCATOR_ROW_STYLE}}><td class="tdr"><label for="maplocator">Map center locator:</label></td><td><input type="text" id="maplocator" name="maplocator" size="8" maxlength="6" value="{{MAP_LOCATOR}}"><span style="color:red;">{{MAPLOCATOR_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 180px;">Maidenhead locator in 6-char format, for example JO60UC</span></span></td></tr>
+          <input type="hidden" id="mapzoomkm" name="mapzoomkm" value="{{MAP_ZOOM_KM}}">
+          <tr id="mapThemeRow"{{MAP_THEME_ROW_STYLE}}><td class="tdr"><label for="maptheme">Vector map theme:</label></td><td><select id="maptheme" name="maptheme"><option value="0"{{MAPTHEME_SELECT0}}>Calm marine</option><option value="1"{{MAPTHEME_SELECT1}}>Night radar</option><option value="2"{{MAPTHEME_SELECT2}}>Warm atlas</option><option value="3"{{MAPTHEME_SELECT3}}>Amber terminal</option><option value="4"{{MAPTHEME_SELECT4}}>Night vision</option><option value="5"{{MAPTHEME_SELECT5}}>Sky blue</option></select><span style="color:red;">{{MAPTHEME_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 360px;">Calm marine is relaxed for long watching. Night radar is technical with clearer contrast. Warm atlas is softer indoors. Amber terminal feels like classic radio gear. Night vision is vivid green instrumentation. Sky blue is brighter, airy and map-like.</span></span></td></tr>
+          <tr id="graylineNtpRow"{{GRAYLINE_NTP_ROW_STYLE}}><td class="tdr"><label for="graylinentp">NTP server for grayline:</label></td><td><input type="text" id="graylinentp" name="graylinentp" size="24" value="{{GRAYLINE_NTP_SERVER}}"><span style="color:red;">{{GRAYLINENTP_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 210px;">Used to get UTC date and time for the grayline overlay. Default pool.ntp.org.</span></span></td></tr>
+          <tr id="graylineDarknessRow"{{GRAYLINE_DARKNESS_ROW_STYLE}}><td class="tdr"><label for="graylinedarkness">Grayline darkness:</label></td><td><input type="text" id="graylinedarkness" name="graylinedarkness" size="4" value="{{GRAYLINE_DARKNESS}}">&nbsp;%<span style="color:red;">{{GRAYLINEDARKNESS_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 190px;">0 means invisible overlay, 100 means darkest night mask.</span></span></td></tr>
+          <tr><td class="tdr"><label for="mapdefaultdeg">Default DEG overlay:</label></td><td><input type="checkbox" id="mapdefaultdeg" name="mapdefaultdeg" value="1" {{MAPDEFAULTDEG_CHECKED}}></td></tr>
+          <tr><td class="tdr"><label for="mapdefaultant">Default ANT overlay:</label></td><td><input type="checkbox" id="mapdefaultant" name="mapdefaultant" value="1" {{MAPDEFAULTANT_CHECKED}}></td></tr>
+          <tr><td class="tdr"><label for="mapdefaultlocgrid">Default locator grid:</label></td><td><input type="checkbox" id="mapdefaultlocgrid" name="mapdefaultlocgrid" value="1" {{MAPDEFAULTLOCGRID_CHECKED}}></td></tr>
+          <tr><td class="tdr"><label for="mapdefaultgrayline">Default grayline:</label></td><td><input type="checkbox" id="mapdefaultgrayline" name="mapdefaultgrayline" value="1" {{MAPDEFAULTGRAYLINE_CHECKED}}></td></tr>
+          <tr><td class="tdr"><label for="mapdefaultborders">Default state borders:</label></td><td><input type="checkbox" id="mapdefaultborders" name="mapdefaultborders" value="1" {{MAPDEFAULTBORDERS_CHECKED}}></td></tr>
+          <tr><td class="tdr"><label for="mapdefaultdxcc">Default DXCC prefixes:</label></td><td><input type="checkbox" id="mapdefaultdxcc" name="mapdefaultdxcc" value="1" {{MAPDEFAULTDXCC_CHECKED}}></td></tr>
+          <tr><td class="tdr"><label for="mapdefaultdxcspots">Default DX cluster overlay:</label></td><td><input type="checkbox" id="mapdefaultdxcspots" name="mapdefaultdxcspots" value="1" {{MAPDEFAULTDXCSPOTS_CHECKED}}><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 250px;">These values define how the control page toggles are pre-set after the page is opened or refreshed.</span></span></td></tr>
+        </table>
+      </details>
+
+      <details class="setup-section">
+        <summary class="setup-summary">Sensors and limits</summary>
+        <table class="setup-table">
+          <tr class="b"><td class="tdr"><label for="source">Azimuth source:</label></td><td><select name="source" id="source"><option value="0"{{SOURCE_SELECT0}}>Potentiometer</option><option value="1"{{SOURCE_SELECT1}}>CW/CCW pulse</option><option value="2"{{SOURCE_SELECT2}}>MQTT</option></select><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 320px;">CW/CCW pulse uses the 3.5mm jack connector inputs on GPIO36 and GPIO5.<br>In pulse mode the manual KEY input on these pins is disabled.<br>MQTT rx on topic {{MQTT_RX_TOPIC}}</span></span></td></tr>
+          <tr><td class="tdr"><label for="pulseperdegree"><span{{PULSEPERDEGREE_STYLE}}>Pulse count per degree:</span></label></td><td><input type="text" id="pulseperdegree" name="pulseperdegree" size="3" value="{{PULSEPERDEGREE_VALUE}}"{{PULSEPERDEGREE_DISABLE}}><span style="color:red;">{{PULSEPERDEGREE_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 100px;">Allowed range<br>[1-100]</span></span></td></tr>
+          <tr><td class="tdr"><label for="twowire"><span{{TWOWIRE_STYLE}}>Azimuth potentiometer:</span></label></td><td><select name="twowire" id="twowire"{{TWOWIRE_DISABLE}}><option value="0"{{TWOWIRE_SELECT0}}>3 Wire</option><option value="1"{{TWOWIRE_SELECT1}}>2 Wire</option></select><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 150px;">2 wire use 9mA CC source<br>3 wire use 9V CV source</span></span>{{TWOWIRE_PREAMP_HINT}}</td></tr>
+          <tr><td class="tdr"><label for="preamp"><span{{TWOWIRE_STYLE}}>Azimuth gain/shift op-amp:</span></label></td><td><select name="preamp" id="preamp"{{TWOWIRE_DISABLE}}><option value="0"{{PREAMP_SELECT0}}>OFF</option><option value="1"{{PREAMP_SELECT1}}>ON</option></select><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 200px;">For potentiometer use one turn from any<br>Need manualy preset with two trimmer<br>More in Wiki page</span></span></td></tr>
+          <tr class="b"><td class="tdr"><label for="edstops"><span{{EDSTOPS_STYLE}}>Hardware endstops INSTALLED:</span></label></td><td><input type="checkbox" id="edstops" name="edstops" value="1" {{EDSTOPS_CHECKED}}><span class="hover-text">?<span class="tooltip-text" id="top">If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>
+          <tr><td class="tdr"><label for="edstoplowzone"><span{{EDSTOPLOWZONE_STYLE}}>CCW forbidden zone<br>(software endstops):</span></label></td><td><input type="text" id="edstoplowzone" name="edstoplowzone" size="3" value="{{EDSTOPLOWZONE_VALUE}}"{{EDSTOPLOWZONE_DISABLE}}> tenths of a Volt <span style="color:red;">{{EDSTOPLOWZONE_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 150px;">Allowed range<br>[2-15] tenths of a Volt</span></span></td></tr>
+          <tr><td class="tdr"><label for="edstophighzone"><span{{EDSTOPHIGHZONE_STYLE}}>CW forbidden zone<br>(software endstops):</span></label></td><td><input type="text" id="edstophighzone" name="edstophighzone" size="3" value="{{EDSTOPHIGHZONE_VALUE}}"{{EDSTOPHIGHZONE_DISABLE}}> tenths of a Volt <span style="color:red;">{{EDSTOPHIGHZONE_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 150px;">Allowed range<br>[16-31] tenths of a Volt</span></span></td></tr>
+        </table>
+      </details>
+
+      <details class="setup-section">
+        <summary class="setup-summary">Motor and drive</summary>
+        <table class="setup-table">
+          <tr class="b"><td class="tdr"><label for="oneturnlimitsec">Watchdog speed:</label></td><td><input type="text" id="oneturnlimitsec" name="oneturnlimitsec" size="3" value="{{ONETURNLIMITSEC}}"> seconds per one turn <span style="color:red;">{{ONETURNLIMITSEC_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="left" style="width: 300px;">Allowed range [20-600sec]<br>Lower speed limit activating the watchdog<br>Use a number 50% higher than the actual speed of your rotator</span></span></td></tr>
+          <tr><td class="tdr"><label for="acmotor">Motor supply:</label></td><td><select name="motor" id="motor"><option value="0"{{MOTOR_SELECT0}}>DC</option><option value="1"{{MOTOR_SELECT1}}>AC</option></select><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 150px;">DC with optional PWM<br>AC activates another relay sequence</span></span></td></tr>
+          <tr><td class="tdr"><label for="pwmenable"><span{{PWMENABLE_STYLE}}>DC PWM control:</span></label></td><td><select name="pwmenable" id="pwmenable"{{PWMENABLE_DISABLE}}><option value="0"{{PWM_SELECT0}}>OFF</option><option value="1"{{PWM_SELECT1}}>ON</option></select><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 200px;">If disable, mosfet must be bridged,<br>or replace by jumper<br>More in Wiki page</span></span></td></tr>
+          <tr><td class="tdr"><label for="pwmrampsteps"><span{{PWMRAMPSTEPS_STYLE}}>PWM slew interval:</span></label></td><td><input type="text" id="pwmrampsteps" name="pwmrampsteps" size="3" value="{{PWMRAMPSTEPS_VALUE}}"{{PWMRAMPSTEPS_DISABLE}}> {{PWMRAMP_TOTAL_TIME}} <span style="color:red;">{{PWMRAMPSTEPS_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="left" style="width: 320px;">Allowed range [1-200] ms for one PWM step<br>The value after the field shows the estimated total ramp-up time from 0 to the current PWM max duty<br>Lower value = faster response<br>Higher value = softer start and stop<br>Braking distance is learned automatically from real stops.</span></span></td></tr>
+          <tr><td class="tdr"><label for="pwmtuneaggr"><span{{PWMTUNEAGGR_STYLE}}>Brake learning aggressiveness:</span></label></td><td><select id="pwmtuneaggr" name="pwmtuneaggr"{{PWMTUNEAGGR_DISABLE}}><option value="1"{{PWMTUNEAGGR_SELECT0}}>1 Very soft</option><option value="2"{{PWMTUNEAGGR_SELECT1}}>2 Soft</option><option value="3"{{PWMTUNEAGGR_SELECT2}}>3 Medium</option><option value="4"{{PWMTUNEAGGR_SELECT3}}>4 Strong</option><option value="5"{{PWMTUNEAGGR_SELECT4}}>5 Very strong</option></select><span style="color:red;">{{PWMTUNEAGGR_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="left" style="width: 360px;">Controls how fast the learned braking window reacts to overshoot and undershoot.<br>Level 3 is the intended center point near zero error.<br>Level 4 should already be able to slightly undershoot on some stops.<br>Level 5 is intentionally over-aggressive.</span></span></td></tr>
+        </table>
+      </details>
+
+      <details class="setup-section">
+        <summary class="setup-summary">Serial and MQTT</summary>
+        <table class="setup-table">
+          <tr class="b"><td class="tdr"><label for="baud">USB serial BAUDRATE:</label></td><td><select name="baud" id="baud"><option value="0"{{BAUD_SELECT0}}>1200</option><option value="1"{{BAUD_SELECT1}}>2400</option><option value="2"{{BAUD_SELECT2}}>4800</option><option value="3"{{BAUD_SELECT3}}>9600</option><option value="4"{{BAUD_SELECT4}}>115200</option></select><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 150px;">Use for GS-232 protocol<br>Must restart after change</span></span></td></tr>
+          <tr class="b"><td class="tdr"><label for="mqttip0">MQTT broker IP:</label></td><td><input type="text" id="mqttip0" name="mqttip0" size="1" value="{{MQTT_IP0}}">&nbsp;.&nbsp;<input type="text" id="mqttip1" name="mqttip1" size="1" value="{{MQTT_IP1}}">&nbsp;.&nbsp;<input type="text" id="mqttip2" name="mqttip2" size="1" value="{{MQTT_IP2}}">&nbsp;.&nbsp;<input type="text" id="mqttip3" name="mqttip3" size="1" value="{{MQTT_IP3}}"><span style="color:red;">{{MQTT_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 250px;">Default public broker 54.38.157.134<br>If the first digit is zero, MQTT is disabled</span></span></td></tr>
+          <tr><td class="tdr"><label for="mqttport">MQTT broker PORT:</label></td><td><input type="text" id="mqttport" name="mqttport" size="2" value="{{MQTT_PORT}}"><span style="color:red;">{{MQTTPORT_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 150px;">Default public broker port 1883</span></span></td></tr>
+          <tr><td class="tdr"><label for="mqtt_login">Enable MQTT PASSWORD:</label></td><td><input type="checkbox" id="mqtt_login" name="mqtt_login" value="1" {{MQTT_LOGIN_CHECKED}}><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 150px;">Enable login for<br>connect to MQTT broker<br>WARNING, does not support encryption!</span></span></td></tr>
+          <tr><td class="tdr"><label for="mqttuser"><span{{MQTT_USER_STYLE}}>MQTT Login:</span></label></td><td><input type="text" id="mqttuser" name="mqttuser" size="10" value="{{MQTT_USER}}"{{MQTT_LOGIN_DISABLE}}><span style="color:red;">{{MQTT_USER_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 150px;">Login Name max 10 character, for connect to MQTT broker</span></span></td></tr>
+          <tr><td class="tdr"><label for="mqttpass"><span{{MQTT_PASS_STYLE}}>MQTT Password:</span></label></td><td><input type="password" id="mqttpass" name="mqttpass" size="20" value="{{MQTT_PASS}}"{{MQTT_LOGIN_DISABLE}}><span style="color:red;">{{MQTT_PASS_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 150px;">Login Password max 20 character, for connect to MQTT broker</span></span></td></tr>
+        </table>
+      </details>
+
+      <details class="setup-section">
+        <summary class="setup-summary">DX Cluster</summary>
+        <table class="setup-table">
+          <tr class="b"><td class="tdr"><label for="dxchost">DX cluster IP/host:</label></td><td><input type="text" id="dxchost" name="dxchost" size="24" value="{{DXC_HOST}}"><span style="color:red;">{{DXC_HOST_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 240px;">When left empty, setup uses the default host ve7cc.net. The ESP32 opens a Telnet TCP connection to this host.</span></span></td></tr>
+          <tr><td class="tdr"><label for="dxcport">DX cluster PORT:</label></td><td><input type="text" id="dxcport" name="dxcport" size="6" value="{{DXC_PORT}}"><span style="color:red;">{{DXC_PORT_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 220px;">When left empty, setup uses the default port 23. Typical Telnet port is often 23 or 7300.</span></span></td></tr>
+          <tr><td class="tdr"><label for="dxccall">DX cluster callsign:</label></td><td><input type="text" id="dxccall" name="dxccall" size="16" maxlength="16" value="{{DXC_CALLSIGN}}"><span style="color:red;">{{DXC_CALLSIGN_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 210px;">Sent to the DX cluster after Telnet connects. Required when DXC host is used.</span></span></td></tr>
+          <tr><td class="tdr"><label for="dxcmqtttopic">Send frequency to MQTT topic:</label></td><td><input type="text" id="dxcmqtttopic" name="dxcmqtttopic" size="28" maxlength="63" value="{{DXC_MQTT_TOPIC}}"><span style="color:red;">{{DXC_MQTT_TOPIC_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 260px;">Optional custom MQTT topic used when you click a frequency in the DXC window. Payload is sent as Hz without spaces. Leave empty to disable.</span></span></td></tr>
+        </table>
+      </details>
+
+      <details class="setup-section">
+        <summary class="setup-summary">Web authentication</summary>
+        <table class="setup-table">
+          <tr class="b"><td class="tdr"><label for="webauth">Enable web authentication:</label></td><td><input type="checkbox" id="webauth" name="webauth" value="1" {{WEBAUTH_CHECKED}}><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 260px;">Protects the web pages, control API and OTA update with HTTP Digest authentication. HTTPS is not available, so use this only on a trusted local network.</span></span></td></tr>
+          <tr><td class="tdr">Web login user:</td><td><input type="text" size="10" value="{{WEB_AUTH_USER}}" readonly></td></tr>
+          <tr><td class="tdr"><label for="webpass">Web login password:</label></td><td><input type="password" id="webpass" name="webpass" size="24" maxlength="100" value="{{WEB_AUTH_PASSWORD}}"><span style="color:red;">{{WEBPASS_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 220px;">Set your own web password here. The current password is also available in the USB serial console with command <strong>key</strong>.</span></span></td></tr>
+        </table>
+      </details>
+
+      <details class="setup-section">
+        <summary class="setup-summary">Backup and restore</summary>
+        <div class="backup-box">
+          <p>Download the full rotator configuration as a JSON backup, or upload it later to restore settings.</p>
+          <div class="backup-actions"><a href="/backup/config"><button type="button" id="go">Download backup</button></a></div>
+          <div class="backup-upload"><input type="file" id="backupFile" accept=".json,application/json"><button type="button" id="go" onclick="uploadConfigBackup()">Upload backup</button></div>
+          <div id="backupStatus" class="backup-status"></div>
+        </div>
+      </details>
+
+      <div class="setup-actions"><button id="go">&#10004; Change</button></form>&nbsp;
+        <a href="/cal" onclick="window.open(this.href, this.href, 'width=700,height=1150,left=0,top=0,menubar=no,location=no,status=no'); return false;"><button id="go">Calibrate &#8618;</button></a>
+      </div>
+      <p class="setup-note">After change, refresh all other page for apply changes.<br><a href="https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v" target="_blank">More on Wiki &#10138;</a></p>
+  </div>
+  <script>
+    function toggleMapSourceRows() {
+      var s = document.getElementById('mapsource').value;
+      document.getElementById('mapUrlRow').style.display = (s === '0') ? 'table-row' : 'none';
+      document.getElementById('mapLocatorRow').style.display = (s === '1') ? 'table-row' : 'none';
+      document.getElementById('mapThemeRow').style.display = (s === '1') ? 'table-row' : 'none';
+      document.getElementById('graylineNtpRow').style.display = (s === '1') ? 'table-row' : 'none';
+      document.getElementById('graylineDarknessRow').style.display = (s === '1') ? 'table-row' : 'none';
+    }
+    function setBackupStatus(message, isError) {
+      var box = document.getElementById('backupStatus');
+      if (!box) {
+        return;
+      }
+      box.textContent = message;
+      box.className = 'backup-status ' + (isError ? 'is-error' : 'is-ok');
+    }
+    function uploadConfigBackup() {
+      var input = document.getElementById('backupFile');
+      if (!input || !input.files || !input.files.length) {
+        setBackupStatus('Select a backup JSON file first.', true);
+        return;
+      }
+      var formData = new FormData();
+      formData.append('file', input.files[0]);
+      setBackupStatus('Uploading backup...', false);
+      fetch('/backup/config', {method: 'POST', body: formData}).then(function(response) {
+        return response.text().then(function(text) {
+          if (!response.ok) {
+            throw new Error(text || 'Upload failed');
+          }
+          return text;
+        });
+      }).then(function(text) {
+        setBackupStatus(text || 'Backup restored.', false);
+      }).catch(function(error) {
+        setBackupStatus(error.message || 'Upload failed', true);
+      });
+    }
+    var activeTooltipHost = null;
+    function resetTooltip(trigger) {
+      var tip = trigger ? trigger.querySelector('.tooltip-text') : null;
+      if (!tip) {
+        return;
+      }
+      tip.style.left = '';
+      tip.style.right = '';
+      tip.style.top = '';
+      tip.style.bottom = '';
+      tip.style.position = '';
+    }
+    function positionTooltip(trigger) {
+      var tip = trigger ? trigger.querySelector('.tooltip-text') : null;
+      if (!tip) {
+        return;
+      }
+      tip.style.position = 'fixed';
+      tip.style.left = '0px';
+      tip.style.right = 'auto';
+      tip.style.top = '0px';
+      tip.style.bottom = 'auto';
+      var triggerRect = trigger.getBoundingClientRect();
+      var tipRect = tip.getBoundingClientRect();
+      var gap = 12;
+      var left = triggerRect.left + ((triggerRect.width - tipRect.width) / 2);
+      var top = triggerRect.top - tipRect.height - gap;
+      if (tip.id === 'left') {
+        left = triggerRect.left - tipRect.width - gap;
+        top = triggerRect.top + ((triggerRect.height - tipRect.height) / 2);
+      } else if (tip.id === 'right') {
+        left = triggerRect.right + gap;
+        top = triggerRect.top + ((triggerRect.height - tipRect.height) / 2);
+      }
+      if (left < 12) {
+        left = 12;
+      }
+      if (left + tipRect.width > window.innerWidth - 12) {
+        left = window.innerWidth - tipRect.width - 12;
+      }
+      if (top < 12) {
+        top = (tip.id === 'top') ? (triggerRect.bottom + gap) : 12;
+      }
+      if (top + tipRect.height > window.innerHeight - 12) {
+        top = window.innerHeight - tipRect.height - 12;
+      }
+      if (top < 12) {
+        top = 12;
+      }
+      tip.style.left = Math.round(left) + 'px';
+      tip.style.top = Math.round(top) + 'px';
+    }
+    function bindTooltips() {
+      var triggers = document.querySelectorAll('.hover-text');
+      for (var i = 0; i < triggers.length; i++) {
+        triggers[i].addEventListener('mouseenter', function() {
+          activeTooltipHost = this;
+          positionTooltip(this);
+        });
+        triggers[i].addEventListener('focusin', function() {
+          activeTooltipHost = this;
+          positionTooltip(this);
+        });
+        triggers[i].addEventListener('mouseleave', function() {
+          if (activeTooltipHost === this) {
+            activeTooltipHost = null;
+          }
+          resetTooltip(this);
+        });
+        triggers[i].addEventListener('focusout', function() {
+          if (activeTooltipHost === this) {
+            activeTooltipHost = null;
+          }
+          resetTooltip(this);
+        });
+      }
+    }
+    window.addEventListener('resize', function() {
+      if (activeTooltipHost) {
+        positionTooltip(activeTooltipHost);
+      }
+    });
+    window.addEventListener('scroll', function() {
+      if (activeTooltipHost) {
+        positionTooltip(activeTooltipHost);
+      }
+    }, true);
+    toggleMapSourceRows();
+    bindTooltips();
+  </script>
+</body>
+</html>

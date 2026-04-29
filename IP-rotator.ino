@@ -562,7 +562,9 @@ void RegisterAjaxUploadRoute(const char* uri, HTTPMethod method, WebServer::THan
 void handlePostRot();
 void handleSet();
 void handleCal();
+bool loadTextFile(const char* path, String& contents);
 bool streamStaticFile(const char* path, const char* contentType);
+void handleApp();
 void handleRoot();
 void handleADC();
 void handleAZ();
@@ -1291,6 +1293,8 @@ void setup() {
    RegisterAjaxRoute("/", HTTP_POST, handlePostRot);
    // ajaxserver.on("/STOP",HTTP_POST, handlePostStop);
    RegisterAjaxRoute("/", handleRoot);      //This is display page
+   RegisterAjaxRoute("/app", handleApp);
+   RegisterAjaxRoute("/setup", handleSet);
    RegisterAjaxRoute("/readADC", handleADC);//To get update of ADC Value only
   RegisterAjaxRoute("/readAZ", handleAZ);
   RegisterAjaxRoute("/readFrontAZ", handleFrontAZ);
@@ -4874,33 +4878,33 @@ void handleSet() {
   short previousPulsePerDegree = PulsePerDegree;
   unsigned int previousMaxRotateDegree = MaxRotateDegree;
 
-  if ( ajaxserver.hasArg("yourcall") == false \
-    && ajaxserver.hasArg("rotid") == false \
-    && ajaxserver.hasArg("rotname") == false \
-    && ajaxserver.hasArg("startazimuth") == false \
-    && ajaxserver.hasArg("maxrotatedegree") == false \
-    && ajaxserver.hasArg("mapurl") == false \
-    && ajaxserver.hasArg("antradiationangle") == false \
-    && ajaxserver.hasArg("edstoplowzone") == false \
-    && ajaxserver.hasArg("edstophighzone") == false \
-    && ajaxserver.hasArg("pwmrampsteps") == false \
-    && ajaxserver.hasArg("pwmtuneaggr") == false \
-    && ajaxserver.hasArg("mapsource") == false \
-    && ajaxserver.hasArg("maplocator") == false \
-    && ajaxserver.hasArg("mapzoomkm") == false \
-    && ajaxserver.hasArg("maptheme") == false \
-    && ajaxserver.hasArg("graylinentp") == false \
-    && ajaxserver.hasArg("graylinedarkness") == false \
-    && ajaxserver.hasArg("dxchost") == false \
-    && ajaxserver.hasArg("dxcport") == false \
-    && ajaxserver.hasArg("dxccall") == false \
-    && ajaxserver.hasArg("dxcmqtttopic") == false \
-    && ajaxserver.hasArg("webauth") == false \
-    && ajaxserver.hasArg("webpass") == false \
-  ) {
-    // MqttPubString("Debug", "Form not valid", false);
-  }else{
-    // MqttPubString("Debug", "Form valid", false);
+  auto hasSetupSubmission = [&]() -> bool {
+    return ajaxserver.hasArg("yourcall")
+      || ajaxserver.hasArg("rotid")
+      || ajaxserver.hasArg("rotname")
+      || ajaxserver.hasArg("startazimuth")
+      || ajaxserver.hasArg("maxrotatedegree")
+      || ajaxserver.hasArg("mapurl")
+      || ajaxserver.hasArg("antradiationangle")
+      || ajaxserver.hasArg("edstoplowzone")
+      || ajaxserver.hasArg("edstophighzone")
+      || ajaxserver.hasArg("pwmrampsteps")
+      || ajaxserver.hasArg("pwmtuneaggr")
+      || ajaxserver.hasArg("mapsource")
+      || ajaxserver.hasArg("maplocator")
+      || ajaxserver.hasArg("mapzoomkm")
+      || ajaxserver.hasArg("maptheme")
+      || ajaxserver.hasArg("graylinentp")
+      || ajaxserver.hasArg("graylinedarkness")
+      || ajaxserver.hasArg("dxchost")
+      || ajaxserver.hasArg("dxcport")
+      || ajaxserver.hasArg("dxccall")
+      || ajaxserver.hasArg("dxcmqtttopic")
+      || ajaxserver.hasArg("webauth")
+      || ajaxserver.hasArg("webpass");
+  };
+
+  auto applySubmittedSetup = [&]() {
 
     // YOUR_CALL
     if ( ajaxserver.arg("yourcall").length()<1 || ajaxserver.arg("yourcall").length()>20){
@@ -5688,7 +5692,11 @@ void handleSet() {
     }
 
     EEPROM.commit();
-  } // else form valid
+  };
+
+  if(hasSetupSubmission()){
+    applySubmittedSetup();
+  }
 
 
 sourceSELECT0= "";
@@ -5948,358 +5956,151 @@ switch (PwmTuneAggressiveness) {
   default: {pwmtuneaggrSELECT4= " selected"; break; }
 }
 
+  auto sendSetupPage = [&]() {
+    String HtmlSrc;
+    if(!loadTextFile("/setup.html", HtmlSrc)){
+      ajaxserver.send(500, "text/plain", "Missing /setup.html in SPIFFS");
+      return;
+    }
 
-  String HtmlSrc = "<!DOCTYPE html><html><head><title>SETUP</title>\n";
-  HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>\n";
-  // <meta http-equiv = 'refresh' content = '600; url = /'>\n";
-  HtmlSrc +="<style type='text/css'> @font-face {font-family: 'Roboto Condensed'; src: url('/RC-R.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap;} @font-face {font-family: 'Roboto Condensed'; src: url('/RC-B.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap;} button#go {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button#go:hover {background-color: orange;} table, th, td {color: #fff; border-collapse: collapse; border:0px } .tdr {color: #0c0; height: 40px; text-align: right; vertical-align: middle; padding-right: 15px} html,body {background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;} body {margin: 0; padding: 0 18px 28px 18px;} a:hover {color: #fff;} a { color: #ccc; text-decoration: underline;} ";
-  HtmlSrc +=".b {border-top: 1px dotted #666;} .tooltip-text {visibility: hidden; position: absolute; z-index: 9999; width: 300px; max-width: calc(100vw - 24px); box-sizing: border-box; color: white; font-size: 12px; background-color: #DE3163; border-radius: 10px; padding: 10px 15px 10px 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.35); } .hover-text:hover .tooltip-text, .hover-text:focus-within .tooltip-text { visibility: visible; } #right { top: -30px; left: 200%; } #top { top: -60px; left: -150%; } #left { top: -8px; right: 120%;}";
-  HtmlSrc +=".hover-text {position: relative; z-index: 2; background: #888; padding: 5px 12px; margin: 5px; font-size: 15px; border-radius: 100%; color: #FFF; display: inline-block; text-align: center; } .setup-wrap {max-width: 980px; margin: 0 auto;} .setup-form {color: #ccc; margin: 0; text-align: center;} .setup-section {position: relative; background: #3b3b3b; border: 1px solid #555; border-radius: 14px; margin: 0 0 10px 0; overflow: visible;} .setup-summary {cursor: pointer; list-style: none; padding: 10px 14px; text-align: left; font-size: 20px; color: #ddd; background: #444; transition: background-color 0.15s ease, color 0.15s ease;} .setup-summary:hover, .setup-summary:focus {background: orange; color: #111;} .setup-summary::-webkit-details-marker {display: none;} .setup-summary:after {content: '\\25be'; float: right; color: #aaa;} .setup-summary:hover:after, .setup-summary:focus:after {color: #111;} .setup-section[open] .setup-summary {background: #d8921a; color: #111;} .setup-section[open] .setup-summary:after {content: '\\25b4'; color: #111;} .setup-table {width: 100%; table-layout: fixed;} .setup-table td {padding-top: 2px; padding-bottom: 2px;} .setup-table .tdr {width: 50%; box-sizing: border-box;} .setup-table td:last-child {width: 50%; text-align: left; box-sizing: border-box;} .setup-actions {text-align: center; margin-top: 18px;} .setup-note {color: #666; text-align: center; margin-top: 18px;} .backup-box {padding: 16px 18px 18px 18px; text-align: left; color: #ddd;} .backup-box p {margin: 0 0 14px 0; color: #bbb;} .backup-actions {display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px;} .backup-upload {display: flex; flex-wrap: wrap; gap: 10px; align-items: center;} .backup-upload input[type='file'] {max-width: 100%;} .backup-status {display: none; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #2f2f2f; color: #ddd;} .backup-status.is-ok {display: block; background: #16351d; color: #d5ffd8;} .backup-status.is-error {display: block; background: #4a1f1f; color: #ffd9d9;}</style>\n";
-  HtmlSrc +="</head><body>\n";
-  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Setup<br><span style='font-size: 50%;'>(MAC ";
-  HtmlSrc +=MACString;
-  HtmlSrc +="|FW ";
-  HtmlSrc +=REV;
-  HtmlSrc +="|HW ";
-  HtmlSrc +=String(HardwareRev);
-  HtmlSrc +=")</span><span style='color: #333;'>";
-  HtmlSrc +=String(HWidValue);
-  HtmlSrc +="</span></H1><div class='setup-wrap'><form action='/set' method='post' class='setup-form'>\n";
-  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Station and rotor</summary><table class='setup-table'>\n";
-  HtmlSrc +="<tr class='b'><td class='tdr'><label for='yourcall'>Your callsign:</label></td><td><input type='text' id='yourcall' name='yourcall' size='10' value='";
-  HtmlSrc += YOUR_CALL;
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += yourcallERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 200px;'>Used as part of an MQTT topic</span></td></tr>\n<tr><td class='tdr'><label for='rotid'>Rotator ID:</label></td><td><input type='text' id='rotid' name='rotid' size='2' value='";
-  HtmlSrc += NET_ID;
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += rotidERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 300px;'>[1-2 chars]<br>Multiple rotators with the same TOPIC must have different IDs<br>Second part of MQTT topic</span></span></td></tr>\n<tr><td class='tdr'><label for='rotname'>Rotator name:</label></td><td><input type='text' id='rotname' name='rotname' size='20' value='";
-  HtmlSrc += RotName;
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += rotnameERR;
-  HtmlSrc +="</span></td></tr>\n";
-    HtmlSrc +="<tr class='b'><td class='tdr'><label for='elevation'>Use only for Elevation:</label></td><td><input type='checkbox' id='elevation' name='elevation' value='1' ${postData.elevation?'checked':''} ";
-    HtmlSrc += elevationCHECKED;
-    HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>Will be SET<br>Start Azimuth to 270<br>Max Rotate Degree to 180 (may be change to 0-180)<br><br>For map use<br>https://remoteqth.com/xplanet/SKY.jpg</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='startazimuth'><span";
-  HtmlSrc += startazimuthSTYLE;
-  HtmlSrc += ">Start CCW azimuth:</span></label></td><td><input type='text' id='startazimuth' name='startazimuth' size='3' value='";
-  HtmlSrc += StartAzimuth;
-  HtmlSrc +="' ";
-  HtmlSrc += startazimuthDisable;
-  HtmlSrc +=">&deg; <span style='color:red;'>";
-  HtmlSrc += startazimuthERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[0-359&deg;]</span></span></td></tr>\n<tr><td class='tdr'><label for='maxrotatedegree'>Rotation range in degrees:</label></td><td><input type='text' id='maxrotatedegree' name='maxrotatedegree' size='3' value='";
-  HtmlSrc += MaxRotateDegree;
-  HtmlSrc +="'>&deg; <span style='color:red;'>";
-  HtmlSrc += maxrotatedegreeERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Range from CCW to CW endstop in degrees</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='antradiationangle'>Antenna radiation angle in degrees:</label></td><td><input type='text' id='antradiationangle' name='antradiationangle' size='3' value='";
-  HtmlSrc += AntRadiationAngle;
-  HtmlSrc +="'>&deg; <span style='color:red;'>";
-  HtmlSrc += antradiationangleERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[1-180&deg;]</span></span></td></tr>\n";
-  HtmlSrc +="</table></details>\n";
+    String dxcHostValue = (DxcHost.length() > 0 ? DxcHost : String(DEFAULT_DXC_HOST));
+    String dxcPortValue = String((DxcHost.length() > 0) ? DxcPort : DEFAULT_DXC_PORT);
+    String twoWirePreampHint = (AZtwoWire==true && AZpreamp==true) ? "<br><span style='color: red;'>Recommend using a 3-wire potentiometer with the preamplifier ON</span>" : "";
+    String mqttRxTopic = String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/RxAzimuth";
 
-  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Map and display</summary><table class='setup-table'>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='mapsource'>Map source:</label></td><td><select id='mapsource' name='mapsource' onchange='toggleMapSourceRows()'><option value='0'";
-  HtmlSrc += mapSourceSELECT0;
-  HtmlSrc +=">URL bitmap</option><option value='1'";
-  HtmlSrc += mapSourceSELECT1;
-  HtmlSrc +=">Vector map</option></select><span style='color:red;'>";
-  HtmlSrc += mapsourceERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 240px;'>Vector map uses stored continent outlines, locator center and grayline with UTC time from the selected NTP server. Zoom is changed live with the bar below the map.</span></span></td></tr>\n";
-  HtmlSrc +="<tr id='mapUrlRow'";
-  HtmlSrc += mapUrlRowStyle;
-  HtmlSrc +="><td class='tdr'><label for='mapurl'>Background azimuth map URL:</label></td><td><input type='text' id='mapurl' name='mapurl' size='30' value='";
-  HtmlSrc += MapUrl;
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += mapurlERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left'>DXCC generated every quarter hour is available at https://remoteqth.com/xplanet/. If you need another, please contact OK1HRA, or run own services.</span></span> <a href='https://remoteqth.com/xplanet/' target='_blank'>Available list</a></td></tr>\n";
-  HtmlSrc +="<tr id='mapLocatorRow'";
-  HtmlSrc += mapLocatorRowStyle;
-  HtmlSrc +="><td class='tdr'><label for='maplocator'>Map center locator:</label></td><td><input type='text' id='maplocator' name='maplocator' size='8' maxlength='6' value='";
-  HtmlSrc += MapLocator;
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += maplocatorERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 180px;'>Maidenhead locator in 6-char format, for example JO60UC</span></span></td></tr>\n";
-  HtmlSrc +="<input type='hidden' id='mapzoomkm' name='mapzoomkm' value='";
-  HtmlSrc += MapZoomKm;
-  HtmlSrc +="'>\n";
-  HtmlSrc +="<tr id='mapThemeRow'";
-  HtmlSrc += mapThemeRowStyle;
-  HtmlSrc +="><td class='tdr'><label for='maptheme'>Vector map theme:</label></td><td><select id='maptheme' name='maptheme'><option value='0'";
-  HtmlSrc += mapThemeSELECT0;
-  HtmlSrc +=">Calm marine</option><option value='1'";
-  HtmlSrc += mapThemeSELECT1;
-  HtmlSrc +=">Night radar</option><option value='2'";
-  HtmlSrc += mapThemeSELECT2;
-  HtmlSrc +=">Warm atlas</option><option value='3'";
-  HtmlSrc += mapThemeSELECT3;
-  HtmlSrc +=">Amber terminal</option><option value='4'";
-  HtmlSrc += mapThemeSELECT4;
-  HtmlSrc +=">Night vision</option><option value='5'";
-  HtmlSrc += mapThemeSELECT5;
-  HtmlSrc +=">Sky blue</option></select><span style='color:red;'>";
-  HtmlSrc += mapthemeERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 360px;'>Calm marine is relaxed for long watching. Night radar is technical with clearer contrast. Warm atlas is softer indoors. Amber terminal feels like classic radio gear. Night vision is vivid green instrumentation. Sky blue is brighter, airy and map-like.</span></span></td></tr>\n";
-  HtmlSrc +="<tr id='graylineNtpRow'";
-  HtmlSrc += graylineNtpRowStyle;
-  HtmlSrc +="><td class='tdr'><label for='graylinentp'>NTP server for grayline:</label></td><td><input type='text' id='graylinentp' name='graylinentp' size='24' value='";
-  HtmlSrc += GraylineNtpServer;
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += graylinentpERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 210px;'>Used to get UTC date and time for the grayline overlay. Default pool.ntp.org.</span></span></td></tr>\n";
-  HtmlSrc +="<tr id='graylineDarknessRow'";
-  HtmlSrc += graylineDarknessRowStyle;
-  HtmlSrc +="><td class='tdr'><label for='graylinedarkness'>Grayline darkness:</label></td><td><input type='text' id='graylinedarkness' name='graylinedarkness' size='4' value='";
-  HtmlSrc += GraylineDarkness;
-  HtmlSrc +="'>&nbsp;%<span style='color:red;'>";
-  HtmlSrc += graylinedarknessERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 190px;'>0 means invisible overlay, 100 means darkest night mask.</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultdeg'>Default DEG overlay:</label></td><td><input type='checkbox' id='mapdefaultdeg' name='mapdefaultdeg' value='1' ";
-  HtmlSrc += mapdefaultdegCHECKED;
-  HtmlSrc +="></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultant'>Default ANT overlay:</label></td><td><input type='checkbox' id='mapdefaultant' name='mapdefaultant' value='1' ";
-  HtmlSrc += mapdefaultantCHECKED;
-  HtmlSrc +="></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultlocgrid'>Default locator grid:</label></td><td><input type='checkbox' id='mapdefaultlocgrid' name='mapdefaultlocgrid' value='1' ";
-  HtmlSrc += mapdefaultlocgridCHECKED;
-  HtmlSrc +="></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultgrayline'>Default grayline:</label></td><td><input type='checkbox' id='mapdefaultgrayline' name='mapdefaultgrayline' value='1' ";
-  HtmlSrc += mapdefaultgraylineCHECKED;
-  HtmlSrc +="></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultborders'>Default state borders:</label></td><td><input type='checkbox' id='mapdefaultborders' name='mapdefaultborders' value='1' ";
-  HtmlSrc += mapdefaultbordersCHECKED;
-  HtmlSrc +="></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultdxcc'>Default DXCC prefixes:</label></td><td><input type='checkbox' id='mapdefaultdxcc' name='mapdefaultdxcc' value='1' ";
-  HtmlSrc += mapdefaultdxccCHECKED;
-  HtmlSrc +="></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='mapdefaultdxcspots'>Default DX cluster overlay:</label></td><td><input type='checkbox' id='mapdefaultdxcspots' name='mapdefaultdxcspots' value='1' ";
-  HtmlSrc += mapdefaultdxcspotsCHECKED;
-  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>These values define how the control page toggles are pre-set after the page is opened or refreshed.</span></span></td></tr>\n";
-  HtmlSrc +="</table></details>\n";
+    HtmlSrc.replace("{{MAC_STRING}}", MACString);
+    HtmlSrc.replace("{{REV}}", String(REV));
+    HtmlSrc.replace("{{HARDWARE_REV}}", String(HardwareRev));
+    HtmlSrc.replace("{{HWID_VALUE}}", String(HWidValue));
+    HtmlSrc.replace("{{YOUR_CALL}}", YOUR_CALL);
+    HtmlSrc.replace("{{YOURCALL_ERR}}", yourcallERR);
+    HtmlSrc.replace("{{NET_ID}}", NET_ID);
+    HtmlSrc.replace("{{ROTID_ERR}}", rotidERR);
+    HtmlSrc.replace("{{ROT_NAME}}", RotName);
+    HtmlSrc.replace("{{ROTNAME_ERR}}", rotnameERR);
+    HtmlSrc.replace("{{ELEVATION_CHECKED}}", elevationCHECKED);
+    HtmlSrc.replace("{{STARTAZIMUTH_STYLE}}", startazimuthSTYLE);
+    HtmlSrc.replace("{{STARTAZIMUTH_DISABLE}}", startazimuthDisable);
+    HtmlSrc.replace("{{START_AZIMUTH}}", String(StartAzimuth));
+    HtmlSrc.replace("{{STARTAZIMUTH_ERR}}", startazimuthERR);
+    HtmlSrc.replace("{{MAX_ROTATE_DEGREE}}", String(MaxRotateDegree));
+    HtmlSrc.replace("{{MAXROTATEDEGREE_ERR}}", maxrotatedegreeERR);
+    HtmlSrc.replace("{{ANT_RADIATION_ANGLE}}", String(AntRadiationAngle));
+    HtmlSrc.replace("{{ANTRADIATIONANGLE_ERR}}", antradiationangleERR);
+    HtmlSrc.replace("{{MAPSOURCE_SELECT0}}", mapSourceSELECT0);
+    HtmlSrc.replace("{{MAPSOURCE_SELECT1}}", mapSourceSELECT1);
+    HtmlSrc.replace("{{MAPSOURCE_ERR}}", mapsourceERR);
+    HtmlSrc.replace("{{MAP_URL_ROW_STYLE}}", mapUrlRowStyle);
+    HtmlSrc.replace("{{MAP_URL}}", MapUrl);
+    HtmlSrc.replace("{{MAPURL_ERR}}", mapurlERR);
+    HtmlSrc.replace("{{MAP_LOCATOR_ROW_STYLE}}", mapLocatorRowStyle);
+    HtmlSrc.replace("{{MAP_LOCATOR}}", MapLocator);
+    HtmlSrc.replace("{{MAPLOCATOR_ERR}}", maplocatorERR);
+    HtmlSrc.replace("{{MAP_ZOOM_KM}}", String(MapZoomKm));
+    HtmlSrc.replace("{{MAP_THEME_ROW_STYLE}}", mapThemeRowStyle);
+    HtmlSrc.replace("{{MAPTHEME_SELECT0}}", mapThemeSELECT0);
+    HtmlSrc.replace("{{MAPTHEME_SELECT1}}", mapThemeSELECT1);
+    HtmlSrc.replace("{{MAPTHEME_SELECT2}}", mapThemeSELECT2);
+    HtmlSrc.replace("{{MAPTHEME_SELECT3}}", mapThemeSELECT3);
+    HtmlSrc.replace("{{MAPTHEME_SELECT4}}", mapThemeSELECT4);
+    HtmlSrc.replace("{{MAPTHEME_SELECT5}}", mapThemeSELECT5);
+    HtmlSrc.replace("{{MAPTHEME_ERR}}", mapthemeERR);
+    HtmlSrc.replace("{{GRAYLINE_NTP_ROW_STYLE}}", graylineNtpRowStyle);
+    HtmlSrc.replace("{{GRAYLINE_NTP_SERVER}}", GraylineNtpServer);
+    HtmlSrc.replace("{{GRAYLINENTP_ERR}}", graylinentpERR);
+    HtmlSrc.replace("{{GRAYLINE_DARKNESS_ROW_STYLE}}", graylineDarknessRowStyle);
+    HtmlSrc.replace("{{GRAYLINE_DARKNESS}}", String(GraylineDarkness));
+    HtmlSrc.replace("{{GRAYLINEDARKNESS_ERR}}", graylinedarknessERR);
+    HtmlSrc.replace("{{MAPDEFAULTDEG_CHECKED}}", mapdefaultdegCHECKED);
+    HtmlSrc.replace("{{MAPDEFAULTANT_CHECKED}}", mapdefaultantCHECKED);
+    HtmlSrc.replace("{{MAPDEFAULTLOCGRID_CHECKED}}", mapdefaultlocgridCHECKED);
+    HtmlSrc.replace("{{MAPDEFAULTGRAYLINE_CHECKED}}", mapdefaultgraylineCHECKED);
+    HtmlSrc.replace("{{MAPDEFAULTBORDERS_CHECKED}}", mapdefaultbordersCHECKED);
+    HtmlSrc.replace("{{MAPDEFAULTDXCC_CHECKED}}", mapdefaultdxccCHECKED);
+    HtmlSrc.replace("{{MAPDEFAULTDXCSPOTS_CHECKED}}", mapdefaultdxcspotsCHECKED);
+    HtmlSrc.replace("{{SOURCE_SELECT0}}", sourceSELECT0);
+    HtmlSrc.replace("{{SOURCE_SELECT1}}", sourceSELECT1);
+    HtmlSrc.replace("{{SOURCE_SELECT2}}", sourceSELECT2);
+    HtmlSrc.replace("{{MQTT_RX_TOPIC}}", mqttRxTopic);
+    HtmlSrc.replace("{{PULSEPERDEGREE_STYLE}}", pulseperdegreeSTYLE);
+    HtmlSrc.replace("{{PULSEPERDEGREE_VALUE}}", String(PulsePerDegree));
+    HtmlSrc.replace("{{PULSEPERDEGREE_DISABLE}}", pulseperdegreeDisable);
+    HtmlSrc.replace("{{PULSEPERDEGREE_ERR}}", pulseperdegreeERR);
+    HtmlSrc.replace("{{TWOWIRE_STYLE}}", twowireSTYLE);
+    HtmlSrc.replace("{{TWOWIRE_DISABLE}}", twowireDisable);
+    HtmlSrc.replace("{{TWOWIRE_SELECT0}}", twowireSELECT0);
+    HtmlSrc.replace("{{TWOWIRE_SELECT1}}", twowireSELECT1);
+    HtmlSrc.replace("{{TWOWIRE_PREAMP_HINT}}", twoWirePreampHint);
+    HtmlSrc.replace("{{PREAMP_SELECT0}}", preampSELECT0);
+    HtmlSrc.replace("{{PREAMP_SELECT1}}", preampSELECT1);
+    HtmlSrc.replace("{{EDSTOPS_STYLE}}", edstopsSTYLE);
+    HtmlSrc.replace("{{EDSTOPS_CHECKED}}", edstopsCHECKED);
+    HtmlSrc.replace("{{EDSTOPLOWZONE_STYLE}}", edstoplowzoneSTYLE);
+    HtmlSrc.replace("{{EDSTOPLOWZONE_VALUE}}", String(int(NoEndstopLowZone*10)));
+    HtmlSrc.replace("{{EDSTOPLOWZONE_DISABLE}}", edstoplowzoneDisable);
+    HtmlSrc.replace("{{EDSTOPLOWZONE_ERR}}", edstoplowzoneERR);
+    HtmlSrc.replace("{{EDSTOPHIGHZONE_STYLE}}", edstophighzoneSTYLE);
+    HtmlSrc.replace("{{EDSTOPHIGHZONE_VALUE}}", String(int(NoEndstopHighZone*10)));
+    HtmlSrc.replace("{{EDSTOPHIGHZONE_DISABLE}}", edstophighzoneDisable);
+    HtmlSrc.replace("{{EDSTOPHIGHZONE_ERR}}", edstophighzoneERR);
+    HtmlSrc.replace("{{ONETURNLIMITSEC}}", String(OneTurnLimitSec));
+    HtmlSrc.replace("{{ONETURNLIMITSEC_ERR}}", oneturnlimitsecERR);
+    HtmlSrc.replace("{{MOTOR_SELECT0}}", motorSELECT0);
+    HtmlSrc.replace("{{MOTOR_SELECT1}}", motorSELECT1);
+    HtmlSrc.replace("{{PWMENABLE_STYLE}}", pwmenableSTYLE);
+    HtmlSrc.replace("{{PWMENABLE_DISABLE}}", pwmenableDisable);
+    HtmlSrc.replace("{{PWM_SELECT0}}", pwmSELECT0);
+    HtmlSrc.replace("{{PWM_SELECT1}}", pwmSELECT1);
+    HtmlSrc.replace("{{PWMRAMPSTEPS_STYLE}}", pwmrampstepsSTYLE);
+    HtmlSrc.replace("{{PWMRAMPSTEPS_VALUE}}", String(PwmRampSteps));
+    HtmlSrc.replace("{{PWMRAMPSTEPS_DISABLE}}", pwmrampstepsDisable);
+    HtmlSrc.replace("{{PWMRAMP_TOTAL_TIME}}", FormatPwmTotalRampTime(PwmRampSteps, PwmMaxDuty));
+    HtmlSrc.replace("{{PWMRAMPSTEPS_ERR}}", pwmrampstepsERR);
+    HtmlSrc.replace("{{PWMTUNEAGGR_STYLE}}", pwmtuneaggrSTYLE);
+    HtmlSrc.replace("{{PWMTUNEAGGR_DISABLE}}", pwmtuneaggrDisable);
+    HtmlSrc.replace("{{PWMTUNEAGGR_SELECT0}}", pwmtuneaggrSELECT0);
+    HtmlSrc.replace("{{PWMTUNEAGGR_SELECT1}}", pwmtuneaggrSELECT1);
+    HtmlSrc.replace("{{PWMTUNEAGGR_SELECT2}}", pwmtuneaggrSELECT2);
+    HtmlSrc.replace("{{PWMTUNEAGGR_SELECT3}}", pwmtuneaggrSELECT3);
+    HtmlSrc.replace("{{PWMTUNEAGGR_SELECT4}}", pwmtuneaggrSELECT4);
+    HtmlSrc.replace("{{PWMTUNEAGGR_ERR}}", pwmtuneaggrERR);
+    HtmlSrc.replace("{{BAUD_SELECT0}}", baudSELECT0);
+    HtmlSrc.replace("{{BAUD_SELECT1}}", baudSELECT1);
+    HtmlSrc.replace("{{BAUD_SELECT2}}", baudSELECT2);
+    HtmlSrc.replace("{{BAUD_SELECT3}}", baudSELECT3);
+    HtmlSrc.replace("{{BAUD_SELECT4}}", baudSELECT4);
+    HtmlSrc.replace("{{MQTT_IP0}}", String(mqtt_server_ip[0]));
+    HtmlSrc.replace("{{MQTT_IP1}}", String(mqtt_server_ip[1]));
+    HtmlSrc.replace("{{MQTT_IP2}}", String(mqtt_server_ip[2]));
+    HtmlSrc.replace("{{MQTT_IP3}}", String(mqtt_server_ip[3]));
+    HtmlSrc.replace("{{MQTT_ERR}}", mqttERR);
+    HtmlSrc.replace("{{MQTT_PORT}}", String(MQTT_PORT));
+    HtmlSrc.replace("{{MQTTPORT_ERR}}", mqttportERR);
+    HtmlSrc.replace("{{MQTT_LOGIN_CHECKED}}", mqtt_loginCHECKED);
+    HtmlSrc.replace("{{MQTT_USER_STYLE}}", mqtt_userSTYLE);
+    HtmlSrc.replace("{{MQTT_LOGIN_DISABLE}}", mqtt_loginDisable);
+    HtmlSrc.replace("{{MQTT_USER}}", MQTT_USER);
+    HtmlSrc.replace("{{MQTT_USER_ERR}}", mqtt_userERR);
+    HtmlSrc.replace("{{MQTT_PASS_STYLE}}", mqtt_passSTYLE);
+    HtmlSrc.replace("{{MQTT_PASS}}", MQTT_PASS);
+    HtmlSrc.replace("{{MQTT_PASS_ERR}}", mqtt_passERR);
+    HtmlSrc.replace("{{DXC_HOST}}", dxcHostValue);
+    HtmlSrc.replace("{{DXC_HOST_ERR}}", dxc_hostERR);
+    HtmlSrc.replace("{{DXC_PORT}}", dxcPortValue);
+    HtmlSrc.replace("{{DXC_PORT_ERR}}", dxc_portERR);
+    HtmlSrc.replace("{{DXC_CALLSIGN}}", DxcCallsign);
+    HtmlSrc.replace("{{DXC_CALLSIGN_ERR}}", dxc_callsignERR);
+    HtmlSrc.replace("{{DXC_MQTT_TOPIC}}", DxcMqttTopic);
+    HtmlSrc.replace("{{DXC_MQTT_TOPIC_ERR}}", dxc_mqtt_topicERR);
+    HtmlSrc.replace("{{WEBAUTH_CHECKED}}", webauthCHECKED);
+    HtmlSrc.replace("{{WEB_AUTH_USER}}", WEB_AUTH_USER);
+    HtmlSrc.replace("{{WEB_AUTH_PASSWORD}}", WebAuthPassword);
+    HtmlSrc.replace("{{WEBPASS_ERR}}", webpassERR);
 
-  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Sensors and limits</summary><table class='setup-table'>\n";
-  HtmlSrc +="<tr class='b'><td class='tdr'><label for='source'>Azimuth source:</label></td><td><select name='source' id='source'><option value='0'";
-  HtmlSrc += sourceSELECT0;
-  HtmlSrc +=">Potentiometer</option><option value='1'";
-  HtmlSrc += sourceSELECT1;
-  HtmlSrc +=">CW/CCW pulse</option><option value='2'";
-  HtmlSrc += sourceSELECT2;
-  HtmlSrc +=">MQTT</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 320px;'>CW/CCW pulse uses the 3.5mm jack connector inputs on GPIO36 and GPIO5.<br>In pulse mode the manual KEY input on these pins is disabled.<br>MQTT rx on topic " + String(YOUR_CALL) + "/" + String(NET_ID) + "/ROT/RxAzimuth</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='pulseperdegree'><span";
-  HtmlSrc += pulseperdegreeSTYLE;
-  HtmlSrc +=">Pulse count per degree:</span></label></td><td><input type='text' id='pulseperdegree' name='pulseperdegree' size='3' value='";
-  HtmlSrc += PulsePerDegree;
-  HtmlSrc +="'";
-  HtmlSrc += pulseperdegreeDisable;
-  HtmlSrc +="><span style='color:red;'>";
-  HtmlSrc += pulseperdegreeERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 100px;'>Allowed range<br>[1-100]</span></span></td></tr>\n";
+    ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
+  };
 
-  HtmlSrc +="<tr><td class='tdr'><label for='twowire'><span";
-  HtmlSrc += twowireSTYLE;
-  HtmlSrc +=">Azimuth potentiometer:</span></label></td><td><select name='twowire' id='twowire'";
-  HtmlSrc += twowireDisable;
-  HtmlSrc +="><option value='0'";
-  HtmlSrc += twowireSELECT0;
-  HtmlSrc +=">3 Wire</option><option value='1'";
-  HtmlSrc += twowireSELECT1;
-  HtmlSrc +=">2 Wire</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>2 wire use 9mA CC source<br>3 wire use 9V CV source</span></span>";
-  if(AZtwoWire==true && AZpreamp==true){
-    HtmlSrc +="<br><span style='color: red;'>Recommend using a 3-wire potentiometer with the preamplifier ON</span>";
-  }
-  HtmlSrc +="</td></tr>\n";
-
-  HtmlSrc +="<tr><td class='tdr'><label for='preamp'><span";
-  HtmlSrc += twowireSTYLE;
-  HtmlSrc +=">Azimuth gain/shift op-amp:</span></label></td><td><select name='preamp' id='preamp'";
-  HtmlSrc += twowireDisable;
-  HtmlSrc +="><option value='0'";
-  HtmlSrc += preampSELECT0;
-  HtmlSrc +=">OFF</option><option value='1'";
-  HtmlSrc += preampSELECT1;
-  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 200px;'>For potentiometer use one turn from any<br>Need manualy preset with two trimmer<br>More in Wiki page</span></span></td></tr>\n";
-
-  // if(AZsource==false){ // potentiometer
-    HtmlSrc +="<tr class='b'><td class='tdr'><label for='edstops'><span";
-    HtmlSrc += edstopsSTYLE;
-    HtmlSrc +=">Hardware endstops INSTALLED:</span></label></td><td><input type='checkbox' id='edstops' name='edstops' value='1' ${postData.edstops?'checked':''} ";
-    HtmlSrc += edstopsCHECKED;
-    HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top'>If disabled, it reduces the range of the potentiometer by the forbidden zone on edges</span></span></td></tr>\n";
-      HtmlSrc +="<tr><td class='tdr'><label for='edstoplowzone'><span";
-      HtmlSrc += edstoplowzoneSTYLE;
-      HtmlSrc +=">CCW forbidden zone<br>(software endstops):</span></label></td><td><input type='text' id='edstoplowzone' name='edstoplowzone' size='3' value='";
-      HtmlSrc += int(NoEndstopLowZone*10);
-      HtmlSrc +="'";
-      HtmlSrc += edstoplowzoneDisable;
-      HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
-      HtmlSrc += edstoplowzoneERR;
-      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Allowed range<br>[2-15] tenths of a Volt</span></span></td></tr>\n";
-
-      HtmlSrc +="<tr><td class='tdr'><label for='edstophighzone'><span";
-      HtmlSrc += edstophighzoneSTYLE;
-      HtmlSrc +=">CW forbidden zone<br>(software endstops):</span></label></td><td><input type='text' id='edstophighzone' name='edstophighzone' size='3' value='";
-      HtmlSrc += int(NoEndstopHighZone*10);
-      HtmlSrc +="'";
-      HtmlSrc += edstophighzoneDisable;
-      HtmlSrc +="> tenths of a Volt <span style='color:red;'>";
-      HtmlSrc += edstophighzoneERR;
-      HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Allowed range<br>[16-31] tenths of a Volt</span></span></td></tr>\n";
-  // }
-  HtmlSrc +="</table></details>\n";
-
-  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Motor and drive</summary><table class='setup-table'>\n";
-  HtmlSrc +="<tr class='b'><td class='tdr'><label for='oneturnlimitsec'>Watchdog speed:</label></td><td><input type='text' id='oneturnlimitsec' name='oneturnlimitsec' size='3' value='";
-  HtmlSrc += OneTurnLimitSec;
-  HtmlSrc +="'> seconds per one turn <span style='color:red;'>";
-  HtmlSrc += oneturnlimitsecERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 300px;'>Allowed range [20-600sec]<br>Lower speed limit activating the watchdog<br>Use a number 50% higher than the actual speed of your rotator</span></span></td></tr>\n";
-
-  HtmlSrc +="<tr><td class='tdr'><label for='acmotor'>Motor supply:</label></td><td><select name='motor' id='motor'><option value='0'";
-  HtmlSrc += motorSELECT0;
-  HtmlSrc +=">DC</option><option value='1'";
-  HtmlSrc += motorSELECT1;
-  HtmlSrc +=">AC</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>DC with optional PWM<br>AC activates another relay sequence</span></span></td></tr>\n";
-
-  HtmlSrc +="<tr><td class='tdr'><label for='pwmenable'><span";
-  HtmlSrc += pwmenableSTYLE;
-  HtmlSrc += ">DC PWM control:</label></td><td><select name='pwmenable' id='pwmenable' ";
-  HtmlSrc += pwmenableDisable;
-  HtmlSrc +="><option value='0'";
-  HtmlSrc += pwmSELECT0;
-  HtmlSrc +=">OFF</option><option value='1'";
-  HtmlSrc += pwmSELECT1;
-  HtmlSrc +=">ON</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 200px;'>If disable, mosfet must be bridged,<br>or replace by jumper<br>More in Wiki page</span></span></span></td></tr>\n";
-
-    HtmlSrc +="<tr><td class='tdr'><label for='pwmrampsteps'><span";
-    HtmlSrc += pwmrampstepsSTYLE;
-    HtmlSrc += ">PWM slew interval:</label></td><td><input type='text' id='pwmrampsteps' name='pwmrampsteps' size='3' value='";
-    HtmlSrc += PwmRampSteps;
-    HtmlSrc +="' ";
-    HtmlSrc += pwmrampstepsDisable;
-    HtmlSrc +="> " + FormatPwmTotalRampTime(PwmRampSteps, PwmMaxDuty) + " <span style='color:red;'>";
-    HtmlSrc += pwmrampstepsERR;
-    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 320px;'>Allowed range [1-200] ms for one PWM step<br>The value after the field shows the estimated total ramp-up time from 0 to the current PWM max duty<br>Lower value = faster response<br>Higher value = softer start and stop<br>Braking distance is learned automatically from real stops.</span></span></span></td></tr>\n";
-
-    HtmlSrc +="<tr><td class='tdr'><label for='pwmtuneaggr'><span";
-    HtmlSrc += pwmtuneaggrSTYLE;
-    HtmlSrc += ">Brake learning aggressiveness:</span></label></td><td><select id='pwmtuneaggr' name='pwmtuneaggr'";
-    HtmlSrc += pwmtuneaggrDisable;
-    HtmlSrc +="><option value='1'";
-    HtmlSrc += pwmtuneaggrSELECT0;
-    HtmlSrc +=">1 Very soft</option><option value='2'";
-    HtmlSrc += pwmtuneaggrSELECT1;
-    HtmlSrc +=">2 Soft</option><option value='3'";
-    HtmlSrc += pwmtuneaggrSELECT2;
-    HtmlSrc +=">3 Medium</option><option value='4'";
-    HtmlSrc += pwmtuneaggrSELECT3;
-    HtmlSrc +=">4 Strong</option><option value='5'";
-    HtmlSrc += pwmtuneaggrSELECT4;
-    HtmlSrc +=">5 Very strong</option></select><span style='color:red;'>";
-    HtmlSrc += pwmtuneaggrERR;
-    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='left' style='width: 360px;'>Controls how fast the learned braking window reacts to overshoot and undershoot.<br>Level 3 is the intended center point near zero error.<br>Level 4 should already be able to slightly undershoot on some stops.<br>Level 5 is intentionally over-aggressive.</span></span></td></tr>\n";
-  HtmlSrc +="</table></details>\n";
-
-  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Serial and MQTT</summary><table class='setup-table'>\n";
-  HtmlSrc +="<tr class='b'><td class='tdr'><label for='baud'>USB serial BAUDRATE:</label></td><td><select name='baud' id='baud'><option value='0'";
-  HtmlSrc += baudSELECT0;
-  HtmlSrc +=">1200</option><option value='1'";
-  HtmlSrc += baudSELECT1;
-  HtmlSrc +=">2400</option><option value='2'";
-  HtmlSrc += baudSELECT2;
-  HtmlSrc +=">4800</option><option value='3'";
-  HtmlSrc += baudSELECT3;
-  HtmlSrc +=">9600</option><option value='4'";
-  HtmlSrc += baudSELECT4;
-  HtmlSrc +=">115200</option></select><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Use for GS-232 protocol<br>Must restart after change</span></span></td></tr>\n";
-
-  HtmlSrc +="<tr class='b'><td class='tdr'><label for='mqttip0'>MQTT broker IP:</label></td><td>";
-  HtmlSrc +="<input type='text' id='mqttip0' name='mqttip0' size='1' value='" + String(mqtt_server_ip[0]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip1' name='mqttip1' size='1' value='" + String(mqtt_server_ip[1]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip2' name='mqttip2' size='1' value='" + String(mqtt_server_ip[2]) + "'>&nbsp;.&nbsp;<input type='text' id='mqttip3' name='mqttip3' size='1' value='" + String(mqtt_server_ip[3]) + "'>";
-  HtmlSrc +="<span style='color:red;'>";
-  HtmlSrc += mqttERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 250px;'>Default public broker 54.38.157.134<br>If the first digit is zero, MQTT is disabled</span></span></td></tr>\n";
-
-  HtmlSrc +="<tr><td class='tdr'><label for='mqttport'>MQTT broker PORT:</label></td><td>";
-  HtmlSrc +="<input type='text' id='mqttport' name='mqttport' size='2' value='" + String(MQTT_PORT) + "'>\n";
-  HtmlSrc +="<span style='color:red;'>";
-  HtmlSrc += mqttportERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Default public broker port 1883</span></span></td></tr>\n";
-
-  HtmlSrc +="<tr><td class='tdr'><label for='mqtt_login'>Enable MQTT PASSWORD:</label></td><td><input type='checkbox' id='mqtt_login' name='mqtt_login' value='1' ${postData.mqtt_login?'checked':''} ";
-  HtmlSrc += mqtt_loginCHECKED;
-  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Enable login for<br>connect to MQTT broker<br>WARNING, does not support encryption!</span></span></td></tr>\n";
-    HtmlSrc +="<tr><td class='tdr'><label for='mqttuser'><span";
-    HtmlSrc += mqtt_userSTYLE;
-    HtmlSrc += ">MQTT Login:</span></label></td><td><input type='text' id='mqttuser' name='mqttuser' size='10' value='";
-    HtmlSrc += MQTT_USER;
-    HtmlSrc +="' ";
-    HtmlSrc += mqtt_loginDisable;
-    HtmlSrc +="><span style='color:red;'>";
-    HtmlSrc += mqtt_userERR;
-    HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Name max 10 character, for connect to MQTT broker</span></span></td></tr>\n";
-
-  HtmlSrc +="<tr><td class='tdr'><label for='mqttpass'><span";
-  HtmlSrc += mqtt_passSTYLE;
-  HtmlSrc += ">MQTT Password:</span></label></td><td><input type='password' id='mqttpass' name='mqttpass' size='20' value='";
-  HtmlSrc += MQTT_PASS;
-  HtmlSrc +="' ";
-  HtmlSrc += mqtt_loginDisable;
-  HtmlSrc +="><span style='color:red;'>";
-  HtmlSrc += mqtt_passERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 150px;'>Login Password max 20 character, for connect to MQTT broker</span></span></td></tr>\n";
-  HtmlSrc +="</table></details>\n";
-  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>DX Cluster</summary><table class='setup-table'>\n";
-  HtmlSrc +="<tr class='b'><td class='tdr'><label for='dxchost'>DX cluster IP/host:</label></td><td><input type='text' id='dxchost' name='dxchost' size='24' value='";
-  HtmlSrc += (DxcHost.length() > 0 ? DxcHost : String(DEFAULT_DXC_HOST));
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += dxc_hostERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 240px;'>When left empty, setup uses the default host ve7cc.net. The ESP32 opens a Telnet TCP connection to this host.</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='dxcport'>DX cluster PORT:</label></td><td><input type='text' id='dxcport' name='dxcport' size='6' value='";
-  HtmlSrc += String((DxcHost.length() > 0) ? DxcPort : DEFAULT_DXC_PORT);
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += dxc_portERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 220px;'>When left empty, setup uses the default port 23. Typical Telnet port is often 23 or 7300.</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='dxccall'>DX cluster callsign:</label></td><td><input type='text' id='dxccall' name='dxccall' size='16' maxlength='16' value='";
-  HtmlSrc += DxcCallsign;
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += dxc_callsignERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 210px;'>Sent to the DX cluster after Telnet connects. Required when DXC host is used.</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='dxcmqtttopic'>Send frequency to MQTT topic:</label></td><td><input type='text' id='dxcmqtttopic' name='dxcmqtttopic' size='28' maxlength='63' value='";
-  HtmlSrc += DxcMqttTopic;
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += dxc_mqtt_topicERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 260px;'>Optional custom MQTT topic used when you click a frequency in the DXC window. Payload is sent as Hz without spaces. Leave empty to disable.</span></span></td></tr>\n";
-  HtmlSrc +="</table></details>\n";
-  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Web authentication</summary><table class='setup-table'>\n";
-  HtmlSrc +="<tr class='b'><td class='tdr'><label for='webauth'>Enable web authentication:</label></td><td><input type='checkbox' id='webauth' name='webauth' value='1' ";
-  HtmlSrc += webauthCHECKED;
-  HtmlSrc +="><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 260px;'>Protects the web pages, control API and OTA update with HTTP Digest authentication. HTTPS is not available, so use this only on a trusted local network.</span></span></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'>Web login user:</td><td><input type='text' size='10' value='";
-  HtmlSrc += WEB_AUTH_USER;
-  HtmlSrc +="' readonly></td></tr>\n";
-  HtmlSrc +="<tr><td class='tdr'><label for='webpass'>Web login password:</label></td><td><input type='password' id='webpass' name='webpass' size='24' maxlength='100' value='";
-  HtmlSrc += WebAuthPassword;
-  HtmlSrc +="'><span style='color:red;'>";
-  HtmlSrc += webpassERR;
-  HtmlSrc +="</span><span class='hover-text'>?<span class='tooltip-text' id='top' style='width: 220px;'>Set your own web password here. The current password is also available in the USB serial console with command <strong>key</strong>.</span></span></td></tr>\n";
-  HtmlSrc +="</table></details>\n";
-  HtmlSrc +="<details class='setup-section'><summary class='setup-summary'>Backup and restore</summary><div class='backup-box'>";
-  HtmlSrc +="<p>Download the full rotator configuration as a JSON backup, or upload it later to restore settings.</p>";
-  HtmlSrc +="<div class='backup-actions'><a href='/backup/config'><button type='button' id='go'>Download backup</button></a></div>";
-  HtmlSrc +="<div class='backup-upload'><input type='file' id='backupFile' accept='.json,application/json'><button type='button' id='go' onclick='uploadConfigBackup()'>Upload backup</button></div>";
-  HtmlSrc +="<div id='backupStatus' class='backup-status'></div>";
-  HtmlSrc +="</div></details>\n";
-  HtmlSrc +="<div class='setup-actions'><button id='go'>&#10004; Change</button></form>&nbsp; ";
-  HtmlSrc +="<a href='/cal' onclick=\"window.open( this.href, this.href, 'width=700,height=1150,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button id='go'>Calibrate &#8618;</button></a></div>";
-  HtmlSrc +="<p class='setup-note'>After change, refresh all other page for apply changes.<br><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></p>";
-  HtmlSrc +="</div>";
-  HtmlSrc +="<script>function toggleMapSourceRows(){var s=document.getElementById('mapsource').value;document.getElementById('mapUrlRow').style.display=(s==='0')?'table-row':'none';document.getElementById('mapLocatorRow').style.display=(s==='1')?'table-row':'none';document.getElementById('mapThemeRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineNtpRow').style.display=(s==='1')?'table-row':'none';document.getElementById('graylineDarknessRow').style.display=(s==='1')?'table-row':'none';}function setBackupStatus(message,isError){var box=document.getElementById('backupStatus');if(!box){return;}box.textContent=message;box.className='backup-status '+(isError?'is-error':'is-ok');}function uploadConfigBackup(){var input=document.getElementById('backupFile');if(!input||!input.files||!input.files.length){setBackupStatus('Select a backup JSON file first.',true);return;}var formData=new FormData();formData.append('file',input.files[0]);setBackupStatus('Uploading backup...',false);fetch('/backup/config',{method:'POST',body:formData}).then(function(response){return response.text().then(function(text){if(!response.ok){throw new Error(text||'Upload failed');}return text;});}).then(function(text){setBackupStatus(text||'Backup restored.',false);}).catch(function(error){setBackupStatus(error.message||'Upload failed',true);});}var activeTooltipHost=null;function resetTooltip(trigger){var tip=trigger?trigger.querySelector('.tooltip-text'):null;if(!tip){return;}tip.style.left='';tip.style.right='';tip.style.top='';tip.style.bottom='';tip.style.position='';}function positionTooltip(trigger){var tip=trigger?trigger.querySelector('.tooltip-text'):null;if(!tip){return;}tip.style.position='fixed';tip.style.left='0px';tip.style.right='auto';tip.style.top='0px';tip.style.bottom='auto';var triggerRect=trigger.getBoundingClientRect();var tipRect=tip.getBoundingClientRect();var gap=12;var left=triggerRect.left+((triggerRect.width-tipRect.width)/2);var top=triggerRect.top-tipRect.height-gap;if(tip.id==='left'){left=triggerRect.left-tipRect.width-gap;top=triggerRect.top+((triggerRect.height-tipRect.height)/2);}else if(tip.id==='right'){left=triggerRect.right+gap;top=triggerRect.top+((triggerRect.height-tipRect.height)/2);}if(left<12){left=12;}if(left+tipRect.width>window.innerWidth-12){left=window.innerWidth-tipRect.width-12;}if(top<12){top=(tip.id==='top')?(triggerRect.bottom+gap):12;}if(top+tipRect.height>window.innerHeight-12){top=window.innerHeight-tipRect.height-12;}if(top<12){top=12;}tip.style.left=Math.round(left)+'px';tip.style.top=Math.round(top)+'px';}function bindTooltips(){var triggers=document.querySelectorAll('.hover-text');for(var i=0;i<triggers.length;i++){triggers[i].addEventListener('mouseenter',function(){activeTooltipHost=this;positionTooltip(this);});triggers[i].addEventListener('focusin',function(){activeTooltipHost=this;positionTooltip(this);});triggers[i].addEventListener('mouseleave',function(){if(activeTooltipHost===this){activeTooltipHost=null;}resetTooltip(this);});triggers[i].addEventListener('focusout',function(){if(activeTooltipHost===this){activeTooltipHost=null;}resetTooltip(this);});}}window.addEventListener('resize',function(){if(activeTooltipHost){positionTooltip(activeTooltipHost);}});window.addEventListener('scroll',function(){if(activeTooltipHost){positionTooltip(activeTooltipHost);}},true);toggleMapSourceRows();bindTooltips();</script>";
-  HtmlSrc +="</body></html>\n";
-
-  ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
+  sendSetupPage();
 }
 
 void handleCal() {
@@ -6405,127 +6206,73 @@ void handleCal() {
     ReverseAzSTATUS= "OFF";
   }
 
-  String HtmlSrc = "<!DOCTYPE html><html><head><title>CALIBRATE</title>";
-  HtmlSrc +="<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>";
-  HtmlSrc +="<style type='text/css'>@font-face {font-family: 'Roboto Condensed'; src: url('/RC-R.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap;} @font-face {font-family: 'Roboto Condensed'; src: url('/RC-B.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap;} button {background-color: #ccc; padding: 5px 20px 5px 20px; border: none; -webkit-border-radius: 5px; -moz-border-radius: 5px; border-radius: 5px;} button:hover {background-color: orange;} ";
-  HtmlSrc +=".red {background-color: #c00; color: #FFF;} table, th, td { color: #fff; border: 0px; border-color: #666; border-style: solid; margin: 0px;}";
-  HtmlSrc +=".tdl { text-align: left; padding: 10px;}";
-  HtmlSrc +=".tdc { text-align: center; padding: 10px;}";
-  HtmlSrc +=".tdr { text-align: right; padding: 10px;}";
-  HtmlSrc +="html,body { background-color: #333; text-color: #ccc; font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;}";
-  HtmlSrc +="a:hover {color: #fff;}";
-  HtmlSrc +="a {color: #ccc; text-decoration: underline;}";
-  HtmlSrc +="</style></head><body>";
-  HtmlSrc +="<H1 style='color: #666; text-align: center;'>Calibration steps:<br><span style='font-size: 50%;'>(MAC ";
-  HtmlSrc +=MACString;
-  HtmlSrc +="|FW ";
-  HtmlSrc +=REV;
-  HtmlSrc +="|HW ";
-  HtmlSrc +=String(HardwareRev);
-  // HtmlSrc +="|";
-  // HtmlSrc +=String(HWidValue);
-  HtmlSrc +=")</span></H1><div style='display: flex; justify-content: center;'>";
-  HtmlSrc +="<table cellspacing='0' cellpadding='0'><form action='/cal' method='post' style='color: #ccc; margin: 50 0 0 0; text-align: center;'>";
-  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>";
-  if(ELEVATION==false){
-    HtmlSrc +="1. Rotate direction calibrate";  
-  }else{
-      HtmlSrc +="1. Elevation direction calibrate";
-  }
-  HtmlSrc +="</span></td></tr>";
-  HtmlSrc +="<tr style='background-color: #666;'>";
-  HtmlSrc +="<td class='tdr'><button id='ccw' name='ccw'>&#8630; CCW</button></td>";
-  HtmlSrc +="<td class='tdc'><button id='stop' name='stop'>&#10008; STOP</button></td>";
-  HtmlSrc +="<td class='tdl'><button id='cw' name='cw'>CW &#8631;</button></td>";
-  HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><button id='reverse' name='reverse'";
-  HtmlSrc +=ReverseCOLOR;
-  HtmlSrc +=">REVERSE-CONTROL-<strong>";
-  HtmlSrc +=ReverseSTATUS;
-  HtmlSrc +="</strong></button></td>";
-  HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'><span style='color: #ccc;'>Instruction:</span> if it does not rotate according to the buttons, reverse the control</td>";
-  HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td></tr>";
-
-  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>";
-  if(AZsource == 1){
-    HtmlSrc +="2. Pulse counter monitor";
-  }else if(ELEVATION==false){
-    HtmlSrc +="2. Azimuth calibrate";  
-  }else{
-      HtmlSrc +="2. Elevation calibrate";
-  }
-  HtmlSrc +="</span></td></tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><div style='position: relative;'><canvas class='top' id='Azimuth' width='600' height='140'>Your browser does not support the HTML5 canvas tag.</canvas></div></td>";
-  HtmlSrc +="</tr><tr style='background-color: #666;'>";
-  HtmlSrc +="<td class='tdl'><button id='setccw' name='setccw'";
-  if(AZsource == 1){
-    HtmlSrc +=" disabled";
-  }
-  HtmlSrc +=">&#8676; SAVE CCW</button></td>";
-  HtmlSrc +="<td class='tdc' style='background-color: #666;'><button id='clear' name='clear'";
-  if(AZsource == 1){
-    HtmlSrc +=" disabled>COUNTER AUTO-SAVE</button></td>";
-  }else{
-    HtmlSrc +=">RESET CW/CCW SAVE</button></td>";
-  }
-  HtmlSrc +="<td class='tdr'><button id='setcw' name='setcw'";
-  if(AZsource == 1){
-    HtmlSrc +=" disabled";
-  }
-  HtmlSrc +=">SAVE CW &#8677;</button></td>";
-  HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='background-color: #666;'><button id='reverseaz' name='reverseaz'";
-  HtmlSrc +=ReverseAzCOLOR;
-  if(ELEVATION==false){
-    HtmlSrc +=">REVERSE-AZIMUTH-<strong>";
-  }else{
-    HtmlSrc +=">REVERSE-ELEVATION-<strong>";
-  }
-  HtmlSrc +=ReverseAzSTATUS;
-  HtmlSrc +="</strong></button></td>";
-  HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'>";
-  if( AZsource == 0 && AZtwoWire == true && CwRaw < 1577 ){
-    HtmlSrc +="<span style='color: #ccc;'>Recommendation: </span><span style='color: #0c0;'>If you are using a 2 wire potentiometer less than 500Ω,<br>you can increase the sensitivity if you short the J16 jumper on the back side PCB.<br><br></span>";
-  }
-  if(AZsource == 1){
-    HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; The CW/CCW pulse counter is available on the 3.5mm jack connector<br>&#8226; CW pulses increase the counter and CCW pulses decrease it<br>&#8226; If the counter changes in the opposite direction, activate REVERSE-AZIMUTH<br>&#8226; The last azimuth is saved automatically after the rotator stops</td>";
-  }else if(ELEVATION==false){
-    HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If azimuth potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-AZIMUTH button<br>&#8226; Rotate to both CCW ";
-    HtmlSrc +=StartAzimuth;
-    HtmlSrc +="&deg; and CW ";
-    HtmlSrc +=StartAzimuth+MaxRotateDegree;
-    HtmlSrc +="&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, then measure real azimuth<br>and put this value to &ldquo;Start CCW azimuth:&rdquo;	field in Setup page</td>";
-  }else{
-    HtmlSrc +="<span style='color: #ccc;'>Instruction:</span><br>&#8226; If elevation potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-ELEVATION button<br>&#8226; Rotate to both CCW 0&deg; and CW ";
-    HtmlSrc +=MaxRotateDegree;
-    HtmlSrc +="&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, then measure real elevation<br>and put this value to &ldquo;Start CCW elevation:&rdquo;	field in Setup page</td>";
-  }
-  
-  HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='height:30px'></td></tr>";
-
-  HtmlSrc +="<tr><td class='tdc' colspan='3' style='background-color: #666; border-top-left-radius: 20px; border-top-right-radius: 20px;'><span style='font-size: 200%;'>3. Front panel calibrate (optional)</span></td>";
-  HtmlSrc +="</tr><tr>";
-  HtmlSrc +="<td class='tdc' colspan='3' style='color: #333; background-color: #666; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;'>";
-  HtmlSrc +="<span style='font-size: 150%;'>Panel value <span style='font-weight: bold; color: #0a0;' id='frontAZValue'>0</span><br></span>";
-  HtmlSrc +="<span style='color: #ccc;'><br>Instruction:</span><br>&#8226; Rotate front panel potentiometer axis without knob to value 360&deg <br>&#8226; Put knob with orientation to north on axis<br>&#8226; Fixate knob to axis on position north</td></tr>";
-
-  HtmlSrc +="</table></div><div style='display: flex; justify-content: center;'><span><p style='text-align: center;'><a href='https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v' target='_blank'>More on Wiki &#10138;</a></p></span></div>";
-
-  File calFile = SPIFFS.open("/cal.html", "r");
-  if(!calFile){
-    ajaxserver.send(500, "text/plain", "Missing /cal.html in SPIFFS");
+  String HtmlSrc;
+  if(!loadTextFile("/cal-ui.html", HtmlSrc)){
+    ajaxserver.send(500, "text/plain", "Missing /cal-ui.html in SPIFFS");
     return;
   }
-  HtmlSrc.reserve(HtmlSrc.length() + calFile.size());
-  while(calFile.available()){
-    HtmlSrc += char(calFile.read());
+
+  String stepOneTitle = (ELEVATION==false) ? "1. Rotate direction calibrate" : "1. Elevation direction calibrate";
+  String stepTwoTitle = "";
+  if(AZsource == 1){
+    stepTwoTitle = "2. Pulse counter monitor";
+  }else if(ELEVATION==false){
+    stepTwoTitle = "2. Azimuth calibrate";
+  }else{
+    stepTwoTitle = "2. Elevation calibrate";
   }
-  calFile.close();
+
+  String setSaveDisabled = (AZsource == 1) ? " disabled" : "";
+  String clearButtonLabel = (AZsource == 1) ? "COUNTER AUTO-SAVE" : "RESET CW/CCW SAVE";
+  String clearDisabled = (AZsource == 1) ? " disabled" : "";
+  String reverseAzLabel = (ELEVATION==false) ? "REVERSE-AZIMUTH" : "REVERSE-ELEVATION";
+  String stepTwoInstruction = "";
+  if(AZsource == 0 && AZtwoWire == true && CwRaw < 1577){
+    stepTwoInstruction += "<span style='color: #ccc;'>Recommendation: </span><span style='color: #0c0;'>If you are using a 2 wire potentiometer less than 500Ohm,<br>you can increase the sensitivity if you short the J16 jumper on the back side PCB.<br><br></span>";
+  }
+  if(AZsource == 1){
+    stepTwoInstruction += "<span style='color: #ccc;'>Instruction:</span><br>&#8226; The CW/CCW pulse counter is available on the 3.5mm jack connector<br>&#8226; CW pulses increase the counter and CCW pulses decrease it<br>&#8226; If the counter changes in the opposite direction, activate REVERSE-AZIMUTH<br>&#8226; The last azimuth is saved automatically after the rotator stops";
+  }else if(ELEVATION==false){
+    stepTwoInstruction += "<span style='color: #ccc;'>Instruction:</span><br>&#8226; If azimuth potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-AZIMUTH button<br>&#8226; Rotate to both CCW ";
+    stepTwoInstruction += String(StartAzimuth);
+    stepTwoInstruction += "&deg; and CW ";
+    stepTwoInstruction += String(StartAzimuth+MaxRotateDegree);
+    stepTwoInstruction += "&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, then measure real azimuth<br>and put this value to &ldquo;Start CCW azimuth:&rdquo; field in Setup page";
+  }else{
+    stepTwoInstruction += "<span style='color: #ccc;'>Instruction:</span><br>&#8226; If elevation potentiometer move opposite direction (CCW left and CW right),<br>activate REVERSE-ELEVATION button<br>&#8226; Rotate to both CCW 0&deg; and CW ";
+    stepTwoInstruction += String(MaxRotateDegree);
+    stepTwoInstruction += "&deg; ends and save new limits<br>&#8226; After calibrate rotate to full CCW limits, then measure real elevation<br>and put this value to &ldquo;Start CCW elevation:&rdquo; field in Setup page";
+  }
+
+  HtmlSrc.replace("{{MAC_STRING}}", MACString);
+  HtmlSrc.replace("{{REV}}", String(REV));
+  HtmlSrc.replace("{{HARDWARE_REV}}", String(HardwareRev));
+  HtmlSrc.replace("{{STEP_ONE_TITLE}}", stepOneTitle);
+  HtmlSrc.replace("{{REVERSE_COLOR}}", ReverseCOLOR);
+  HtmlSrc.replace("{{REVERSE_STATUS}}", ReverseSTATUS);
+  HtmlSrc.replace("{{STEP_TWO_TITLE}}", stepTwoTitle);
+  HtmlSrc.replace("{{SET_SAVE_DISABLED}}", setSaveDisabled);
+  HtmlSrc.replace("{{CLEAR_DISABLED}}", clearDisabled);
+  HtmlSrc.replace("{{CLEAR_BUTTON_LABEL}}", clearButtonLabel);
+  HtmlSrc.replace("{{REVERSE_AZ_COLOR}}", ReverseAzCOLOR);
+  HtmlSrc.replace("{{REVERSE_AZ_LABEL}}", reverseAzLabel);
+  HtmlSrc.replace("{{REVERSE_AZ_STATUS}}", ReverseAzSTATUS);
+  HtmlSrc.replace("{{STEP_TWO_INSTRUCTION}}", stepTwoInstruction);
   ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
+}
+
+bool loadTextFile(const char* path, String& contents) {
+  File file = SPIFFS.open(path, "r");
+  if(!file){
+    return false;
+  }
+  contents = "";
+  contents.reserve(file.size() + 32);
+  while(file.available()){
+    contents += char(file.read());
+  }
+  file.close();
+  return true;
 }
 
 bool streamStaticFile(const char* path, const char* contentType) {
@@ -6605,10 +6352,69 @@ bool LoadFilesystemBuildInfo() {
   return FsBuildRev.length() > 0;
 }
 
-void handleRoot() {
+void handleApp() {
   if(!streamStaticFile("/index.html", "text/html")){
     ajaxserver.send(500, "text/plain", "Missing /index.html in SPIFFS");
   }
+}
+void handleRoot() {
+  String fsStatus = "Missing";
+  String fsDetail = "Filesystem unavailable. Upload spiffs.bin from /update to restore the full web UI.";
+  String fsLinks = "";
+  if(!FsMounted){
+    fsStatus = "Mount failed";
+  }else if(FsBuildInfoPresent && FsBuildMatchesFirmware){
+    fsStatus = "OK";
+    fsDetail = "Filesystem is ready. Full control page is available.";
+    fsLinks = "<p><a class='btn primary' href='/app'>Open full control UI</a><a class='btn' href='/setup'>Open setup</a><a class='btn' href='/cal'>Open calibrate</a></p>";
+  }else if(FsBuildInfoPresent){
+    fsStatus = "FW/FS mismatch";
+    fsDetail = "Filesystem mounted, but build revision does not match the running firmware. Upload matching firmware.bin and spiffs.bin if something looks wrong.";
+    fsLinks = "<p><a class='btn' href='/app'>Try current UI</a><a class='btn' href='/setup'>Try setup</a><a class='btn' href='/cal'>Try calibrate</a></p>";
+  }else{
+    fsStatus = "Build info missing";
+    fsDetail = "Filesystem mounted, but /fs_build.txt is missing. UI may still work, but the image cannot be verified.";
+    fsLinks = "<p><a class='btn' href='/app'>Try current UI</a><a class='btn' href='/setup'>Try setup</a><a class='btn' href='/cal'>Try calibrate</a></p>";
+  }
+
+  String fsBuild = FsBuildRev.length() > 0 ? FsBuildRev : String("-");
+  String fsOffset = FsBuildOffset.length() > 0 ? FsBuildOffset : String("-");
+  String fsSize = FsBuildSize.length() > 0 ? FsBuildSize : String("-");
+
+  String html = "<!DOCTYPE html><html><head><title>IP Rotator recovery</title>";
+  html += "<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'>";
+  html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
+  html += "<style>";
+  html += "body{margin:0;background:#20242b;color:#e7edf6;font-family:Arial,sans-serif;}";
+  html += ".wrap{max-width:760px;margin:0 auto;padding:24px 18px 40px;}";
+  html += ".card{background:#2b313b;border:1px solid #46515f;border-radius:14px;padding:18px 20px;margin:0 0 16px 0;}";
+  html += "h1{margin:0 0 8px 0;font-size:28px;}h2{margin:0 0 10px 0;font-size:20px;color:#b8c7db;}";
+  html += "p{line-height:1.5;color:#d5deea;}strong{color:#fff;}code{color:#ffd38a;}";
+  html += ".btn{display:inline-block;padding:10px 16px;border-radius:10px;border:1px solid #66778b;color:#eef5ff;text-decoration:none;background:#374252;margin:0 10px 10px 0;}";
+  html += ".btn.primary{background:#ca8d1d;border-color:#ca8d1d;color:#111;}";
+  html += ".diag{margin:0;padding:0;list-style:none;}.diag li{padding:6px 0;border-top:1px solid #3b4654;}";
+  html += ".diag li:first-child{border-top:0;}.muted{color:#9fb0c6;}";
+  html += "</style></head><body><div class='wrap'>";
+  html += "<div class='card'><h1>IP Rotator</h1><p>Recovery page stored in firmware. Use this page when the main web UI in <code>SPIFFS</code> is missing, mismatched, or needs an update.</p>";
+  html += "<p><a class='btn primary' href='/update'>Open ElegantOTA</a>";
+  html += "<a class='btn' href='/readFsDiag'>Read FS diagnostics</a></p>";
+  html += fsLinks;
+  html += "</div>";
+  html += "<div class='card'><h2>System status</h2><ul class='diag'>";
+  html += "<li><strong>FW revision:</strong> " + String(REV) + "</li>";
+  html += "<li><strong>Filesystem:</strong> " + fsStatus + "</li>";
+  html += "<li><strong>FS build rev:</strong> " + fsBuild + "</li>";
+  html += "<li><strong>FS offset:</strong> " + fsOffset + "</li>";
+  html += "<li><strong>FS size:</strong> " + fsSize + "</li>";
+  html += "<li><strong>Used / total:</strong> " + String((unsigned long)FsUsedBytes) + " / " + String((unsigned long)FsTotalBytes) + " bytes</li>";
+  html += "</ul><p>" + fsDetail + "</p></div>";
+  html += "<div class='card'><h2>Recovery steps</h2>";
+  html += "<p>1. Open <code>/update</code>.</p>";
+  html += "<p>2. Upload <code>firmware.bin</code> for firmware updates.</p>";
+  html += "<p>3. Upload <code>spiffs.bin</code> as filesystem image when web files changed or the filesystem is damaged.</p>";
+  html += "<p class='muted'>If the filesystem is healthy, the normal control page now lives at <code>/app</code>.</p>";
+  html += "</div></div></body></html>";
+  ajaxserver.send(200, "text/html", html);
 }
 void handleDxcHtml() {
   if(streamStaticFile("/dxc.html", "text/html")){
