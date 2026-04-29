@@ -9863,6 +9863,7 @@ var DXCC_PREFIX_LABELS_Q = [
   [1932,-8129,"ZF",2,"Cayman Is."],
   [4190,1245,"1A",1,"Sovereign Military Order of Malta"],
   [985,11420,"1A1",1,"Spratly Is."],
+  [-1972,6342,"3B9",1,"Rodrigues I."],
   [-2175,17463,"3D2/C",1,"Conway Reef"],
   [-6884,-9058,"3Y/P",1,"Peter 1 I."],
   [-5442,338,"3Y0",1,"Bouvet"],

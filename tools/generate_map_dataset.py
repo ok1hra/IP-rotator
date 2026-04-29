@@ -7,12 +7,14 @@ import gzip
 LAND_IN_PATH = Path('tools/map-data/countries-50m.json')
 DXCC_PREFIXES_PATH = Path('tools/map-data/dxcc_prefixes.json')
 DXCC_EXTRA_ENTITIES_PATH = Path('tools/map-data/dxcc_extra_entities.json')
+DXCC_PREFIX_ALIASES_PATH = Path('tools/map-data/dxcc_prefix_aliases.json')
 ADMIN0_LINES_SHP = Path('tools/map-data/ne/ne_10m_admin_0_boundary_lines_land/ne_10m_admin_0_boundary_lines_land.shp')
 ADMIN1_LINES_DBF = Path('tools/map-data/ne/ne_10m_admin_1_states_provinces_lines/ne_10m_admin_1_states_provinces_lines.dbf')
 ADMIN1_LINES_SHP = Path('tools/map-data/ne/ne_10m_admin_1_states_provinces_lines/ne_10m_admin_1_states_provinces_lines.shp')
 OUT_PATH = Path('tools/map-data/map50_dataset.js')
 WEB_BOOTSTRAP_PATH = Path('data/map50.js')
 WEB_OUT_GZ_PATH = Path('data/map50.js.gz')
+DXCC_ALIAS_SCRIPT_PATH = Path('data/dxcc_prefix_aliases.js')
 LAND_EPSILON_DEG = 0.10
 BORDER_EPSILON_DEG = 0.08
 LAND_MIN_POINTS = 5
@@ -43,6 +45,7 @@ def load_topo(path):
 land_obj, land_arcs = load_topo(LAND_IN_PATH)
 dxcc_prefix_map = json.loads(DXCC_PREFIXES_PATH.read_text())
 dxcc_extra_entities = json.loads(DXCC_EXTRA_ENTITIES_PATH.read_text())
+dxcc_prefix_aliases = json.loads(DXCC_PREFIX_ALIASES_PATH.read_text())
 
 
 def arc_points(idx):
@@ -323,6 +326,107 @@ def emit_array(name, lines):
     out.append("];")
     return "\n".join(out)
 
+
+def generate_dxcc_alias_script(alias_spec):
+    special_exact_prefixes = alias_spec.get('special_exact_prefixes', [])
+    alias_groups = alias_spec.get('alias_groups', [])
+    out = [
+        "(function(global){",
+        '  "use strict";',
+        "",
+        "  function normalize(value){",
+        '    return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9\\/]/g, "");',
+        "  }",
+        "",
+        "  function addAliases(aliasMap, canonical, aliases){",
+        "    var i;",
+        "    for(i = 0; i < aliases.length; i++){",
+        '      aliasMap[String(aliases[i]).toUpperCase()] = canonical;',
+        "    }",
+        "  }",
+        "",
+        "  var aliasMap = {};",
+        ""
+    ]
+
+    for group in alias_groups:
+        canonical = json.dumps(str(group['canonical']))
+        aliases = json.dumps([str(alias) for alias in group.get('aliases', [])], separators=(',', ':'))
+        out.append(f"  addAliases(aliasMap, {canonical}, {aliases});")
+
+    special_prefixes_literal = json.dumps([str(prefix) for prefix in special_exact_prefixes], separators=(',', ':'))
+    out.extend([
+        "",
+        "  var aliasPrefixes = Object.keys(aliasMap).sort(function(a, b){",
+        "    return b.length - a.length;",
+        "  });",
+        f"  var specialExactPrefixes = {special_prefixes_literal};",
+        "",
+        "  function resolveSpecialCases(normalized){",
+        "    var match;",
+        "    var i;",
+        "    if(!normalized){",
+        '      return "";',
+        "    }",
+        "",
+        "    for(i = 0; i < specialExactPrefixes.length; i++){",
+        "      if(normalized.indexOf(specialExactPrefixes[i]) === 0){",
+        "        return specialExactPrefixes[i];",
+        "      }",
+        "    }",
+        "",
+        "    if(/^(?:A|N|W)H[0-9]/.test(normalized)){",
+        '      return "KH" + normalized.charAt(2);',
+        "    }",
+        "    if(/^L[2-9]/.test(normalized)){",
+        '      return "LU";',
+        "    }",
+        "",
+        '    if(normalized.indexOf("GI") === 0 || normalized.indexOf("2I") === 0 || normalized.indexOf("MI") === 0){ return "GI"; }',
+        '    if(normalized.indexOf("GM") === 0 || normalized.indexOf("2M") === 0 || normalized.indexOf("MM") === 0){ return "GM"; }',
+        '    if(normalized.indexOf("GW") === 0 || normalized.indexOf("2W") === 0 || normalized.indexOf("MW") === 0){ return "GW"; }',
+        '    if(normalized.indexOf("GD") === 0 || normalized.indexOf("2D") === 0 || normalized.indexOf("MD") === 0){ return "GD"; }',
+        '    if(normalized.indexOf("GJ") === 0 || normalized.indexOf("2J") === 0 || normalized.indexOf("MJ") === 0){ return "GJ"; }',
+        '    if(normalized.indexOf("GU") === 0 || normalized.indexOf("2U") === 0 || normalized.indexOf("MU") === 0){ return "GU"; }',
+        '    if(normalized.indexOf("M") === 0 || normalized.indexOf("2E") === 0 || normalized.indexOf("GB") === 0 || normalized.indexOf("GX") === 0 || normalized.indexOf("MX") === 0){ return "G"; }',
+        "",
+        "    if(/^(R[0-9]|R[A-Z][0-9]|U[A-I][0-9]|U[A-I][A-Z][0-9])/.test(normalized)){",
+        "      match = normalized.match(/[0-9]/);",
+        '      if(normalized.indexOf("UA2") === 0){',
+        '        return "UA2";',
+        "      }",
+        '      return match && /^[089]$/.test(match[0]) ? "UA/AS" : "UA/E";',
+        "    }",
+        '    return "";',
+        "  }",
+        "",
+        "  function resolveAlias(value){",
+        "    var normalized = normalize(value);",
+        "    var special = resolveSpecialCases(normalized);",
+        "    var i;",
+        "    var prefix;",
+        "    if(!normalized){",
+        '      return "";',
+        "    }",
+        "    if(special){",
+        "      return special;",
+        "    }",
+        "    for(i = 0; i < aliasPrefixes.length; i++){",
+        "      prefix = aliasPrefixes[i];",
+        "      if(normalized.indexOf(prefix) === 0){",
+        "        return aliasMap[prefix];",
+        "      }",
+        "    }",
+        "    return normalized;",
+        "  }",
+        "",
+        "  global.normalizeDxccAliasInput = normalize;",
+        "  global.canonicalizeDxccPrefixAlias = resolveAlias;",
+        "})(window);",
+        ""
+    ])
+    return "\n".join(out)
+
 js = (
     f"// generated from countries-50m.json land eps={LAND_EPSILON_DEG} / Natural Earth admin0+admin1 line shapefiles border eps={BORDER_EPSILON_DEG}, scale={SCALE}\n"
     + emit_array("LAND_OUTLINES_Q", land_q)
@@ -372,6 +476,7 @@ WEB_BOOTSTRAP_PATH.write_text(
     "})();\n"
 )
 WEB_OUT_GZ_PATH.write_bytes(gzip.compress(js_c.encode('utf-8'), compresslevel=9, mtime=0))
+DXCC_ALIAS_SCRIPT_PATH.write_text(generate_dxcc_alias_script(dxcc_prefix_aliases))
 
 print('land_lines', len(land_q), 'country_lines', len(country_q))
 print('land_pts', sum(len(x) for x in land_q), 'country_pts', sum(len(x) for x in country_q))
