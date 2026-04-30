@@ -24,12 +24,12 @@
     .setup-wrap {max-width: 980px; margin: 0 auto;}
     .setup-form {color: #ccc; margin: 0; text-align: center;}
     .setup-section {position: relative; background: #3b3b3b; border: 1px solid #555; border-radius: 14px; margin: 0 0 10px 0; overflow: visible;}
-    .setup-summary {cursor: pointer; list-style: none; padding: 10px 14px; text-align: left; font-size: 20px; color: #ddd; background: #444; transition: background-color 0.15s ease, color 0.15s ease;}
-    .setup-summary:hover, .setup-summary:focus {background: orange; color: #111;}
+    .setup-summary {display: block; cursor: pointer; list-style: none; padding: 10px 14px; text-align: left; font-size: 20px; color: #ddd; background: #444; border-radius: 14px; outline: none; transition: background-color 0.15s ease, color 0.15s ease;}
+    .setup-summary:hover, .setup-summary:focus {background: orange; color: #111; outline: none;}
     .setup-summary::-webkit-details-marker {display: none;}
     .setup-summary:after {content: '\25be'; float: right; color: #aaa;}
     .setup-summary:hover:after, .setup-summary:focus:after {color: #111;}
-    .setup-section[open] .setup-summary {background: #d8921a; color: #111;}
+    .setup-section[open] .setup-summary {background: #d8921a; color: #111; border-radius: 14px 14px 0 0;}
     .setup-section[open] .setup-summary:after {content: '\25b4'; color: #111;}
     .setup-table {width: 100%; table-layout: fixed;}
     .setup-table td {padding-top: 2px; padding-bottom: 2px;}
