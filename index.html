@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IP Rotator Recovery</title>
+  <script
+    type="module"
+    src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+  ></script>
+  <style>
+    :root {
+      --esp-tools-button-color: #d97706;
+      --esp-tools-button-text-color: #111827;
+      --esp-tools-button-border-radius: 999px;
+    }
+    body {
+      margin: 0;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: #f8fafc;
+      background:
+        radial-gradient(circle at top left, rgba(245, 158, 11, 0.28), transparent 28rem),
+        linear-gradient(135deg, #0f172a 0%, #111827 45%, #1f2937 100%);
+      min-height: 100vh;
+    }
+    main {
+      width: min(46rem, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 3rem 0 4rem;
+    }
+    .panel {
+      background: rgba(15, 23, 42, 0.76);
+      border: 1px solid rgba(251, 191, 36, 0.24);
+      border-radius: 1.25rem;
+      padding: 1.5rem;
+      box-shadow: 0 2rem 4rem rgba(0, 0, 0, 0.26);
+      backdrop-filter: blur(12px);
+    }
+    h1 {
+      margin: 0 0 0.75rem;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      line-height: 1;
+    }
+    p, li {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: #dbe4f0;
+    }
+    code {
+      background: rgba(148, 163, 184, 0.18);
+      padding: 0.1rem 0.35rem;
+      border-radius: 0.35rem;
+    }
+    .cta {
+      margin: 1.5rem 0;
+    }
+    .note {
+      color: #fde68a;
+    }
+    a {
+      color: #fbbf24;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="panel">
+      <p class="note">Recovery for a completely blank ESP32, including bootloader and SPIFFS</p>
+      <h1>IP Rotator Recovery</h1>
+      <p>This package flashes <code>bootloader</code>, <code>partition table</code>, <code>boot_app0</code>, <code>firmware</code>, and <code>spiffs</code> to the ESP32-PoE.</p>
+      <div class="cta">
+        <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
+      </div>
+      <ol>
+        <li>Open this page in Google Chrome or Microsoft Edge over <code>https://</code>.</li>
+        <li>Connect the IP Rotator to your computer using USB-C.</li>
+        <li>Start the installation and restart the device after flashing.</li>
+      </ol>
+      <p>Firmware version: <code>20260430</code></p>
+      <p>SPIFFS offset: <code>0x290000</code>, size: <code>0x160000</code></p>
+      <p>For offline or service flashing, use <code>recovery-merged.bin</code> and flash it at <code>0x0</code>.</p>
+      <p>Direct downloads: <a href="ip-rotator-20260430-esp32-poe-firmware.bin">firmware</a>, <a href="ip-rotator-20260430-esp32-poe-spiffs.bin">spiffs</a>, <a href="ip-rotator-20260430-esp32-poe-recovery-merged.bin">merged recovery</a>.</p>
+    </div>
+  </main>
+</body>
+</html>
