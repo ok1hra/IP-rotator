@@ -57,6 +57,19 @@
     .note {
       color: #fde68a;
     }
+    .downloads {
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(251, 191, 36, 0.2);
+    }
+    .downloads p {
+      margin: 0 0 0.65rem;
+    }
+    .downloads-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.85rem 1.25rem;
+    }
     a {
       color: #fbbf24;
     }
@@ -77,9 +90,13 @@
         <li>Start the installation and restart the device after flashing.</li>
       </ol>
       <p>Firmware version: <code>20260430</code></p>
-      <p>SPIFFS offset: <code>0x290000</code>, size: <code>0x160000</code></p>
-      <p>For offline or service flashing, use <code>recovery-merged.bin</code> and flash it at <code>0x0</code>.</p>
-      <p>Direct downloads: <a href="ip-rotator-20260430-esp32-poe-firmware.bin">firmware</a>, <a href="ip-rotator-20260430-esp32-poe-spiffs.bin">spiffs</a>, <a href="ip-rotator-20260430-esp32-poe-recovery-merged.bin">merged recovery</a>.</p>
+      <div class="downloads">
+        <p>Direct downloads for EasyOTA update:</p>
+        <div class="downloads-links">
+          <a href="ip-rotator-20260430-esp32-poe-firmware.bin">Firmware 20260430</a>
+          <a href="ip-rotator-20260430-esp32-poe-spiffs.bin">SPIFFS 20260430</a>
+        </div>
+      </div>
     </div>
   </main>
 </body>
