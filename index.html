@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IP Rotator Recovery</title>
+  <title>IP Rotator firmware</title>
   <script
     type="module"
     src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
@@ -97,24 +97,24 @@
 <body>
   <main>
     <div class="panel">
-      <p class="note">Recovery for a completely blank ESP32, including bootloader and SPIFFS</p>
-      <h1>IP Rotator Recovery</h1>
-      <p>Firmware version: <code>20260430</code></p>
+      <p class="note">Two ways to update or restore the entire device</p>
+      <h1>IP Rotator firmware</h1>
+      <p>Firmware version: <code>20260430</code> for <a href="https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v" _target="blank">Hardware</a></p>
       <div class="paths">
         <section class="path-card">
-          <h2>Web Update with EasyOTA</h2>
-          <p class="muted">Download the two update files and upload them on the device web update page in this order: first firmware, then filesystem.</p>
+          <h2>Update via the EasyOTA web service</h2>
+          <p class="muted">Download the two <code>.bin</code> files and upload them on the device web update OTA page <code>http://[ip]:82/update</code> in this order: first firmware, then filesystem.</p>
           <div class="downloads">
             <p>Files for EasyOTA update:</p>
             <div class="downloads-links">
-              <a href="ip-rotator-20260430-esp32-poe-firmware.bin">Firmware 20260430</a>
-              <a href="ip-rotator-20260430-esp32-poe-spiffs.bin">SPIFFS 20260430</a>
+              <a href="ip-rotator-20260430-esp32-poe-firmware.bin">Firmware 20260430.bin</a>
+              <a href="ip-rotator-20260430-esp32-poe-spiffs.bin">SPIFFS 20260430.bin</a>
             </div>
           </div>
         </section>
         <section class="path-card">
-          <h2>USB Recovery Upload</h2>
-          <p class="muted">Use this path for a blank device or service recovery. Open this page in Google Chrome or Microsoft Edge over <code>https://</code>, connect the IP Rotator to your computer using USB-C, then start the automated install below.</p>
+          <h2>Complete recovery via USB</h2>
+          <p class="muted">Use this path for device recovery. Open this page in Google Chrome or Microsoft Edge over <code>https://</code>, connect the IP Rotator to your computer using USB-C, then start the automated install below.</p>
           <div class="cta">
             <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
           </div>
