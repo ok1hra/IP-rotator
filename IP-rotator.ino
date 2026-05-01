@@ -1,17 +1,17 @@
 /*
 
-3D printed IP rotator
+IP rotator firmware
 ----------------------
-1. Compile for HARDWARE ESP32-POE + Tools/Partition Scheme:"Default" | export bin or upload
-2. $ python3 tools/generate_map_dataset.py
-3. $ tools/build_spiffs_image.sh | generate bin
-4. Tools/ESP32 Sketch Data Upload | upload map or use OTA
+1. Arduino IDE 1.8.19 menu: Sketch/Export compiled Binary (for HARDWARE ESP32-POE + Tools/Partition Scheme:"Default")
+2. optional if change: $ python3 tools/generate_map_dataset.py
+3. generate all .bin and publish to GitHub web page: $ ./tools/all.sh --publish
+4. git commit and push
+
 
  ___               _        ___ _____ _  _
 | _ \___ _ __  ___| |_ ___ / _ \_   _| || |  __ ___ _ __
 |   / -_) '  \/ _ \  _/ -_) (_) || | | __ |_/ _/ _ \ '  \
 |_|_\___|_|_|_\___/\__\___|\__\_\|_| |_||_(_)__\___/_|_|_|
-
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -3950,6 +3950,8 @@ void http(){
             webClient.print(F("          var FirmwareRev = \""));
             webClient.print(REV);
             webClient.println(F("\";"));
+            webClient.println(F("          var FirmwareSiteUrl = \"https://ok1hra.github.io/IP-rotator/\";"));
+            webClient.println(F("          var FirmwareManifestUrl = \"https://ok1hra.github.io/IP-rotator/manifest.json\";"));
             webClient.println(F("          var LatestReleaseTag = \"\";"));
             webClient.println(F("          function normalizeVersionDigits(versionText){"));
             webClient.println(F("            var digits = String(versionText || \"\").replace(/[^0-9]/g, \"\");"));
@@ -3977,7 +3979,7 @@ void http(){
             webClient.println(F("              return;"));
             webClient.println(F("            }"));
             webClient.println(F("            if(Number(latestDigits) > Number(currentDigits)){"));
-            webClient.println(F("              help.innerHTML = \"Download the latest two firmware files from the release page, then upload them on the web update page in the correct order: first firmware, then filesystem.\";"));
+            webClient.println(F("              help.innerHTML = \"Open the firmware page, download the latest firmware and filesystem files, then upload them on the web update page in the correct order: first firmware, then filesystem.\";"));
             webClient.println(F("              help.style.display = \"block\";"));
             webClient.println(F("              download.style.display = \"inline-block\";"));
             webClient.println(F("              upload.style.display = \"inline-block\";"));
@@ -3996,12 +3998,12 @@ void http(){
             webClient.println(F("              if (this.readyState == 4 && this.status == 200) {"));
             webClient.println(F("                try{"));
             webClient.println(F("                  var data = JSON.parse(this.responseText);"));
-            webClient.println(F("                  LatestReleaseTag = String(data.tag_name || \"\");"));
+            webClient.println(F("                  LatestReleaseTag = String(data.version || \"\");"));
             webClient.println(F("                  updateFirmwareActions();"));
             webClient.println(F("                }catch(e){}"));
             webClient.println(F("              }"));
             webClient.println(F("            };"));
-            webClient.println(F("            rhttp.open(\"GET\", \"https://api.github.com/repos/ok1hra/IP-rotator/releases/latest\", true);"));
+            webClient.println(F("            rhttp.open(\"GET\", FirmwareManifestUrl, true);"));
             webClient.println(F("            rhttp.send();"));
             webClient.println(F("          }"));
             webClient.println(F("          window.addEventListener(\"load\", function(){ checkLatestRelease(); });"));
@@ -4067,9 +4069,9 @@ void http(){
           webClient.println(F("              </p>"));
           #if defined(OTAWEB)
             webClient.println(F("              <div id=\"firmware-actions\">"));
-            webClient.println(F("                  <div id=\"firmware-update-help\">Download the latest two firmware files from the release page, then upload them on the web update page in the correct order: first firmware, then filesystem.</div>"));
+            webClient.println(F("                  <div id=\"firmware-update-help\">Open the firmware page, download the latest firmware and filesystem files, then upload them on the web update page in the correct order: first firmware, then filesystem.</div>"));
             webClient.println(F("                  <div class=\"firmware-actions-row\">"));
-            webClient.println(F("                      <a id=\"firmware-download-btn\" class=\"firmware-cta\" href=\"https://github.com/ok1hra/IP-rotator/releases/latest\" target=\"_blank\">Download release</a>"));
+            webClient.println(F("                      <a id=\"firmware-download-btn\" class=\"firmware-cta\" href=\"https://ok1hra.github.io/IP-rotator/\" target=\"_blank\">Open firmware page</a>"));
             webClient.print(F("                  <a id=\"firmware-upload-btn\" href=\"http://"));
             webClient.print(ETH.localIP());
             webClient.println(F(":82/update\" target=\"_blank\" class=\"firmware-cta\">Upload firmware</a>"));

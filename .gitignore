@@ -1,2 +1,8 @@
 .bin
 .txt
+!IP-rotator.ino.esp32-poe.bin
+!build/
+!build/recovery-web/
+!build/recovery-web/**
+build/*.bin
+build/recovery-web/*.bin

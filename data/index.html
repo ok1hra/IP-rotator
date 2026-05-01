@@ -1399,6 +1399,9 @@
 		return digits.length ? digits : "";
 	}
 
+	var FirmwareSiteUrl = "https://ok1hra.github.io/IP-rotator/";
+	var FirmwareManifestUrl = "https://ok1hra.github.io/IP-rotator/manifest.json";
+
 	function updateReleaseStatus(){
 		var info = document.getElementById("ReleaseStatus");
 		if(!info){ return; }
@@ -1413,7 +1416,7 @@
 			return;
 		}
 		if(Number(latestDigits) > Number(currentDigits)){
-			info.innerHTML = " | <a href='https://github.com/ok1hra/IP-rotator/releases/latest' target='_blank' style='color:#ffd36a;'>New FW " + LatestReleaseTag + "</a>";
+			info.innerHTML = " | <a href='" + FirmwareSiteUrl + "' target='_blank' style='color:#ffd36a;'>New FW " + LatestReleaseTag + "</a>";
 		}else{
 			info.innerHTML = " | FW up to date";
 		}
@@ -1461,7 +1464,7 @@
 				if (this.status == 200) {
 					try{
 						var data = JSON.parse(this.responseText);
-						LatestReleaseTag = String(data.tag_name || "");
+						LatestReleaseTag = String(data.version || "");
 						ReleaseCheckDone = true;
 						updateReleaseStatus();
 					}catch(e){
@@ -1469,7 +1472,7 @@
 				}
 			}
 		};
-		rhttp.open("GET", "https://api.github.com/repos/ok1hra/IP-rotator/releases/latest", true);
+		rhttp.open("GET", FirmwareManifestUrl, true);
 		rhttp.send();
 	}
 

@@ -8,8 +8,39 @@ DATA_DIR="${ROOT_DIR}/data"
 OUTPUT_DIR="${ROOT_DIR}/build"
 OUTPUT_FILE="${OUTPUT_DIR}/spiffs.bin"
 PARTITIONS_CSV="${ROOT_DIR}/partitions.csv"
-MKSPIFFS_BIN="/home/dan/Arduino/hardware/espressif/esp32/tools/mkspiffs/mkspiffs"
 SKETCH_FILE="${ROOT_DIR}/IP-rotator.ino"
+ESP32_CORE_ROOT="${ESP32_CORE_ROOT:-}"
+MKSPIFFS_BIN="${MKSPIFFS_BIN:-}"
+
+detect_esp32_core_root() {
+  local candidates=()
+  if [[ -n "${ESP32_CORE_ROOT}" ]]; then
+    candidates+=("${ESP32_CORE_ROOT}")
+  fi
+  if [[ -n "${HOME:-}" ]]; then
+    candidates+=("${HOME}/Arduino/hardware/espressif/esp32")
+    candidates+=("${HOME}/.arduino15/packages/esp32/hardware/esp32")
+  fi
+
+  local candidate=""
+  local version_dir=""
+
+  for candidate in "${candidates[@]}"; do
+    if [[ -x "${candidate}/tools/mkspiffs/mkspiffs" ]]; then
+      echo "${candidate}"
+      return 0
+    fi
+    if [[ -d "${candidate}" ]]; then
+      version_dir="$(find "${candidate}" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+      if [[ -n "${version_dir}" && -x "${version_dir}/tools/mkspiffs/mkspiffs" ]]; then
+        echo "${version_dir}"
+        return 0
+      fi
+    fi
+  done
+
+  return 1
+}
 
 usage() {
   cat <<'EOF'
@@ -56,6 +87,14 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -z "${ESP32_CORE_ROOT}" ]]; then
+  ESP32_CORE_ROOT="$(detect_esp32_core_root || true)"
+fi
+
+if [[ -z "${MKSPIFFS_BIN}" && -n "${ESP32_CORE_ROOT}" ]]; then
+  MKSPIFFS_BIN="${ESP32_CORE_ROOT}/tools/mkspiffs/mkspiffs"
+fi
 
 if [[ ! -d "$DATA_DIR" ]]; then
   echo "Data directory not found: $DATA_DIR" >&2
