@@ -244,6 +244,9 @@ cat > "${OUTPUT_DIR}/index.html" <<EOF
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>IP Rotator firmware</title>
   <script
     type="module"
@@ -356,6 +359,12 @@ cat > "${OUTPUT_DIR}/index.html" <<EOF
         <section class="path-card">
           <h2>Complete recovery via USB</h2>
           <p class="muted">Use this path for device recovery. Open this page in Google Chrome or Microsoft Edge over <code>https://</code>, connect the IP Rotator to your computer using USB-C, then start the automated install below.</p>
+          <p class="note"><ul>
+            <li>Before recovery, back up your configuration from the Setup page <code>http://[ip]:88/setup</code>, Backup and restore part</li>
+            <li>After pressing the Connect button, select the <code>CP2104 USB to UART Bridge Controller</code> device</li>
+            <li>Then select the <code>Install IP Rotator Recovery</code> option</li>
+            <li>After uploading, select the USB device again and the <code>Logs & Console</code> option, where after pressing <code>Reset Device</code> you will see the boot log, including the device's <strong>IP address</strong></li>
+          </ul></p>
           <div class="cta">
             <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
           </div>

@@ -1401,6 +1401,13 @@
 
 	var FirmwareSiteUrl = "https://ok1hra.github.io/IP-rotator/";
 	var FirmwareManifestUrl = "https://ok1hra.github.io/IP-rotator/manifest.json";
+	function buildFirmwarePageUrl(){
+		var version = encodeURIComponent(String(LatestReleaseTag || FirmwareRev || "latest"));
+		return FirmwareSiteUrl + "?v=" + version + "&ts=" + Date.now();
+	}
+	function buildFirmwareManifestUrl(){
+		return FirmwareManifestUrl + "?ts=" + Date.now();
+	}
 
 	function updateReleaseStatus(){
 		var info = document.getElementById("ReleaseStatus");
@@ -1416,7 +1423,7 @@
 			return;
 		}
 		if(Number(latestDigits) > Number(currentDigits)){
-			info.innerHTML = " | <a href='" + FirmwareSiteUrl + "' target='_blank' style='color:#ffd36a;'>New FW " + LatestReleaseTag + "</a>";
+			info.innerHTML = " | <a href='" + buildFirmwarePageUrl() + "' target='_blank' style='color:#ffd36a;'>New FW " + LatestReleaseTag + "</a>";
 		}else{
 			info.innerHTML = " | FW up to date";
 		}
@@ -1472,7 +1479,7 @@
 				}
 			}
 		};
-		rhttp.open("GET", FirmwareManifestUrl, true);
+		rhttp.open("GET", buildFirmwareManifestUrl(), true);
 		rhttp.send();
 	}
 

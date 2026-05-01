@@ -121,7 +121,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260430";
+const char* REV = "20260501";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -3957,12 +3957,20 @@ void http(){
             webClient.println(F("            var digits = String(versionText || \"\").replace(/[^0-9]/g, \"\");"));
             webClient.println(F("            return digits.length ? digits : \"\";"));
             webClient.println(F("          }"));
+            webClient.println(F("          function buildFirmwarePageUrl(){"));
+            webClient.println(F("            var version = encodeURIComponent(String(LatestReleaseTag || FirmwareRev || \"latest\"));"));
+            webClient.println(F("            return FirmwareSiteUrl + \"?v=\" + version + \"&ts=\" + Date.now();"));
+            webClient.println(F("          }"));
+            webClient.println(F("          function buildFirmwareManifestUrl(){"));
+            webClient.println(F("            return FirmwareManifestUrl + \"?ts=\" + Date.now();"));
+            webClient.println(F("          }"));
             webClient.println(F("          function updateFirmwareActions(){"));
             webClient.println(F("            var wrap = document.getElementById(\"firmware-actions\");"));
             webClient.println(F("            var help = document.getElementById(\"firmware-update-help\");"));
             webClient.println(F("            var download = document.getElementById(\"firmware-download-btn\");"));
             webClient.println(F("            var upload = document.getElementById(\"firmware-upload-btn\");"));
             webClient.println(F("            if(!wrap || !help || !download || !upload){ return; }"));
+            webClient.println(F("            download.href = buildFirmwarePageUrl();"));
             webClient.println(F("            wrap.style.display = \"block\";"));
             webClient.println(F("            wrap.classList.remove(\"firmware-actions-current\");"));
             webClient.println(F("            help.style.display = \"none\";"));
@@ -4003,7 +4011,7 @@ void http(){
             webClient.println(F("                }catch(e){}"));
             webClient.println(F("              }"));
             webClient.println(F("            };"));
-            webClient.println(F("            rhttp.open(\"GET\", FirmwareManifestUrl, true);"));
+            webClient.println(F("            rhttp.open(\"GET\", buildFirmwareManifestUrl(), true);"));
             webClient.println(F("            rhttp.send();"));
             webClient.println(F("          }"));
             webClient.println(F("          window.addEventListener(\"load\", function(){ checkLatestRelease(); });"));

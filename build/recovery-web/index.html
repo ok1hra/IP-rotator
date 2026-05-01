@@ -3,6 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>IP Rotator firmware</title>
   <script
     type="module"
@@ -97,9 +100,9 @@
 <body>
   <main>
     <div class="panel">
-      <p class="note">Two ways to update or restore the entire device</p>
+      <p class="note">Two options - update or restore the entire device</p>
       <h1>IP Rotator firmware</h1>
-      <p>Firmware version: <code>20260430</code> for <a href="https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v" _target="blank">Hardware</a></p>
+      <p>Firmware version: <code>20260501</code> for <a href="https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v" target="_blank">Hardware</a></p>
       <div class="paths">
         <section class="path-card">
           <h2>Update via the EasyOTA web service</h2>
@@ -107,14 +110,20 @@
           <div class="downloads">
             <p>Files for EasyOTA update:</p>
             <div class="downloads-links">
-              <a href="ip-rotator-20260430-esp32-poe-firmware.bin">Firmware 20260430.bin</a>
-              <a href="ip-rotator-20260430-esp32-poe-spiffs.bin">SPIFFS 20260430.bin</a>
+              <a href="ip-rotator-20260501-esp32-poe-firmware.bin">Firmware 20260501.bin</a>
+              <a href="ip-rotator-20260501-esp32-poe-spiffs.bin">SPIFFS 20260501.bin</a>
             </div>
           </div>
         </section>
         <section class="path-card">
           <h2>Complete recovery via USB</h2>
           <p class="muted">Use this path for device recovery. Open this page in Google Chrome or Microsoft Edge over <code>https://</code>, connect the IP Rotator to your computer using USB-C, then start the automated install below.</p>
+          <p class="note"><ul>
+            <li>Before recovery, back up your configuration from the Setup page <code>http://[ip]:88/setup</code>, Backup and restore part</li>
+            <li>After pressing the Connect button, select the <code>CP2104 USB to UART Bridge Controller</code> device</li>
+            <li>Then select the <code>Install IP Rotator Recovery</code> option</li>
+            <li>After uploading, select the USB device again and the <code>Logs & Console</code> option, where after pressing <code>Reset Device</code> you will see the boot log, including the device's <strong>IP address</strong></li>
+          </ul></p>
           <div class="cta">
             <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
           </div>
