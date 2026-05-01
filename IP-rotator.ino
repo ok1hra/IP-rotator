@@ -121,7 +121,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260429";
+const char* REV = "20260430";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -598,6 +598,8 @@ void handleMap50js();
 void handleMap50jsGz();
 void handleFontRegular();
 void handleFontBold();
+void handleMqttWallJs();
+void handleMqttWallCss();
 void handleBackupConfigDownload();
 void handleBackupConfigUpload();
 void handleBackupConfigUploadData();
@@ -1329,6 +1331,8 @@ void setup() {
   RegisterAjaxRoute("/map50.js.gz", handleMap50jsGz);
   RegisterAjaxRoute("/RC-R.ttf", handleFontRegular);
   RegisterAjaxRoute("/RC-B.ttf", handleFontBold);
+  RegisterAjaxRoute("/mqtt-wall.js", handleMqttWallJs);
+  RegisterAjaxRoute("/mqtt-wall.css", handleMqttWallCss);
   RegisterAjaxRoute("/dxc.html", handleDxcHtml);
   RegisterAjaxRoute("/dxcPublishFreq", HTTP_POST, handleDxcPublishFreq);
   RegisterAjaxRoute("/set", handleSet);
@@ -3844,7 +3848,9 @@ void http(){
           webClient.println(F("          <meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\"/>"));
           webClient.println(F("          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"));
           // webClient.println(F("          <meta http-equiv=\"refresh\" content=\"10\">"));
-          webClient.println(F("          <link rel=\"stylesheet\" type=\"text/css\" href=\"https://remoteqth.com/mqtt-wall/style.css\">"));
+          webClient.print(F("          <link rel=\"stylesheet\" type=\"text/css\" href=\"http://"));
+          webClient.print(ETH.localIP());
+          webClient.println(F(":88/mqtt-wall.css\">"));
           // TITLE
           webClient.print(F("           <title>IP rotator "));
           webClient.print(YOUR_CALL);
@@ -4100,81 +4106,9 @@ void http(){
           webClient.println(F("          <script type=\"text/javascript\" src=\"https://code.jquery.com/jquery-2.1.4.min.js\"></script>"));
           webClient.println(F("          <script type=\"text/javascript\" src=\"https://code.jquery.com/color/jquery.color-2.1.2.min.js\"></script>"));
           webClient.println(F("          <script type=\"text/javascript\" src=\"https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js\"></script>"));
-          webClient.println(F("          <script type=\"text/javascript\" src=\"https://remoteqth.com/mqtt-wall/wall.js\"></script>"));
-          webClient.println(F("          <script type=\"text/javascript\">"));
-          webClient.println(F("            (function(){"));
-          webClient.println(F("              function flashValue(node){"));
-          webClient.println(F("                if(!node || !node.classList){ return; }"));
-          webClient.println(F("                var message = node.closest ? node.closest(\".messages .message\") : null;"));
-          webClient.println(F("                if(message){"));
-          webClient.println(F("                  var header = message.querySelector(\"header\");"));
-          webClient.println(F("                  var start = header ? Math.max(0, Math.ceil(header.getBoundingClientRect().width)) : 0;"));
-          webClient.println(F("                  message.style.setProperty(\"--ipr-flash-start\", start + \"px\");"));
-          webClient.println(F("                  message.classList.remove(\"ipr-flash\");"));
-          webClient.println(F("                }"));
-          webClient.println(F("                node.classList.remove(\"ipr-flash\");"));
-          webClient.println(F("                void node.offsetWidth;"));
-          webClient.println(F("                if(message){"));
-          webClient.println(F("                  void message.offsetWidth;"));
-          webClient.println(F("                  message.classList.add(\"ipr-flash\");"));
-          webClient.println(F("                }"));
-          webClient.println(F("                node.classList.add(\"ipr-flash\");"));
-          webClient.println(F("              }"));
-          webClient.println(F("              function resolvePayloadNode(node){"));
-          webClient.println(F("                if(!node){ return null; }"));
-          webClient.println(F("                if(node.nodeType === 3){ node = node.parentElement; }"));
-          webClient.println(F("                if(!node || !node.closest){ return null; }"));
-          webClient.println(F("                return node.matches(\".messages .message p\") ? node : node.closest(\".messages .message p\");"));
-          webClient.println(F("              }"));
-          webClient.println(F("              function watchMessages(){"));
-          webClient.println(F("                var host = document.querySelector(\".messages\");"));
-          webClient.println(F("                if(!host){ window.setTimeout(watchMessages, 250); return; }"));
-          webClient.println(F("                var lastValues = new WeakMap();"));
-          webClient.println(F("                function markIfChanged(node){"));
-          webClient.println(F("                  var payload = resolvePayloadNode(node);"));
-          webClient.println(F("                  if(!payload){ return; }"));
-          webClient.println(F("                  var next = payload.textContent;"));
-          webClient.println(F("                  if(!next){ return; }"));
-          webClient.println(F("                  var prev = lastValues.get(payload);"));
-          webClient.println(F("                  if(prev === undefined){"));
-          webClient.println(F("                    lastValues.set(payload, next);"));
-          webClient.println(F("                    return;"));
-          webClient.println(F("                  }"));
-          webClient.println(F("                  if(prev !== next){"));
-          webClient.println(F("                    lastValues.set(payload, next);"));
-          webClient.println(F("                    flashValue(payload);"));
-          webClient.println(F("                  }"));
-          webClient.println(F("                }"));
-          webClient.println(F("                host.querySelectorAll(\".message p\").forEach(function(payload){"));
-          webClient.println(F("                  lastValues.set(payload, payload.textContent);"));
-          webClient.println(F("                });"));
-          webClient.println(F("                var observer = new MutationObserver(function(mutations){"));
-          webClient.println(F("                  mutations.forEach(function(mutation){"));
-          webClient.println(F("                    if(mutation.type === \"characterData\"){"));
-          webClient.println(F("                      markIfChanged(mutation.target);"));
-          webClient.println(F("                      return;"));
-          webClient.println(F("                    }"));
-          webClient.println(F("                    if(mutation.type === \"childList\"){"));
-          webClient.println(F("                      if(mutation.target){ markIfChanged(mutation.target); }"));
-          webClient.println(F("                      Array.prototype.forEach.call(mutation.addedNodes, function(added){"));
-          webClient.println(F("                        var payload = resolvePayloadNode(added);"));
-          webClient.println(F("                        if(payload){"));
-          webClient.println(F("                          lastValues.set(payload, payload.textContent);"));
-          webClient.println(F("                          flashValue(payload);"));
-          webClient.println(F("                        }"));
-          webClient.println(F("                      });"));
-          webClient.println(F("                    }"));
-          webClient.println(F("                  });"));
-          webClient.println(F("                });"));
-          webClient.println(F("                observer.observe(host, { childList: true, subtree: true, characterData: true });"));
-          webClient.println(F("              }"));
-          webClient.println(F("              if(document.readyState === \"loading\"){"));
-          webClient.println(F("                document.addEventListener(\"DOMContentLoaded\", watchMessages);"));
-          webClient.println(F("              }else{"));
-          webClient.println(F("                watchMessages();"));
-          webClient.println(F("              }"));
-          webClient.println(F("            })();"));
-          webClient.println(F("          </script>"));
+          webClient.print(F("          <script type=\"text/javascript\" src=\"http://"));
+          webClient.print(ETH.localIP());
+          webClient.println(F(":88/mqtt-wall.js\"></script>"));
           webClient.println(F("      </body>"));
           webClient.println(F("  </html>"));
 
@@ -6611,6 +6545,18 @@ void handleFontBold() {
     return;
   }
   ajaxserver.send(404, "text/plain", "Missing /RC-B.ttf in SPIFFS");
+}
+void handleMqttWallJs() {
+  if(streamStaticFile("/mqtt-wall.js", "application/javascript")){
+    return;
+  }
+  ajaxserver.send(404, "text/plain", "Missing /mqtt-wall.js in SPIFFS");
+}
+void handleMqttWallCss() {
+  if(streamStaticFile("/mqtt-wall.css", "text/css")){
+    return;
+  }
+  ajaxserver.send(404, "text/plain", "Missing /mqtt-wall.css in SPIFFS");
 }
 void handleBackupConfigDownload() {
   ajaxserver.sendHeader("Content-Disposition", "attachment; filename=\"ip-rotator-config.json\"");

@@ -5,6 +5,7 @@
 	<head>
 	<title id="AntName">IP rotator</title>
 	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 	<style type="text/css">
 		@font-face {
 			font-family: 'Roboto Condensed';
@@ -23,12 +24,35 @@
 		html, body {
 			font-family: 'Roboto Condensed',sans-serif,Arial,Tahoma,Verdana;
 			background-color: #000;
-			overflow: hidden;
+			margin: 0;
+			min-height: 100%;
 		}
 		body {
+			width: 100%;
+			overflow-x: hidden;
+			overflow-y: auto;
+		}
+		.appshell{
+			width: 100%;
+			display: flex;
+			justify-content: center;
+			align-items: flex-start;
+		}
+		.appframe{
+			position: relative;
+		}
+		.appframeinner{
+			position: absolute;
+			left: 0;
+			top: 0;
 			width: 600px;
-			margin: 0 auto;
-			min-height: 730px;
+			height: 730px;
+			transform-origin: top left;
+		}
+		.mapstage{
+			position: relative;
+			width: 600px;
+			height: 600px;
 		}
 		.mouse{
 			margin: auto;
@@ -438,10 +462,11 @@
 			justify-content: center;
 			height: 28px;
 			padding: 0 12px;
+			border-radius: 4px;
 			color: #fff;
 			text-decoration: none;
 			background: linear-gradient(180deg, #6d7378, #53585d);
-			border-left: 1px solid rgba(255, 255, 255, 0.18);
+			border-left: 1px solid rgba(255, 255, 255, 0.14);
 			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 			box-sizing: border-box;
 			font-weight: 700;
@@ -472,7 +497,7 @@
 		.dxcbtn:hover{
 			background: linear-gradient(180deg, #127436, #0a5423);
 			color: #fff;
-			text-decoration: none;
+			text-decoration: underline;
 		}
 		.statusline{
 			margin: 0;
@@ -490,8 +515,10 @@
 	</style>
 	</head>
 	<body>
-
-	<div style="position: relative;">
+	<div class="appshell">
+	<div class="appframe" id="AppFrame">
+	<div class="appframeinner" id="AppFrameInner">
+	<div class="mapstage">
 		<canvas class="mouse" id="Mouse" height="600" width="600"></canvas>
 		<canvas class="top" id="Azimuth" width="600" height="600">Your browser does not support the HTML5 canvas tag.</canvas>
 		<canvas class="middle" id="Static" width="600" height="600"></canvas>
@@ -560,6 +587,7 @@
 			</label>
 		</div>
 		<div class="maphint" id="MapHint"></div>
+	</div>
 		<div class="second">
 			<p class="paneltitle"><span id="AntName2"> </span></p>
 			<div class="panelactions">
@@ -578,10 +606,14 @@
 			</p>
 		</div>
 	</div>
+	</div>
+	</div>
 
 	<script src="/dxcc_prefix_aliases.js"></script>
 	<script>
 	var BoxSize = 600;
+	var BaseBoxSize = 600;
+	var ResponsiveScale = 1;
 	var Target  = 0;
 	var AzShift = 0;
 	var AzRange = 0;
@@ -674,16 +706,40 @@
 		return Number(MapSource) === 1 && Number(Elevation) === 1;
 	}
 
-		function updatePageLayout(){
-			var statusWrap = document.querySelector(".second");
-			if(isElevationVectorMode()){
-				document.body.style.minHeight = "580px";
-				if(statusWrap){ statusWrap.style.top = "436px"; }
-			}else{
-				document.body.style.minHeight = "730px";
-				if(statusWrap){ statusWrap.style.top = "604px"; }
-			}
+	function getPageBaseHeight(){
+		if(isElevationVectorMode()){
+			return 580;
 		}
+		return 730;
+	}
+
+	function syncResponsiveLayout(){
+		var appFrame = document.getElementById("AppFrame");
+		var appFrameInner = document.getElementById("AppFrameInner");
+		var pageBaseHeight = getPageBaseHeight();
+		var viewportWidth = Math.max(window.innerWidth || 0, 320);
+		ResponsiveScale = viewportWidth / BaseBoxSize;
+		if(appFrame){
+			appFrame.style.width = String(Math.round(BaseBoxSize * ResponsiveScale)) + "px";
+			appFrame.style.height = String(Math.round(pageBaseHeight * ResponsiveScale)) + "px";
+		}
+		if(appFrameInner){
+			appFrameInner.style.height = String(pageBaseHeight) + "px";
+			appFrameInner.style.transform = "scale(" + String(ResponsiveScale) + ")";
+		}
+		document.body.style.minHeight = "0px";
+		document.body.style.height = String(Math.round(pageBaseHeight * ResponsiveScale)) + "px";
+	}
+
+	function updatePageLayout(){
+		var statusWrap = document.querySelector(".second");
+		if(isElevationVectorMode()){
+			if(statusWrap){ statusWrap.style.top = "436px"; }
+		}else{
+			if(statusWrap){ statusWrap.style.top = "604px"; }
+		}
+		syncResponsiveLayout();
+	}
 
 	function updateMapZoomControl(){
 		var wrap = document.getElementById("MapZoomControl");
@@ -2029,10 +2085,12 @@
 	//Get Mouse Position
 	function getMousePos(mouse, evt) {
 	    var rect = mouse.getBoundingClientRect();
+	    var scaleX = rect.width ? mouse.width / rect.width : 1;
+	    var scaleY = rect.height ? mouse.height / rect.height : 1;
 			// return Target;
 	    return {
-	        x: evt.clientX - rect.left,
-	        y: evt.clientY - rect.top
+	        x: (evt.clientX - rect.left) * scaleX,
+	        y: (evt.clientY - rect.top) * scaleY
 	    };
 	}
 
@@ -4254,6 +4312,9 @@ var LAND_OUTLINES = [];
 	    }
 	  dirline.stroke();
 	}
+
+	window.addEventListener("resize", syncResponsiveLayout);
+	syncResponsiveLayout();
 
 	</script>
 	</body>
