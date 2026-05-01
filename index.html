@@ -36,6 +36,22 @@
       box-shadow: 0 2rem 4rem rgba(0, 0, 0, 0.26);
       backdrop-filter: blur(12px);
     }
+    .paths {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    .path-card {
+      background: rgba(15, 23, 42, 0.55);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 1rem;
+      padding: 1rem 1.1rem;
+    }
+    .path-card h2 {
+      margin: 0 0 0.7rem;
+      font-size: 1.2rem;
+      color: #f8fafc;
+    }
     h1 {
       margin: 0 0 0.75rem;
       font-size: clamp(2rem, 4vw, 3.2rem);
@@ -70,6 +86,9 @@
       flex-wrap: wrap;
       gap: 0.85rem 1.25rem;
     }
+    .muted {
+      color: #cbd5e1;
+    }
     a {
       color: #fbbf24;
     }
@@ -80,21 +99,26 @@
     <div class="panel">
       <p class="note">Recovery for a completely blank ESP32, including bootloader and SPIFFS</p>
       <h1>IP Rotator Recovery</h1>
-      <p>This package flashes <code>bootloader</code>, <code>partition table</code>, <code>boot_app0</code>, <code>firmware</code>, and <code>spiffs</code> to the ESP32-PoE.</p>
-      <div class="cta">
-        <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
-      </div>
-      <ol>
-        <li>Open this page in Google Chrome or Microsoft Edge over <code>https://</code>.</li>
-        <li>Connect the IP Rotator to your computer using USB-C.</li>
-        <li>Start the installation and restart the device after flashing.</li>
-      </ol>
       <p>Firmware version: <code>20260430</code></p>
-      <div class="downloads">
-        <p>Direct downloads for EasyOTA update:</p>
-        <div class="downloads-links">
-          <a href="ip-rotator-20260430-esp32-poe-firmware.bin">Firmware 20260430</a>
-          <a href="ip-rotator-20260430-esp32-poe-spiffs.bin">SPIFFS 20260430</a>
+      <div class="paths">
+        <section class="path-card">
+          <h2>Web Update with EasyOTA</h2>
+          <p class="muted">Download the two update files and upload them on the device web update page in this order: first firmware, then filesystem.</p>
+          <div class="downloads">
+            <p>Files for EasyOTA update:</p>
+            <div class="downloads-links">
+              <a href="ip-rotator-20260430-esp32-poe-firmware.bin">Firmware 20260430</a>
+              <a href="ip-rotator-20260430-esp32-poe-spiffs.bin">SPIFFS 20260430</a>
+            </div>
+          </div>
+        </section>
+        <section class="path-card">
+          <h2>USB Recovery Upload</h2>
+          <p class="muted">Use this path for a blank device or service recovery. Open this page in Google Chrome or Microsoft Edge over <code>https://</code>, connect the IP Rotator to your computer using USB-C, then start the automated install below.</p>
+          <div class="cta">
+            <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
+          </div>
+          <p class="muted">The installer flashes <code>bootloader</code>, <code>partition table</code>, <code>boot_app0</code>, <code>firmware</code>, and <code>spiffs</code> automatically.</p>
         </div>
       </div>
     </div>
