@@ -2,9 +2,16 @@
 
 IP rotator firmware
 ----------------------
+1. Increase REV value in this .ino
+2. Arduino IDE 1.8.19 menu: Sketch/Export compiled Binary (for HARDWARE ESP32-POE + Tools/Partition Scheme:"Default")
+3. optional if change: $ python3 tools/generate_map_dataset.py
+4. generate all .bin and publish to GitHub web page: $ ./tools/all.sh --publish
+5. git commit with comment Release number and push
+
+For partial update witout release
 1. Arduino IDE 1.8.19 menu: Sketch/Export compiled Binary (for HARDWARE ESP32-POE + Tools/Partition Scheme:"Default")
-2. optional if change: $ python3 tools/generate_map_dataset.py
-3. generate all .bin and publish to GitHub web page: $ ./tools/all.sh --publish
+2. build SPIFFS.bin: $ tools/build_spiffs_image.sh
+3. update va EasyOTA
 4. git commit and push
 
 
@@ -121,7 +128,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260501";
+const char* REV = "20260502";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -155,6 +162,7 @@ bool DefaultMapGraylineEnabled = true;
 bool DefaultMapBordersEnabled = false;
 bool DefaultMapDxccEnabled = false;
 bool DefaultMapDxcSpotsEnabled = false;
+bool DefaultMapDxcLinesEnabled = false;
 bool FsMounted = false;
 bool FsBuildInfoPresent = false;
 bool FsBuildMatchesFirmware = false;
@@ -292,7 +300,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 486   /*
+#define EEPROM_SIZE 487   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -363,6 +371,7 @@ int i = 0;
 419 - DefaultMapDxcSpotsEnabled
 420-421 - PulseAzimuthTenths UShort
 422-485 - DXC MQTT publish topic
+486 - DefaultMapDxcLinesEnabled
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -883,7 +892,7 @@ void setup() {
     }
   }
 
-  // 413-418 - control page default map/display toggles
+  // 413-419 and 486 - control page default map/display toggles
   if(EEPROM.read(413)==0xff){
     DefaultDegOverlayEnabled = true;
   }else{
@@ -923,6 +932,11 @@ void setup() {
     PulseAzimuthTenths = 0;
   }else{
     PulseAzimuthTenths = ClampPulseAzimuthTenths(EEPROM.readUShort(420));
+  }
+  if(EEPROM.read(486)==0xff){
+    DefaultMapDxcLinesEnabled = false;
+  }else{
+    DefaultMapDxcLinesEnabled = EEPROM.readBool(486);
   }
 
   // 29  - Endstop
@@ -1966,7 +1980,17 @@ bool ShouldForceStopFromPwmStall(int directionSign, byte currentDuty, float rawA
     return false;
   }
 
-  return millis() - stallTimer > 2500;
+  unsigned long lowDutyHoldMs = millis() - stallTimer;
+  unsigned long brakeRampTimeoutMs = max(
+    350UL,
+    ((unsigned long)max(1, (int(currentDuty) + 9) / 10) * (unsigned long)max(1u, PwmRampSteps) * 11UL) / 10UL
+  );
+
+  if(lowDutyHoldMs > brakeRampTimeoutMs){
+    return true;
+  }
+
+  return lowDutyHoldMs > 2500UL;
 }
 
 byte ComputeClosedLoopDuty(int directionSign){
@@ -2298,6 +2322,7 @@ String ExportConfigBackupJson(){
   json += "    \"default_state_borders\": " + String(DefaultMapBordersEnabled ? "true" : "false") + ",\n";
   json += "    \"default_dxcc_prefixes\": " + String(DefaultMapDxccEnabled ? "true" : "false") + ",\n";
   json += "    \"default_dxc_spots\": " + String(DefaultMapDxcSpotsEnabled ? "true" : "false") + ",\n";
+  json += "    \"default_dxc_lines\": " + String(DefaultMapDxcLinesEnabled ? "true" : "false") + ",\n";
   json += "    \"one_turn_limit_sec\": " + String(OneTurnLimitSec) + "\n";
   json += "  }\n";
   json += "}\n";
@@ -2321,7 +2346,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   float lowZoneValue = 0.0f, highZoneValue = 0.0f, pwmSlowWindowValue = 0.0f;
   bool endstopValue = false, acMotorValue = false, reverseValue = false, azTwoWireValue = false, azPreampValue = false;
   bool reverseAzValue = false, webAuthEnabledValue = false, pwmEnableValue = false, mqttLoginValue = false, elevationValue = false;
-  bool defaultDegOverlayValue = true, defaultAntOverlayValue = true, defaultLocGridValue = false, defaultGraylineValue = true, defaultStateBordersValue = false, defaultDxccPrefixesValue = false, defaultDxcSpotsValue = false;
+  bool defaultDegOverlayValue = true, defaultAntOverlayValue = true, defaultLocGridValue = false, defaultGraylineValue = true, defaultStateBordersValue = false, defaultDxccPrefixesValue = false, defaultDxcSpotsValue = false, defaultDxcLinesValue = false;
 
   if(!JsonExtractString(jsonPayload, "net_id", newNetId) || newNetId.length() < 1 || newNetId.length() > 2){
     return "Invalid net_id";
@@ -2494,6 +2519,9 @@ String ImportConfigBackupJson(const String& jsonPayload){
   if(!JsonExtractBool(jsonPayload, "default_dxc_spots", defaultDxcSpotsValue)){
     defaultDxcSpotsValue = false;
   }
+  if(!JsonExtractBool(jsonPayload, "default_dxc_lines", defaultDxcLinesValue)){
+    defaultDxcLinesValue = false;
+  }
   if(!JsonExtractLong(jsonPayload, "one_turn_limit_sec", oneTurnLimitValue) || oneTurnLimitValue < 20 || oneTurnLimitValue > 600){
     return "Invalid one_turn_limit_sec";
   }
@@ -2567,6 +2595,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   DefaultMapBordersEnabled = defaultStateBordersValue;
   DefaultMapDxccEnabled = defaultDxccPrefixesValue;
   DefaultMapDxcSpotsEnabled = defaultDxcSpotsValue;
+  DefaultMapDxcLinesEnabled = defaultDxcLinesValue;
   OneTurnLimitSec = oneTurnLimitValue;
 
   WriteFixedStringToEeprom(0, 2, NET_ID);
@@ -2626,6 +2655,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   EEPROM.writeBool(417, DefaultMapBordersEnabled);
   EEPROM.writeBool(418, DefaultMapDxccEnabled);
   EEPROM.writeBool(419, DefaultMapDxcSpotsEnabled);
+  EEPROM.writeBool(486, DefaultMapDxcLinesEnabled);
   EEPROM.commit();
 
   digitalWrite(AZtwoWirePin, AZtwoWire);
@@ -3958,8 +3988,7 @@ void http(){
             webClient.println(F("            return digits.length ? digits : \"\";"));
             webClient.println(F("          }"));
             webClient.println(F("          function buildFirmwarePageUrl(){"));
-            webClient.println(F("            var version = encodeURIComponent(String(LatestReleaseTag || FirmwareRev || \"latest\"));"));
-            webClient.println(F("            return FirmwareSiteUrl + \"?v=\" + version + \"&ts=\" + Date.now();"));
+            webClient.println(F("            return FirmwareSiteUrl;"));
             webClient.println(F("          }"));
             webClient.println(F("          function buildFirmwareManifestUrl(){"));
             webClient.println(F("            return FirmwareManifestUrl + \"?ts=\" + Date.now();"));
@@ -4803,6 +4832,7 @@ void handleSet() {
   String mapdefaultbordersCHECKED= "";
   String mapdefaultdxccCHECKED= "";
   String mapdefaultdxcspotsCHECKED= "";
+  String mapdefaultdxclinesCHECKED= "";
   String mapSourceSELECT0= "";
   String mapSourceSELECT1= "";
   String mapUrlRowStyle= "";
@@ -5264,6 +5294,7 @@ void handleSet() {
     bool newDefaultMapBordersEnabled = ajaxserver.arg("mapdefaultborders").toInt() == 1;
     bool newDefaultMapDxccEnabled = ajaxserver.arg("mapdefaultdxcc").toInt() == 1;
     bool newDefaultMapDxcSpotsEnabled = ajaxserver.arg("mapdefaultdxcspots").toInt() == 1;
+    bool newDefaultMapDxcLinesEnabled = ajaxserver.arg("mapdefaultdxclines").toInt() == 1;
     if(DefaultDegOverlayEnabled != newDefaultDegOverlayEnabled){
       DefaultDegOverlayEnabled = newDefaultDegOverlayEnabled;
       EEPROM.writeBool(413, DefaultDegOverlayEnabled);
@@ -5291,6 +5322,10 @@ void handleSet() {
     if(DefaultMapDxcSpotsEnabled != newDefaultMapDxcSpotsEnabled){
       DefaultMapDxcSpotsEnabled = newDefaultMapDxcSpotsEnabled;
       EEPROM.writeBool(419, DefaultMapDxcSpotsEnabled);
+    }
+    if(DefaultMapDxcLinesEnabled != newDefaultMapDxcLinesEnabled){
+      DefaultMapDxcLinesEnabled = newDefaultMapDxcLinesEnabled;
+      EEPROM.writeBool(486, DefaultMapDxcLinesEnabled);
     }
 
     // 223 AZsource
@@ -5764,6 +5799,9 @@ if(DefaultMapDxccEnabled==true){
 if(DefaultMapDxcSpotsEnabled==true){
   mapdefaultdxcspotsCHECKED = "checked";
 }
+if(DefaultMapDxcLinesEnabled==true){
+  mapdefaultdxclinesCHECKED = "checked";
+}
 
 // if(AZsource==true){
 //   sourceSELECT0= "";
@@ -5980,6 +6018,7 @@ switch (PwmTuneAggressiveness) {
     HtmlSrc.replace("{{MAPDEFAULTBORDERS_CHECKED}}", mapdefaultbordersCHECKED);
     HtmlSrc.replace("{{MAPDEFAULTDXCC_CHECKED}}", mapdefaultdxccCHECKED);
     HtmlSrc.replace("{{MAPDEFAULTDXCSPOTS_CHECKED}}", mapdefaultdxcspotsCHECKED);
+    HtmlSrc.replace("{{MAPDEFAULTDXCLINES_CHECKED}}", mapdefaultdxclinesCHECKED);
     HtmlSrc.replace("{{SOURCE_SELECT0}}", sourceSELECT0);
     HtmlSrc.replace("{{SOURCE_SELECT1}}", sourceSELECT1);
     HtmlSrc.replace("{{SOURCE_SELECT2}}", sourceSELECT2);
@@ -6482,7 +6521,8 @@ void handleMapDisplayDefaults() {
     String(DefaultMapGraylineEnabled ? "1" : "0") + "|" +
     String(DefaultMapBordersEnabled ? "1" : "0") + "|" +
     String(DefaultMapDxccEnabled ? "1" : "0") + "|" +
-    String(DefaultMapDxcSpotsEnabled ? "1" : "0")
+    String(DefaultMapDxcSpotsEnabled ? "1" : "0") + "|" +
+    String(DefaultMapDxcLinesEnabled ? "1" : "0")
   );
 }
 void handleGraylineInfo() {
