@@ -128,7 +128,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260502";
+const char* REV = "20260503";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
