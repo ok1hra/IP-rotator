@@ -128,7 +128,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260503";
+const char* REV = "20260505";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -300,7 +300,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 487   /*
+#define EEPROM_SIZE 615   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -370,8 +370,10 @@ int i = 0;
 418 - DefaultMapDxccEnabled
 419 - DefaultMapDxcSpotsEnabled
 420-421 - PulseAzimuthTenths UShort
-422-485 - DXC MQTT publish topic
+422-485 - DXC MQTT publish topic (left mouse button)
 486 - DefaultMapDxcLinesEnabled
+487-550 - DXC MQTT publish topic (middle mouse button)
+551-614 - DXC MQTT publish topic (right mouse button)
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -401,6 +403,8 @@ String DxcHost = "";
 uint16_t DxcPort = 7300;
 String DxcCallsign = "";
 String DxcMqttTopic = "";
+String DxcMqttTopicMiddle = "";
+String DxcMqttTopicRight = "";
 const char* DEFAULT_DXC_HOST = "ve7cc.net";
 const uint16_t DEFAULT_DXC_PORT = 23;
 bool DxcTelnetStatus = false;
@@ -593,6 +597,7 @@ void handleMapSource();
 void handleMapLocator();
 void handleMapZoomKm();
 void handleReadDxcMqttTopic();
+void handleReadDxcMqttTopics();
 void handleSetMapLocator();
 void handleSetMapZoomKm();
 void handleMapTheme();
@@ -1168,6 +1173,28 @@ void setup() {
     }
   }
 
+  // 487-550 DXC MQTT publish topic (middle mouse button)
+  if(EEPROM.read(487)==0xff){
+    DxcMqttTopicMiddle = "";
+  }else{
+    DxcMqttTopicMiddle = ReadFixedStringFromEeprom(487, 64);
+    DxcMqttTopicMiddle.trim();
+    if(!IsSafeMqttPublishTopicValue(DxcMqttTopicMiddle)){
+      DxcMqttTopicMiddle = "";
+    }
+  }
+
+  // 551-614 DXC MQTT publish topic (right mouse button)
+  if(EEPROM.read(551)==0xff){
+    DxcMqttTopicRight = "";
+  }else{
+    DxcMqttTopicRight = ReadFixedStringFromEeprom(551, 64);
+    DxcMqttTopicRight.trim();
+    if(!IsSafeMqttPublishTopicValue(DxcMqttTopicRight)){
+      DxcMqttTopicRight = "";
+    }
+  }
+
   // 236-245 - MQTT_USER
   if(EEPROM.read(236)==0xff){
     MQTT_USER="Login";
@@ -1329,6 +1356,7 @@ void setup() {
    RegisterAjaxRoute("/readMapLocator", handleMapLocator);
    RegisterAjaxRoute("/readMapZoomKm", handleMapZoomKm);
    RegisterAjaxRoute("/readDxcMqttTopic", handleReadDxcMqttTopic);
+   RegisterAjaxRoute("/readDxcMqttTopics", handleReadDxcMqttTopics);
    RegisterAjaxRoute("/setMapLocator", handleSetMapLocator);
   RegisterAjaxRoute("/setMapZoomKm", handleSetMapZoomKm);
   RegisterAjaxRoute("/readMapTheme", handleMapTheme);
@@ -2307,6 +2335,8 @@ String ExportConfigBackupJson(){
   json += "    \"dxc_port\": " + String(DxcPort) + ",\n";
   json += "    \"dxc_callsign\": \"" + JsonEscape(DxcCallsign) + "\",\n";
   json += "    \"dxc_mqtt_topic\": \"" + JsonEscape(DxcMqttTopic) + "\",\n";
+  json += "    \"dxc_mqtt_topic_middle\": \"" + JsonEscape(DxcMqttTopicMiddle) + "\",\n";
+  json += "    \"dxc_mqtt_topic_right\": \"" + JsonEscape(DxcMqttTopicRight) + "\",\n";
   json += "    \"elevation\": " + String(ELEVATION ? "true" : "false") + ",\n";
   json += "    \"map_url\": \"" + JsonEscape(MapUrl) + "\",\n";
   json += "    \"map_source\": " + String(MapSource) + ",\n";
@@ -2339,7 +2369,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
     return "Unsupported backup version";
   }
 
-  String newNetId, newRotName, newYourCall, newMapUrl, newMqttUser, newMqttPass, newMapLocator, newGraylineNtp, mqttIpText, newDxcHost, newDxcCallsign, newDxcMqttTopic, newWebAuthPassword;
+  String newNetId, newRotName, newYourCall, newMapUrl, newMqttUser, newMqttPass, newMapLocator, newGraylineNtp, mqttIpText, newDxcHost, newDxcCallsign, newDxcMqttTopic, newDxcMqttTopicMiddle, newDxcMqttTopicRight, newWebAuthPassword;
   long startAzimuthValue = 0, maxRotateValue = 0, antAngleValue = 0, ccwRawValue = 0, cwRawValue = 0;
   long azSourceValue = 0, pulsePerDegreeValue = 0, baudRateValue = 0, pwmRampStepsValue = 0, pwmMaxDutyValue = 0;
   long pwmTuneValue = 0, mqttPortValue = 0, dxcPortValue = 0, mapSourceValue = 0, mapZoomValue = 0, graylineDarknessValue = 0, mapThemeValue = 0, oneTurnLimitValue = 0;
@@ -2459,15 +2489,29 @@ String ImportConfigBackupJson(const String& jsonPayload){
   if(!JsonExtractString(jsonPayload, "dxc_mqtt_topic", newDxcMqttTopic)){
     newDxcMqttTopic = "";
   }
+  if(!JsonExtractString(jsonPayload, "dxc_mqtt_topic_middle", newDxcMqttTopicMiddle)){
+    newDxcMqttTopicMiddle = "";
+  }
+  if(!JsonExtractString(jsonPayload, "dxc_mqtt_topic_right", newDxcMqttTopicRight)){
+    newDxcMqttTopicRight = "";
+  }
   newDxcHost.trim();
   newDxcCallsign.trim();
   newDxcCallsign.toUpperCase();
   newDxcMqttTopic.trim();
+  newDxcMqttTopicMiddle.trim();
+  newDxcMqttTopicRight.trim();
   if(newDxcHost.length() > 0 && newDxcCallsign.length() < 1){
     return "DXC callsign is required when dxc_host is set";
   }
   if(!IsSafeMqttPublishTopicValue(newDxcMqttTopic)){
     return "Invalid dxc_mqtt_topic";
+  }
+  if(!IsSafeMqttPublishTopicValue(newDxcMqttTopicMiddle)){
+    return "Invalid dxc_mqtt_topic_middle";
+  }
+  if(!IsSafeMqttPublishTopicValue(newDxcMqttTopicRight)){
+    return "Invalid dxc_mqtt_topic_right";
   }
   if(!JsonExtractBool(jsonPayload, "elevation", elevationValue)){
     return "Invalid elevation";
@@ -2580,6 +2624,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   DxcPort = uint16_t(dxcPortValue);
   DxcCallsign = newDxcCallsign;
   DxcMqttTopic = newDxcMqttTopic;
+  DxcMqttTopicMiddle = newDxcMqttTopicMiddle;
+  DxcMqttTopicRight = newDxcMqttTopicRight;
   ELEVATION = elevationValue;
   MapUrl = newMapUrl;
   MapSource = byte(mapSourceValue);
@@ -2648,6 +2694,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   EEPROM.writeUShort(395, DxcPort);
   WriteFixedStringToEeprom(397, 16, DxcCallsign);
   WriteFixedStringToEeprom(422, 64, DxcMqttTopic);
+  WriteFixedStringToEeprom(487, 64, DxcMqttTopicMiddle);
+  WriteFixedStringToEeprom(551, 64, DxcMqttTopicRight);
   EEPROM.writeBool(413, DefaultDegOverlayEnabled);
   EEPROM.writeBool(414, DefaultAntOverlayEnabled);
   EEPROM.writeBool(415, DefaultMapLocGridEnabled);
@@ -4819,6 +4867,8 @@ void handleSet() {
   String dxc_portERR= "";
   String dxc_callsignERR= "";
   String dxc_mqtt_topicERR= "";
+  String dxc_mqtt_topic_middleERR= "";
+  String dxc_mqtt_topic_rightERR= "";
   String mapsourceERR= "";
   String maplocatorERR= "";
   String mapzoomkmERR= "";
@@ -4874,6 +4924,8 @@ void handleSet() {
       || ajaxserver.hasArg("dxcport")
       || ajaxserver.hasArg("dxccall")
       || ajaxserver.hasArg("dxcmqtttopic")
+      || ajaxserver.hasArg("dxcmqtttopicmiddle")
+      || ajaxserver.hasArg("dxcmqtttopicright")
       || ajaxserver.hasArg("webauth")
       || ajaxserver.hasArg("webpass");
   };
@@ -5036,11 +5088,15 @@ void handleSet() {
     String newDxcPortArg = String(ajaxserver.arg("dxcport"));
     String newDxcCallsign = String(ajaxserver.arg("dxccall"));
     String newDxcMqttTopic = String(ajaxserver.arg("dxcmqtttopic"));
+    String newDxcMqttTopicMiddle = String(ajaxserver.arg("dxcmqtttopicmiddle"));
+    String newDxcMqttTopicRight = String(ajaxserver.arg("dxcmqtttopicright"));
     newDxcHost.trim();
     newDxcPortArg.trim();
     newDxcCallsign.trim();
     newDxcCallsign.toUpperCase();
     newDxcMqttTopic.trim();
+    newDxcMqttTopicMiddle.trim();
+    newDxcMqttTopicRight.trim();
 
     if(newDxcHost.length() < 1){
       newDxcHost = DEFAULT_DXC_HOST;
@@ -5089,6 +5145,26 @@ void handleSet() {
       if(DxcMqttTopic != newDxcMqttTopic){
         DxcMqttTopic = newDxcMqttTopic;
         WriteFixedStringToEeprom(422, 64, DxcMqttTopic);
+      }
+    }
+
+    if(!IsSafeMqttPublishTopicValue(newDxcMqttTopicMiddle)){
+      dxc_mqtt_topic_middleERR = " Out of range 0-63 chars, + and # not allowed";
+    }else{
+      dxc_mqtt_topic_middleERR = "";
+      if(DxcMqttTopicMiddle != newDxcMqttTopicMiddle){
+        DxcMqttTopicMiddle = newDxcMqttTopicMiddle;
+        WriteFixedStringToEeprom(487, 64, DxcMqttTopicMiddle);
+      }
+    }
+
+    if(!IsSafeMqttPublishTopicValue(newDxcMqttTopicRight)){
+      dxc_mqtt_topic_rightERR = " Out of range 0-63 chars, + and # not allowed";
+    }else{
+      dxc_mqtt_topic_rightERR = "";
+      if(DxcMqttTopicRight != newDxcMqttTopicRight){
+        DxcMqttTopicRight = newDxcMqttTopicRight;
+        WriteFixedStringToEeprom(551, 64, DxcMqttTopicRight);
       }
     }
 
@@ -6093,6 +6169,10 @@ switch (PwmTuneAggressiveness) {
     HtmlSrc.replace("{{DXC_CALLSIGN_ERR}}", dxc_callsignERR);
     HtmlSrc.replace("{{DXC_MQTT_TOPIC}}", DxcMqttTopic);
     HtmlSrc.replace("{{DXC_MQTT_TOPIC_ERR}}", dxc_mqtt_topicERR);
+    HtmlSrc.replace("{{DXC_MQTT_TOPIC_MIDDLE}}", DxcMqttTopicMiddle);
+    HtmlSrc.replace("{{DXC_MQTT_TOPIC_MIDDLE_ERR}}", dxc_mqtt_topic_middleERR);
+    HtmlSrc.replace("{{DXC_MQTT_TOPIC_RIGHT}}", DxcMqttTopicRight);
+    HtmlSrc.replace("{{DXC_MQTT_TOPIC_RIGHT_ERR}}", dxc_mqtt_topic_rightERR);
     HtmlSrc.replace("{{WEBAUTH_CHECKED}}", webauthCHECKED);
     HtmlSrc.replace("{{WEB_AUTH_USER}}", WEB_AUTH_USER);
     HtmlSrc.replace("{{WEB_AUTH_PASSWORD}}", WebAuthPassword);
@@ -6375,12 +6455,25 @@ void handleDxcHtml() {
   ajaxserver.send(404, "text/plain", "Missing /dxc.html in SPIFFS");
 }
 void handleDxcPublishFreq() {
-  if(DxcMqttTopic.length() < 1){
-    ajaxserver.send(409, "text/plain", "DXC MQTT topic inactive");
-    return;
-  }
   if(!ajaxserver.hasArg("freq")){
     ajaxserver.send(400, "text/plain", "Missing freq");
+    return;
+  }
+  int mouseButton = 0;
+  String targetTopic = DxcMqttTopic;
+  if(ajaxserver.hasArg("button")){
+    mouseButton = ajaxserver.arg("button").toInt();
+  }
+  if(mouseButton == 1){
+    targetTopic = DxcMqttTopicMiddle;
+  }else if(mouseButton == 2){
+    targetTopic = DxcMqttTopicRight;
+  }else if(mouseButton != 0){
+    ajaxserver.send(400, "text/plain", "Invalid button");
+    return;
+  }
+  if(targetTopic.length() < 1){
+    ajaxserver.send(409, "text/plain", "DXC MQTT topic inactive for selected mouse button");
     return;
   }
   String freqHz = String(ajaxserver.arg("freq"));
@@ -6395,7 +6488,7 @@ void handleDxcPublishFreq() {
       return;
     }
   }
-  if(!MqttPublishRawTopic(DxcMqttTopic, freqHz, false)){
+  if(!MqttPublishRawTopic(targetTopic, freqHz, false)){
     ajaxserver.send(503, "text/plain", "MQTT publish failed");
     return;
   }
@@ -6462,6 +6555,14 @@ void handleMapZoomKm() {
 }
 void handleReadDxcMqttTopic() {
   ajaxserver.send(200, "text/plane", DxcMqttTopic );
+}
+void handleReadDxcMqttTopics() {
+  String json = "{";
+  json += "\"left\":\"" + JsonEscape(DxcMqttTopic) + "\",";
+  json += "\"middle\":\"" + JsonEscape(DxcMqttTopicMiddle) + "\",";
+  json += "\"right\":\"" + JsonEscape(DxcMqttTopicRight) + "\"";
+  json += "}";
+  ajaxserver.send(200, "application/json", json);
 }
 void handleSetMapLocator() {
   if(!ajaxserver.hasArg("value")){
