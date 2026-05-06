@@ -9928,6 +9928,7 @@ var DXCC_PREFIX_LABELS_Q = [
   [3231,-6476,"VP9",1,"Bermuda"],
   [1877,-11096,"XA4",1,"Revillagigedo"],
   [1567,-6362,"YV0",1,"Aves I."],
+  [3614,-535,"ZB2",1,"Gibraltar"],
   [3459,3298,"ZC4",1,"UK Sovereign Base Areas on Cyprus"],
   [-1596,-572,"ZD7",1,"Saint Helena"],
   [-795,-1437,"ZD8",1,"Ascension I."],

@@ -58,7 +58,7 @@
   addAliases(aliasMap, "UR", ["EM","EN","EO","UR","US","UT","UU","UV","UW","UX","UY","UZ"]);
   addAliases(aliasMap, "EU", ["EU","EV","EW"]);
   addAliases(aliasMap, "ZS", ["ZS","ZT","ZU"]);
-  addAliases(aliasMap, "BY", ["BA","BD","BG","BH","BI","BJ","BL","BM","BN","BO","BP","BQ","BR","BT","BU","BY","XS"]);
+  addAliases(aliasMap, "BY", ["B0","B1","B2","B3","B4","B5","B6","B7","B8","B9","BA","BD","BG","BH","BI","BJ","BL","BM","BN","BO","BP","BQ","BR","BT","BU","BY","XS"]);
   addAliases(aliasMap, "HL", ["6K","6L","6M","6N","D7","D8","D9","DS","DT","HL"]);
   addAliases(aliasMap, "YB", ["7A","7B","7C","7D","7E","7F","7G","7H","7I","8A","8B","8C","8D","8E","8F","8G","8H","8I","YB","YC","YD","YE","YF","YG","YH"]);
   addAliases(aliasMap, "DU", ["4D","4E","4F","4G","4H","4I","DU","DV","DW","DX","DY","DZ"]);

@@ -128,7 +128,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260505";
+const char* REV = "20260506";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -1316,7 +1316,7 @@ void setup() {
         }
         request->send(200, "text/plain", "PSE QSY to /update");
     });
-    AsyncElegantOTA_IPR.begin(&OTAserver, WEB_AUTH_USER, WebAuthPassword.c_str(), &WebAuthEnabled);    // Start OTA
+    AsyncElegantOTA_IPR.begin(&OTAserver, WEB_AUTH_USER, WebAuthPassword.c_str(), &WebAuthEnabled, REV);    // Start OTA
     OTAserver.begin();
   #endif
   //------------------------------------------------
@@ -3913,6 +3913,27 @@ void http(){
             HTTP_req = "";
             break;
           }
+          if(uri == "/"){
+            webClient.println(F("HTTP/1.1 200 OK"));
+            webClient.println(F("Content-Type: text/html; charset=utf-8"));
+            webClient.println(F("Connection: close"));
+            webClient.println();
+            webClient.println(F("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Open Control Map</title><style>body{margin:0;background:#101316;color:#d7dde2;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:18px;box-sizing:border-box}.card{max-width:420px;text-align:center;background:#1a2026;border:1px solid #34404a;border-radius:14px;padding:22px 18px;box-shadow:0 18px 40px rgba(0,0,0,.28)}h1{margin:0 0 10px 0;font-size:24px;color:#f2f6fa}p{margin:0 0 14px 0;line-height:1.5;color:#bcc7d0}.note{margin-top:12px;font-size:12px;color:#8e9aa5}</style></head><body><div class=\"card\"><p>The launcher is trying to open the control map in a separate pop-up window.</p><p><a id=\"openBtn\" href=\"http://"));
+            webClient.print(ETH.localIP());
+            webClient.println(F(":88/app\" onclick=\"window.open( this.href, this.href, 'width=620,height=780,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color:#fff; background-color:#060; padding:10px 22px; margin:15px 8px 0 8px; border:none; border-radius:6px; font-weight:bold; font-size:110%; cursor:pointer;'>Open control map</button></a></p><p class=\"note\" id=\"note\">The automatic pop-up window after page load may be blocked by your browser. Manual clicking is still available.</p></div><script>window.addEventListener('load',function(){var btn=document.getElementById('openBtn');if(btn){try{btn.click()}catch(e){}}});</script></body></html>"));
+            HTTP_req = "";
+            break;
+          }
+          if(uri != "/wall"){
+            webClient.println(F("HTTP/1.1 302 Found"));
+            webClient.print(F("Location: http://"));
+            webClient.print(ETH.localIP());
+            webClient.println(F(":88/app"));
+            webClient.println(F("Connection: close"));
+            webClient.println();
+            HTTP_req = "";
+            break;
+          }
           // send a standard http response header
 
           // send a standard http response header
@@ -3982,15 +4003,6 @@ void http(){
           webClient.println(F("            #topic { background: transparent !important; color: #f9fafb !important; border: none !important; border-radius: 8px; font-weight: 700; letter-spacing: 0.03em; }"));
           webClient.println(F("            #topic::placeholder { color: #94a3b8; }"));
           webClient.println(F("            button { box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28); }"));
-          webClient.println(F("            #firmware-actions { display:none; max-width: 760px; margin: 14px auto 0 auto; padding: 18px 20px 20px 20px; text-align:center; background: linear-gradient(180deg, rgba(251, 191, 36, 0.18) 0%, rgba(249, 115, 22, 0.18) 100%); border: 1px solid rgba(251, 191, 36, 0.34); border-radius: 16px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.30); }"));
-          webClient.println(F("            #firmware-actions.firmware-actions-current { background: rgba(15, 23, 42, 0.18); border-color: rgba(148, 163, 184, 0.08); box-shadow: none; }"));
-          webClient.println(F("            #firmware-update-help { display:none; color:#ffedd5 !important; font-size:100%; line-height:1.6; margin:0 auto; max-width:640px; }"));
-          webClient.println(F("            #firmware-actions.firmware-actions-current #firmware-update-help { color:#9ca3af !important; }"));
-          webClient.println(F("            .firmware-actions-row { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; margin-top:16px; }"));
-          webClient.println(F("            .firmware-cta, .firmware-cta:link, .firmware-cta:visited, .firmware-cta:hover, .firmware-cta:active, #firmware-download-btn, #firmware-download-btn:link, #firmware-download-btn:visited, #firmware-download-btn:hover, #firmware-download-btn:active, #firmware-upload-btn, #firmware-upload-btn:link, #firmware-upload-btn:visited, #firmware-upload-btn:hover, #firmware-upload-btn:active { display:none; color:#000 !important; text-decoration:none; }"));
-          webClient.println(F("            .firmware-cta { background:#fb923c; padding:10px 22px; border:1px solid rgba(251, 146, 60, 0.55); border-radius:6px; font-weight:400; font-size:110%; box-shadow: 0 12px 24px rgba(124, 45, 18, 0.22); transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease; }"));
-          webClient.println(F("            .firmware-cta:hover, #firmware-download-btn:hover, #firmware-upload-btn:hover { background:#fdba74; color:#000 !important; }"));
-          webClient.println(F("            #firmware-actions.firmware-actions-current .firmware-cta, #firmware-actions.firmware-actions-current .firmware-cta:link, #firmware-actions.firmware-actions-current .firmware-cta:visited, #firmware-actions.firmware-actions-current .firmware-cta:hover, #firmware-actions.firmware-actions-current .firmware-cta:active { background: rgba(148, 163, 184, 0.16); border-color: rgba(148, 163, 184, 0.08); color:#9ca3af !important; box-shadow:none; }"));
           webClient.println(F("          </style>"));
           webClient.println(F("          <script type=\"text/javascript\">"));
           webClient.println(F("          var config = {"));
@@ -4024,75 +4036,6 @@ void http(){
           webClient.println(F("              alphabeticalSort: true,"));
           webClient.println(F("              qos: 0"));
           webClient.println(F("          };"));
-          #if defined(OTAWEB)
-            webClient.print(F("          var FirmwareRev = \""));
-            webClient.print(REV);
-            webClient.println(F("\";"));
-            webClient.println(F("          var FirmwareSiteUrl = \"https://ok1hra.github.io/IP-rotator/\";"));
-            webClient.println(F("          var FirmwareManifestUrl = \"https://ok1hra.github.io/IP-rotator/manifest.json\";"));
-            webClient.println(F("          var LatestReleaseTag = \"\";"));
-            webClient.println(F("          function normalizeVersionDigits(versionText){"));
-            webClient.println(F("            var digits = String(versionText || \"\").replace(/[^0-9]/g, \"\");"));
-            webClient.println(F("            return digits.length ? digits : \"\";"));
-            webClient.println(F("          }"));
-            webClient.println(F("          function buildFirmwarePageUrl(){"));
-            webClient.println(F("            return FirmwareSiteUrl;"));
-            webClient.println(F("          }"));
-            webClient.println(F("          function buildFirmwareManifestUrl(){"));
-            webClient.println(F("            return FirmwareManifestUrl + \"?ts=\" + Date.now();"));
-            webClient.println(F("          }"));
-            webClient.println(F("          function updateFirmwareActions(){"));
-            webClient.println(F("            var wrap = document.getElementById(\"firmware-actions\");"));
-            webClient.println(F("            var help = document.getElementById(\"firmware-update-help\");"));
-            webClient.println(F("            var download = document.getElementById(\"firmware-download-btn\");"));
-            webClient.println(F("            var upload = document.getElementById(\"firmware-upload-btn\");"));
-            webClient.println(F("            if(!wrap || !help || !download || !upload){ return; }"));
-            webClient.println(F("            download.href = buildFirmwarePageUrl();"));
-            webClient.println(F("            wrap.style.display = \"block\";"));
-            webClient.println(F("            wrap.classList.remove(\"firmware-actions-current\");"));
-            webClient.println(F("            help.style.display = \"none\";"));
-            webClient.println(F("            download.style.display = \"none\";"));
-            webClient.println(F("            upload.style.display = \"none\";"));
-            webClient.println(F("            if(!FirmwareRev || !LatestReleaseTag){"));
-            webClient.println(F("              wrap.style.display = \"none\";"));
-            webClient.println(F("              return;"));
-            webClient.println(F("            }"));
-            webClient.println(F("            var currentDigits = normalizeVersionDigits(FirmwareRev);"));
-            webClient.println(F("            var latestDigits = normalizeVersionDigits(LatestReleaseTag);"));
-            webClient.println(F("            if(!currentDigits || !latestDigits){"));
-            webClient.println(F("              wrap.style.display = \"none\";"));
-            webClient.println(F("              return;"));
-            webClient.println(F("            }"));
-            webClient.println(F("            if(Number(latestDigits) > Number(currentDigits)){"));
-            webClient.println(F("              help.innerHTML = \"Open the firmware page, download the latest firmware and filesystem files, then upload them on the web update page in the correct order: first firmware, then filesystem.\";"));
-            webClient.println(F("              help.style.display = \"block\";"));
-            webClient.println(F("              download.style.display = \"inline-block\";"));
-            webClient.println(F("              upload.style.display = \"inline-block\";"));
-            webClient.println(F("            }else{"));
-            webClient.println(F("              help.innerHTML = \"Firmware is up to date\";"));
-            webClient.println(F("              help.style.display = \"block\";"));
-            webClient.println(F("              download.style.display = \"inline-block\";"));
-            webClient.println(F("              upload.style.display = \"inline-block\";"));
-            webClient.println(F("              wrap.classList.add(\"firmware-actions-current\");"));
-            webClient.println(F("            }"));
-            webClient.println(F("          }"));
-            webClient.println(F("          function checkLatestRelease(){"));
-            webClient.println(F("            if(!FirmwareRev){ return; }"));
-            webClient.println(F("            var rhttp = new XMLHttpRequest();"));
-            webClient.println(F("            rhttp.onreadystatechange = function() {"));
-            webClient.println(F("              if (this.readyState == 4 && this.status == 200) {"));
-            webClient.println(F("                try{"));
-            webClient.println(F("                  var data = JSON.parse(this.responseText);"));
-            webClient.println(F("                  LatestReleaseTag = String(data.version || \"\");"));
-            webClient.println(F("                  updateFirmwareActions();"));
-            webClient.println(F("                }catch(e){}"));
-            webClient.println(F("              }"));
-            webClient.println(F("            };"));
-            webClient.println(F("            rhttp.open(\"GET\", buildFirmwareManifestUrl(), true);"));
-            webClient.println(F("            rhttp.send();"));
-            webClient.println(F("          }"));
-            webClient.println(F("          window.addEventListener(\"load\", function(){ checkLatestRelease(); });"));
-          #endif
           webClient.println(F("          </script>"));
           // END TOPIC
           webClient.println(F("      </head>"));
@@ -4152,26 +4095,6 @@ void http(){
           }
           // END STATUS
           webClient.println(F("              </p>"));
-          #if defined(OTAWEB)
-            webClient.println(F("              <div id=\"firmware-actions\">"));
-            webClient.println(F("                  <div id=\"firmware-update-help\">Open the firmware page, download the latest firmware and filesystem files, then upload them on the web update page in the correct order: first firmware, then filesystem.</div>"));
-            webClient.println(F("                  <div class=\"firmware-actions-row\">"));
-            webClient.println(F("                      <a id=\"firmware-download-btn\" class=\"firmware-cta\" href=\"https://ok1hra.github.io/IP-rotator/\" target=\"_blank\">Open firmware page</a>"));
-            webClient.print(F("                  <a id=\"firmware-upload-btn\" href=\"http://"));
-            webClient.print(ETH.localIP());
-            webClient.println(F(":82/update\" target=\"_blank\" class=\"firmware-cta\">Upload firmware</a>"));
-            webClient.println(F("                  </div>"));
-            webClient.println(F("              </div>"));
-          #endif
-          webClient.print(F("              <div style=\"text-align:center;\">"));
-          webClient.print(F("                  <a href=\"http://"));
-          webClient.println(ETH.localIP());
-          if(ELEVATION==false){
-            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=750,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color:#fff; background-color:#060; padding:10px 22px; margin:15px 8px 0 8px; border:none; border-radius:6px; font-weight:bold; font-size:110%;'>Azimuth Map Control</button></a>"));
-          }else{
-            webClient.print(F(":88\" onclick=\"window.open( this.href, this.href, 'width=620,height=610,left=0,top=0,menubar=no,location=no,status=no' ); return false;\"><button style='color:#fff; background-color:#060; padding:10px 22px; margin:15px 8px 0 8px; border:none; border-radius:6px; font-weight:bold; font-size:110%;'>Elevation Map Control</button></a>"));
-          }
-          webClient.println(F("              </div>"));
           webClient.println(F("              </div>"));
           webClient.println(F("              <div id=\"header\">"));
           webClient.println(F("                  <div id=\"topic-box\">"));

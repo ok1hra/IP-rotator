@@ -46,7 +46,7 @@
 			left: 0;
 			top: 0;
 			width: 600px;
-			height: 730px;
+			height: 760px;
 			transform-origin: top left;
 		}
 		.mapstage{
@@ -105,14 +105,14 @@
 			border: 0px solid #222222;
 			position: absolute;
 			left: 0;
-			top: 604px;
+			top: 634px;
 			width: 600px;
 			z-index: 6;
 		}
 		.zoomctl{
 			position: absolute;
 			right: 16px;
-			top: 572px;
+			top: 590px;
 			z-index: 6;
 			width: 184px;
 			padding: 3px 8px 5px 8px;
@@ -125,7 +125,7 @@
 		.locctl{
 			position: absolute;
 			right: 16px;
-			top: 498px;
+			top: 516px;
 			z-index: 6;
 			width: 96px;
 			padding: 5px 8px 6px 8px;
@@ -352,10 +352,10 @@
 			top: 500px;
 			z-index: 8;
 			width: auto;
-			padding: 7px 8px 8px 8px;
-			border-radius: 9px;
-			background: rgba(6, 8, 11, 0.58);
-			border: 1px solid rgba(160, 170, 175, 0.12);
+			padding: 0;
+			border-radius: 0;
+			background: transparent;
+			border: none;
 			box-sizing: border-box;
 			display: none;
 		}
@@ -444,8 +444,27 @@
 			display: flex;
 			justify-content: center;
 			align-items: stretch;
-			gap: 0;
+			flex-wrap: wrap;
+			gap: 8px;
 			margin: 0 0 9px 0;
+		}
+		.actionbtn{
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			height: 28px;
+			padding: 0 12px;
+			border-radius: 4px;
+			color: #fff;
+			text-decoration: none;
+			box-sizing: border-box;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+			cursor: pointer;
+		}
+		.actionbtn:hover{
+			color: #fff;
+			text-decoration: underline;
 		}
 		.statuspillmain{
 			display: inline-flex;
@@ -457,47 +476,37 @@
 			vertical-align: middle;
 		}
 		.setupbtn{
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			height: 28px;
-			padding: 0 12px;
-			border-radius: 4px;
-			color: #fff;
-			text-decoration: none;
 			background: linear-gradient(180deg, #6d7378, #53585d);
 			border-left: 1px solid rgba(255, 255, 255, 0.14);
 			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
-			box-sizing: border-box;
-			font-weight: 700;
-			letter-spacing: 0.04em;
-			cursor: pointer;
 		}
 		.setupbtn:hover{
 			background: linear-gradient(180deg, #7a8187, #5d6369);
-			color: #fff;
-			text-decoration: underline;
+		}
+		.mqttbtn{
+			background: linear-gradient(180deg, #6d7378, #53585d);
+			border-left: 1px solid rgba(255, 255, 255, 0.14);
+			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+		}
+		.mqttbtn:hover{
+			background: linear-gradient(180deg, #7a8187, #5d6369);
+		}
+		.otabtn{
+			background: linear-gradient(180deg, #6d7378, #53585d);
+			border-left: 1px solid rgba(255, 255, 255, 0.14);
+			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+		}
+		.otabtn:hover{
+			background: linear-gradient(180deg, #7a8187, #5d6369);
 		}
 		.dxcbtn{
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			height: 28px;
-			padding: 0 12px;
-			margin-right: 8px;
 			color: #eaffea;
-			text-decoration: none;
 			background: linear-gradient(180deg, #0d5f2a, #08451d);
 			border-radius: 4px;
 			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
-			font-weight: 700;
-			letter-spacing: 0.05em;
-			cursor: pointer;
 		}
 		.dxcbtn:hover{
 			background: linear-gradient(180deg, #127436, #0a5423);
-			color: #fff;
-			text-decoration: underline;
 		}
 		.statusline{
 			margin: 0;
@@ -587,7 +596,7 @@
 			</label>
 			<label class="togglelabel" for="MapDxcLinesToggle" id="MapDxcLinesToggleLabel">
 				<input type="checkbox" id="MapDxcLinesToggle">
-				<span>DX CLUSTER <span class="kbdhint">L</span>INES (30 MIN)</span>
+				<span>DX CLUSTER L<span class="kbdhint">I</span>NES (30 MIN)</span>
 			</label>
 		</div>
 		<div class="maphint" id="MapHint"></div>
@@ -595,14 +604,15 @@
 		<div class="second">
 			<p class="paneltitle"><span id="AntName2"> </span></p>
 			<div class="panelactions">
-				<a class="dxcbtn" href="/dxc.html?ws_port=80" onclick="window.open(this.href, 'DXC', 'width=600,height=750,left=0,top=0,menubar=no,location=no,status=no'); return false;">DXC</a>
-				<a class="setupbtn" href="/setup" onclick="window.open( this.href, this.href, 'width=700,height=750,left=0,top=0,menubar=no,location=no,status=no' ); return false;">SETUP</a>
+				<a class="actionbtn otabtn" id="EasyOtaLink" href="#" onclick="window.open(this.href, 'EasyOTA', 'width=760,height=780,left=0,top=0,menubar=no,location=no,status=no'); return false;">EasyOTA</a>
+				<a class="actionbtn mqttbtn" id="MqttWallLink" href="#" onclick="window.open(this.href, 'MQTT', 'width=980,height=760,left=0,top=0,menubar=no,location=no,status=no'); return false;">MQTT</a>
+				<a class="actionbtn dxcbtn" href="/dxc.html?ws_port=80" onclick="window.open(this.href, 'DXC', 'width=600,height=750,left=0,top=0,menubar=no,location=no,status=no'); return false;">DXC</a>
+				<a class="actionbtn setupbtn" href="/setup" onclick="window.open(this.href, this.href, 'width=700,height=750,left=0,top=0,menubar=no,location=no,status=no'); return false;">SETUP</a>
 			</div>
 			<p class="statusline">
 				<span id="mac"> </span>
 				<span id="MapModeInfo"></span>
 				<span id="NtpStatus"></span>
-				<span id="ReleaseStatus"></span>
 				<span>&nbsp;|&nbsp;POE&nbsp;<span class="poestatus" id="ADCValue">0</span>&nbsp;V&nbsp;</span>
 				<span>&nbsp;|&nbsp;raw&nbsp;<span id="AZValue">0</span>°&nbsp;</span>
 				<span id="FsDiagStatus"></span>
@@ -689,6 +699,7 @@
 	setInterval(function() { checkLatestRelease();}, 21600000); // 6h release check
 	setInterval(function() { refreshDxcSpotHeartbeat();}, 5000);
 	initDxcSpotBridge();
+	applyExternalLinks();
 	getSet();
 //	setTimeout(() => { map(); }, 1000);
 	Static();
@@ -706,7 +717,12 @@
 	function updateMapModeInfo(){
 		var info = document.getElementById("MapModeInfo");
 		if(!info){ return; }
-		info.innerHTML = "";
+		var locator = normalizeMaidenheadLocator(MapLocator);
+		if(!locator){
+			info.innerHTML = "";
+			return;
+		}
+		info.innerHTML = " | QTH: " + locator;
 	}
 
 	function isElevationVectorMode(){
@@ -715,9 +731,9 @@
 
 	function getPageBaseHeight(){
 		if(isElevationVectorMode()){
-			return 580;
+			return 610;
 		}
-		return 730;
+		return 760;
 	}
 
 	function syncResponsiveLayout(){
@@ -741,9 +757,9 @@
 	function updatePageLayout(){
 		var statusWrap = document.querySelector(".second");
 		if(isElevationVectorMode()){
-			if(statusWrap){ statusWrap.style.top = "436px"; }
+			if(statusWrap){ statusWrap.style.top = "466px"; }
 		}else{
-			if(statusWrap){ statusWrap.style.top = "604px"; }
+			if(statusWrap){ statusWrap.style.top = "634px"; }
 		}
 		syncResponsiveLayout();
 	}
@@ -1312,6 +1328,10 @@
 			setDegOverlayEnabled(!DegOverlayEnabled);
 			return true;
 		}
+		if(keyLower === "a"){
+			setAntOverlayEnabled(!AntOverlayEnabled);
+			return true;
+		}
 		if(Number(MapSource) !== 1){
 			return false;
 		}
@@ -1335,7 +1355,7 @@
 			setMapDxcSpotsEnabled(!MapDxcSpotsEnabled);
 			return true;
 		}
-		if(keyLower === "l"){
+		if(keyLower === "i"){
 			setMapDxcLinesEnabled(!MapDxcLinesEnabled);
 			return true;
 		}
@@ -1446,25 +1466,27 @@
 	function buildFirmwareManifestUrl(){
 		return FirmwareManifestUrl + "?ts=" + Date.now();
 	}
+	function getDeviceBaseUrl(port){
+		var proto = location.protocol || "http:";
+		var host = location.hostname || location.host || "";
+		if(!host){
+			return "";
+		}
+		return proto + "//" + host + (port ? ":" + String(port) : "");
+	}
+	function applyExternalLinks(){
+		var otaLink = document.getElementById("EasyOtaLink");
+		var mqttLink = document.getElementById("MqttWallLink");
+		if(otaLink){
+			otaLink.href = getDeviceBaseUrl(82) + "/update";
+		}
+		if(mqttLink){
+			mqttLink.href = getDeviceBaseUrl("") + "/wall";
+		}
+	}
 
 	function updateReleaseStatus(){
-		var info = document.getElementById("ReleaseStatus");
-		if(!info){ return; }
-		if(!FirmwareRev || !LatestReleaseTag){
-			info.innerHTML = "";
-			return;
-		}
-		var currentDigits = normalizeVersionDigits(FirmwareRev);
-		var latestDigits = normalizeVersionDigits(LatestReleaseTag);
-		if(!currentDigits || !latestDigits){
-			info.innerHTML = "";
-			return;
-		}
-		if(Number(latestDigits) > Number(currentDigits)){
-			info.innerHTML = " | <a href='" + buildFirmwarePageUrl() + "' target='_blank' style='color:#ffd36a;'>New FW " + LatestReleaseTag + "</a>";
-		}else{
-			info.innerHTML = " | FW up to date";
-		}
+		return;
 	}
 
 	function updateFilesystemStatus(){
@@ -2037,11 +2059,11 @@
 		var dy = Number(mousePos.y) - BoxSize / 2;
 		var distancePx = Math.hypot(dx, dy);
 		var distanceKm = Math.round((Math.min(distancePx, getMapRadiusPx()) / getMapRadiusPx()) * getHoverDistanceZoomKm());
-		var hintHtml = "Azimuth: <b>" + String(getAzimuthForMousePos(mousePos)) + "&deg;</b><br>Distance: <b>" + String(distanceKm) + " km</b>";
+		var hintHtml = "AZ: <b>" + String(getAzimuthForMousePos(mousePos)) + "&deg;</b><br>QRB: <b>" + String(distanceKm) + " km</b>";
 		var hoverLatLon = getHoverLatLon(mousePos);
 		if (hoverLatLon) {
 			var locatorPrecision = Number(MapZoomKm) <= 2500 ? 6 : 4;
-			hintHtml += "<br>Maidenhead: <b>" + latLonToMaidenhead(hoverLatLon.lat, hoverLatLon.lon, locatorPrecision) + "</b>";
+			hintHtml += "<br>LOC: <b>" + latLonToMaidenhead(hoverLatLon.lat, hoverLatLon.lon, locatorPrecision) + "</b>";
 		}
 		mapHint.innerHTML = hintHtml;
 		mapHint.style.display = "block";

@@ -15,7 +15,16 @@ static const char ELEGANT_HTML_CUSTOM[] PROGMEM = R"rawliteral(
   <style>
     body{margin:0;padding:28px 16px;background:#101316;color:#d7dde2;font-family:Arial,Helvetica,sans-serif;}
     .wrap{max-width:700px;margin:0 auto;}
-    .warn{max-width:470px;margin:0 auto 12px auto;border:1px solid #8d6b31;background:#2c2417;color:#f4d9a7;border-radius:8px;padding:10px 12px;line-height:1.45;font-size:14px;}
+    .firmware-panel{max-width:520px;margin:0 auto 12px auto;border:1px solid #5c6771;background:linear-gradient(180deg,#2e353c,#242a31);color:#e8edf2;border-radius:10px;padding:12px 14px;line-height:1.45;font-size:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+    .firmware-title{margin:0 0 8px 0;text-align:center;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#f3f6f9;}
+    .firmware-copy{margin:0 0 10px 0;text-align:center;color:#cfd7dd;}
+    .firmware-actions{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;}
+    .download-btn{display:none;align-items:center;justify-content:center;min-width:180px;padding:9px 14px;border-radius:7px;border:1px solid #73603c;background:linear-gradient(180deg,#f2b84d,#cf7c23);color:#17120a;text-decoration:none;font-weight:700;letter-spacing:.04em;transition:background .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease;}
+    .download-btn.ready{display:inline-flex;}
+    .download-btn:hover{background:linear-gradient(180deg,#f6c977,#db9140);color:#17120a;}
+    .download-btn.current{border-color:#4d5d67;background:linear-gradient(180deg,#66717b,#4c565f);color:#f3f6f9;}
+    .download-btn.current:hover{background:linear-gradient(180deg,#75808a,#5a646d);color:#fff;}
+    .firmware-meta{margin-top:8px;min-height:18px;text-align:center;color:#c7d0d8;font-size:12px;line-height:1.35;}
     .logo{text-align:center;font-size:26px;letter-spacing:.04em;font-weight:700;color:#f2f6fa;margin:0 0 18px 0;}
     .cards{display:grid;grid-template-columns:1fr;gap:12px;}
     .card{border:1px solid #34404a;background:#1a2026;border-radius:10px;padding:14px;}
@@ -50,10 +59,13 @@ static const char ELEGANT_HTML_CUSTOM[] PROGMEM = R"rawliteral(
 </head>
 <body>
   <div class="wrap">
-    <div class="warn">
-      <b>Warning: Follow this update order to avoid issues:</b><br>
-      1. Upload firmware.bin as Firmware.<br>
-      2. Upload spiffs.bin as Filesystem.
+    <div class="firmware-panel">
+      <div class="firmware-title">Firmware</div>
+      <p class="firmware-copy">Update order stays the same: first upload <b>firmware.bin</b>, then upload <b>spiffs.bin</b>.</p>
+      <div class="firmware-actions">
+        <a class="download-btn" id="downloadBtn" href="https://ok1hra.github.io/IP-rotator/" target="_blank" rel="noopener">Download binaries</a>
+      </div>
+      <div class="firmware-meta" id="firmwareMeta">Checking latest firmware...</div>
     </div>
     <div class="logo">ElegantOTA</div>
     <div class="backend-status online" id="backendStatus">
@@ -86,6 +98,81 @@ static const char ELEGANT_HTML_CUSTOM[] PROGMEM = R"rawliteral(
   </div>
 
   <script>
+    var FirmwareRev = "";
+    var FirmwareSiteUrl = "https://ok1hra.github.io/IP-rotator/";
+    var FirmwareManifestUrl = "https://ok1hra.github.io/IP-rotator/manifest.json";
+    var LatestReleaseTag = "";
+    var FirmwareCheckDone = false;
+
+    function normalizeVersionDigits(versionText){
+      var digits = String(versionText || "").replace(/[^0-9]/g, "");
+      return digits.length ? digits : "";
+    }
+
+    function buildFirmwareManifestUrl(){
+      return FirmwareManifestUrl + "?ts=" + Date.now();
+    }
+
+    function updateDownloadButton(){
+      var btn = document.getElementById("downloadBtn");
+      var meta = document.getElementById("firmwareMeta");
+      if(!btn || !meta){
+        return;
+      }
+      btn.href = FirmwareSiteUrl;
+      btn.classList.remove("current");
+      if(FirmwareCheckDone){
+        btn.classList.add("ready");
+      }else{
+        btn.classList.remove("ready");
+      }
+      if(!FirmwareRev){
+        meta.textContent = "Current FW unknown.";
+        return;
+      }
+      if(!LatestReleaseTag){
+        meta.textContent = "Current FW " + FirmwareRev + ".";
+        return;
+      }
+      var currentDigits = normalizeVersionDigits(FirmwareRev);
+      var latestDigits = normalizeVersionDigits(LatestReleaseTag);
+      if(!currentDigits || !latestDigits){
+        meta.textContent = "Current FW " + FirmwareRev + " | latest " + LatestReleaseTag + ".";
+        return;
+      }
+      if(Number(latestDigits) > Number(currentDigits)){
+        meta.textContent = "Current FW " + FirmwareRev + " | new FW available: " + LatestReleaseTag;
+        return;
+      }
+      btn.classList.add("current");
+      meta.textContent = "Current FW " + FirmwareRev + " | firmware is up to date";
+    }
+
+    function fetchLatestRelease(){
+      if(!FirmwareRev){
+        FirmwareCheckDone = true;
+        updateDownloadButton();
+        return;
+      }
+      var xhr = new XMLHttpRequest();
+      xhr.onreadystatechange = function(){
+        if(xhr.readyState !== 4){
+          return;
+        }
+        if(xhr.status >= 200 && xhr.status < 300){
+          try{
+            var data = JSON.parse(xhr.responseText || "{}");
+            LatestReleaseTag = String(data.version || "");
+          }catch(err){
+          }
+        }
+        FirmwareCheckDone = true;
+        updateDownloadButton();
+      };
+      xhr.open("GET", buildFirmwareManifestUrl(), true);
+      xhr.send();
+    }
+
     function hasSpiffs(name){ return /spiffs/i.test(String(name || "")); }
     function setStatus(msg, ok){
       var el = document.getElementById("status");
@@ -270,6 +357,17 @@ static const char ELEGANT_HTML_CUSTOM[] PROGMEM = R"rawliteral(
     var fwForm = document.getElementById("fwForm");
     var fsForm = document.getElementById("fsForm");
 
+    fetch("/update/identity").then(function(response){
+      return response.json();
+    }).then(function(data){
+      FirmwareRev = String((data && data.version) || "");
+      updateDownloadButton();
+      fetchLatestRelease();
+    }).catch(function(){
+      FirmwareCheckDone = true;
+      updateDownloadButton();
+    });
+
     fwFile.addEventListener("change", function(){ validate("firmware", fwFile); });
     fsFile.addEventListener("change", function(){ validate("filesystem", fsFile); });
 
@@ -297,9 +395,10 @@ void AsyncElegantOtaIprClass::setID(const char* id){
     _id = id;
 }
 
-void AsyncElegantOtaIprClass::begin(AsyncWebServer *server, const char* username, const char* password, bool* authEnabled){
+void AsyncElegantOtaIprClass::begin(AsyncWebServer *server, const char* username, const char* password, bool* authEnabled, const char* firmwareVersion){
     _server = server;
     _authEnabled = authEnabled;
+    _firmwareVersion = firmwareVersion ? String(firmwareVersion) : String("");
 
     if(strlen(username) > 0){
         _authRequired = true;
@@ -318,9 +417,9 @@ void AsyncElegantOtaIprClass::begin(AsyncWebServer *server, const char* username
             }
         }
         #if defined(ESP8266)
-            request->send(200, "application/json", "{\"id\": \""+_id+"\", \"hardware\": \"ESP8266\"}");
+            request->send(200, "application/json", "{\"id\": \""+_id+"\", \"hardware\": \"ESP8266\", \"version\": \""+_firmwareVersion+"\"}");
         #elif defined(ESP32)
-            request->send(200, "application/json", "{\"id\": \""+_id+"\", \"hardware\": \"ESP32\"}");
+            request->send(200, "application/json", "{\"id\": \""+_id+"\", \"hardware\": \"ESP32\", \"version\": \""+_firmwareVersion+"\"}");
         #endif
     });
 

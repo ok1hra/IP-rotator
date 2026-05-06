@@ -291,10 +291,38 @@ cat > "${OUTPUT_DIR}/index.html" <<EOF
       border-radius: 1rem;
       padding: 1rem 1.1rem;
     }
+    .path-card.ota-card {
+      border-color: rgba(245, 158, 11, 0.45);
+      box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.08);
+    }
+    .path-card.usb-card {
+      border-color: rgba(34, 197, 94, 0.42);
+      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.08);
+    }
+    .path-title {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.7rem;
+    }
     .path-card h2 {
-      margin: 0 0 0.7rem;
+      margin: 0;
       font-size: 1.2rem;
       color: #f8fafc;
+    }
+    .path-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #08111f;
+      background: #f97316;
+      box-shadow: 0 0.4rem 1rem rgba(249, 115, 22, 0.28);
     }
     h1 {
       margin: 0 0 0.75rem;
@@ -345,8 +373,11 @@ cat > "${OUTPUT_DIR}/index.html" <<EOF
       <h1>IP Rotator firmware</h1>
       <p>Firmware version: <code>${FW_REV}</code> for <a href="https://remoteqth.com/w/doku.php?id=simple_rotator_interface_v" target="_blank">Hardware</a></p>
       <div class="paths">
-        <section class="path-card">
-          <h2>Update via the EasyOTA web service</h2>
+        <section class="path-card ota-card">
+          <div class="path-title">
+            <span class="path-badge">PUTIK</span>
+            <h2>Update via the EasyOTA web service</h2>
+          </div>
           <p class="muted">Download the two <code>.bin</code> files and upload them on the device web update OTA page <code>http://[ip]:82/update</code> in this order: first firmware, then filesystem.</p>
           <div class="downloads">
             <p>Files for EasyOTA update:</p>
@@ -356,15 +387,18 @@ cat > "${OUTPUT_DIR}/index.html" <<EOF
             </div>
           </div>
         </section>
-        <section class="path-card">
-          <h2>Complete recovery via USB</h2>
+        <section class="path-card usb-card">
+          <div class="path-title">
+            <span class="path-badge">PUTIK</span>
+            <h2>Complete recovery via USB</h2>
+          </div>
           <p class="muted">Use this path for device recovery. Open this page in Google Chrome or Microsoft Edge over <code>https://</code>, connect the IP Rotator to your computer using USB-C, then start the automated install below.</p>
-          <p class="note"><ul>
+          <ul class="note">
             <li>Before recovery, back up your configuration from the Setup page <code>http://[ip]:88/setup</code>, Backup and restore part</li>
             <li>After pressing the Connect button, select the <code>CP2104 USB to UART Bridge Controller</code> device</li>
             <li>Then select the <code>Install IP Rotator Recovery</code> option</li>
             <li>After uploading, select the USB device again and the <code>Logs & Console</code> option, where after pressing <code>Reset Device</code> you will see the boot log, including the device's <strong>IP address</strong></li>
-          </ul></p>
+          </ul>
           <div class="cta">
             <esp-web-install-button manifest="manifest.json"></esp-web-install-button>
           </div>
