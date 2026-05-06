@@ -1,6 +1,6 @@
 {
   "name": "IP Rotator Recovery",
-  "version": "20260505",
+  "version": "20260506",
   "new_install_prompt_erase": true,
   "builds": [
     {
