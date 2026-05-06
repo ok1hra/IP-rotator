@@ -68,20 +68,16 @@
     .path-card h2 {
       margin: 0;
       font-size: 1.2rem;
-      color: #f8fafc;
+      color: #fb923c;
     }
     .path-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.2rem 0.55rem;
+      display: inline-block;
+      width: 0.72rem;
+      height: 0.72rem;
       border-radius: 999px;
-      font-size: 0.72rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #08111f;
       background: #f97316;
-      box-shadow: 0 0.4rem 1rem rgba(249, 115, 22, 0.28);
+      box-shadow: 0 0 0 0.22rem rgba(249, 115, 22, 0.18);
+      flex: 0 0 auto;
     }
     h1 {
       margin: 0 0 0.75rem;
@@ -134,7 +130,7 @@
       <div class="paths">
         <section class="path-card ota-card">
           <div class="path-title">
-            <span class="path-badge">PUTIK</span>
+            <span class="path-badge" aria-hidden="true"></span>
             <h2>Update via the EasyOTA web service</h2>
           </div>
           <p class="muted">Download the two <code>.bin</code> files and upload them on the device web update OTA page <code>http://[ip]:82/update</code> in this order: first firmware, then filesystem.</p>
@@ -148,7 +144,7 @@
         </section>
         <section class="path-card usb-card">
           <div class="path-title">
-            <span class="path-badge">PUTIK</span>
+            <span class="path-badge" aria-hidden="true"></span>
             <h2>Complete recovery via USB</h2>
           </div>
           <p class="muted">Use this path for device recovery. Open this page in Google Chrome or Microsoft Edge over <code>https://</code>, connect the IP Rotator to your computer using USB-C, then start the automated install below.</p>
