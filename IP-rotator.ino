@@ -300,7 +300,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 615   /*
+#define EEPROM_SIZE 618   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -374,6 +374,8 @@ int i = 0;
 486 - DefaultMapDxcLinesEnabled
 487-550 - DXC MQTT publish topic (middle mouse button)
 551-614 - DXC MQTT publish topic (right mouse button)
+615-616 - TrxNetPort UShort
+617 - TrxNetSubEnabled Bool
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -428,6 +430,18 @@ unsigned char packetBuffer[10];
 int UDPpacketSize;
 #include <ETH.h>
 static bool eth_connected = false;
+#include <TrxNet.h>
+WiFiUDP  trxUdp;
+TrxNet   net(trxUdp);
+bool     trxNetStarted     = false;
+int      trxLastPublishedAz = -999;
+uint32_t trxLastPublishMs   = 0;
+volatile int32_t  trxPendingAz  = -1;
+volatile int32_t  trxPendingEl  = -1;
+volatile bool     trxAzPending  = false;
+volatile bool     trxElPending  = false;
+uint16_t TrxNetPort        = 5683;
+bool     TrxNetSubEnabled  = false;
 String HTTP_req;
 #if defined(OTAWEB)
   #include <AsyncTCP.h>
@@ -571,6 +585,7 @@ bool RequireAjaxAuth();
 bool AjaxAuthOk();
 void RegisterAjaxRoute(const char* uri, WebServer::THandlerFunction handler);
 void RegisterAjaxRoute(const char* uri, HTTPMethod method, WebServer::THandlerFunction handler);
+void handleTrxNetPeers();
 void RegisterAjaxUploadRoute(const char* uri, HTTPMethod method, WebServer::THandlerFunction handler, WebServer::THandlerFunction uploadHandler);
 void handlePostRot();
 void handleSet();
@@ -785,7 +800,7 @@ void setup() {
 
   // 0-1 net ID
     if(EEPROM.read(0)==0xff){
-      NET_ID="0";
+      NET_ID="";
     }else{
       NET_ID = ReadFixedStringFromEeprom(0, 2);
     }
@@ -1195,6 +1210,21 @@ void setup() {
     }
   }
 
+  // 615-616 TrxNetPort
+  if(EEPROM.read(615)==0xff){
+    TrxNetPort = 5683;
+  }else{
+    TrxNetPort = EEPROM.readUShort(615);
+    if(TrxNetPort == 0) TrxNetPort = 5683;
+  }
+
+  // 617 TrxNetSubEnabled
+  if(EEPROM.read(617)==0xff){
+    TrxNetSubEnabled = false;
+  }else{
+    TrxNetSubEnabled = EEPROM.readBool(617);
+  }
+
   // 236-245 - MQTT_USER
   if(EEPROM.read(236)==0xff){
     MQTT_USER="Login";
@@ -1387,6 +1417,7 @@ void setup() {
   RegisterAjaxRoute("/readCcwraw", handleCcwraw);
   RegisterAjaxRoute("/readMAC", handleMAC);
   RegisterAjaxRoute("/readUptime", handleUptime);
+  RegisterAjaxRoute("/trxnet/peers", handleTrxNetPeers);
    // ajaxserver.on("/cal/readAZ", handleAZ);
    ajaxserver.begin();                  //Start server
    Serial.println("HTTP ajax server started");
@@ -1403,6 +1434,11 @@ void loop() {
   DxcLoop();
   RunByStatus();
   Watchdog();
+  if (NET_ID.length() > 0) {
+    net.loop();
+    trxNetPublish();
+    trxNetProcessPending();
+  }
 
   #if defined(OTAWEB)
    // OTAserver.on("/printIp", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -2353,7 +2389,9 @@ String ExportConfigBackupJson(){
   json += "    \"default_dxcc_prefixes\": " + String(DefaultMapDxccEnabled ? "true" : "false") + ",\n";
   json += "    \"default_dxc_spots\": " + String(DefaultMapDxcSpotsEnabled ? "true" : "false") + ",\n";
   json += "    \"default_dxc_lines\": " + String(DefaultMapDxcLinesEnabled ? "true" : "false") + ",\n";
-  json += "    \"one_turn_limit_sec\": " + String(OneTurnLimitSec) + "\n";
+  json += "    \"one_turn_limit_sec\": " + String(OneTurnLimitSec) + ",\n";
+  json += "    \"trxnet_port\": " + String(TrxNetPort) + ",\n";
+  json += "    \"trxnet_sub\": " + String(TrxNetSubEnabled ? "true" : "false") + "\n";
   json += "  }\n";
   json += "}\n";
   return json;
@@ -2376,6 +2414,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   float lowZoneValue = 0.0f, highZoneValue = 0.0f, pwmSlowWindowValue = 0.0f;
   bool endstopValue = false, acMotorValue = false, reverseValue = false, azTwoWireValue = false, azPreampValue = false;
   bool reverseAzValue = false, webAuthEnabledValue = false, pwmEnableValue = false, mqttLoginValue = false, elevationValue = false;
+  long trxNetPortValue = 5683;
+  bool trxNetSubValue = false;
   bool defaultDegOverlayValue = true, defaultAntOverlayValue = true, defaultLocGridValue = false, defaultGraylineValue = true, defaultStateBordersValue = false, defaultDxccPrefixesValue = false, defaultDxcSpotsValue = false, defaultDxcLinesValue = false;
 
   if(!JsonExtractString(jsonPayload, "net_id", newNetId) || newNetId.length() < 1 || newNetId.length() > 2){
@@ -2569,6 +2609,9 @@ String ImportConfigBackupJson(const String& jsonPayload){
   if(!JsonExtractLong(jsonPayload, "one_turn_limit_sec", oneTurnLimitValue) || oneTurnLimitValue < 20 || oneTurnLimitValue > 600){
     return "Invalid one_turn_limit_sec";
   }
+  JsonExtractLong(jsonPayload, "trxnet_port", trxNetPortValue);
+  if(trxNetPortValue < 1024 || trxNetPortValue > 65535) trxNetPortValue = 5683;
+  JsonExtractBool(jsonPayload, "trxnet_sub", trxNetSubValue);
 
   int mqttIp0 = -1, mqttIp1 = -1, mqttIp2 = -1, mqttIp3 = -1;
   if(sscanf(mqttIpText.c_str(), "%d.%d.%d.%d", &mqttIp0, &mqttIp1, &mqttIp2, &mqttIp3) != 4){
@@ -2643,6 +2686,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   DefaultMapDxcSpotsEnabled = defaultDxcSpotsValue;
   DefaultMapDxcLinesEnabled = defaultDxcLinesValue;
   OneTurnLimitSec = oneTurnLimitValue;
+  TrxNetPort = uint16_t(trxNetPortValue);
+  TrxNetSubEnabled = trxNetSubValue;
 
   WriteFixedStringToEeprom(0, 2, NET_ID);
   WriteFixedStringToEeprom(2, 20, RotName);
@@ -2696,6 +2741,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   WriteFixedStringToEeprom(422, 64, DxcMqttTopic);
   WriteFixedStringToEeprom(487, 64, DxcMqttTopicMiddle);
   WriteFixedStringToEeprom(551, 64, DxcMqttTopicRight);
+  EEPROM.writeUShort(615, TrxNetPort);
+  EEPROM.writeBool(617, TrxNetSubEnabled);
   EEPROM.writeBool(413, DefaultDegOverlayEnabled);
   EEPROM.writeBool(414, DefaultAntOverlayEnabled);
   EEPROM.writeBool(415, DefaultMapLocGridEnabled);
@@ -4157,6 +4204,78 @@ void http(){
   }
 }
 //-------------------------------------------------------------------------------------------------------
+// TrxNet callbacks
+
+void onSetAzimuth(const char* from, const uint8_t* data, size_t len) {
+  if (len < sizeof(uint16_t)) return;
+  uint16_t az;
+  memcpy(&az, data, sizeof(az));
+  if (az > (uint16_t)MaxRotateDegree) return;
+  trxPendingAz = (int32_t)az;
+  trxAzPending = true;
+}
+
+void onSetElevation(const char* from, const uint8_t* data, size_t len) {
+  if (len < sizeof(uint16_t)) return;
+  uint16_t el;
+  memcpy(&el, data, sizeof(el));
+  if (el > 90) return;
+  trxPendingEl = (int32_t)el;
+  trxElPending = true;
+}
+
+void trxNetBegin() {
+  if (NET_ID.length() == 0) return;
+  if (trxNetStarted) return;
+
+  String deviceName = "ROT." + NET_ID;
+  char buf[33];
+  deviceName.toCharArray(buf, sizeof(buf));
+
+  net.setPort(TrxNetPort);
+  net.begin(buf);
+
+  if (TrxNetSubEnabled) {
+    net.subscribe("/s-azimuth", onSetAzimuth);
+    if (ELEVATION) {
+      net.subscribe("/s-elevation", onSetElevation);
+    }
+  }
+  trxNetStarted = true;
+}
+
+void trxNetPublish() {
+  if (NET_ID.length() == 0) return;
+
+  uint32_t now = millis();
+  bool changeThreshold = abs(Azimuth - trxLastPublishedAz) >= 1;
+  bool keepalive       = (now - trxLastPublishMs) >= 10000UL;
+
+  if (!changeThreshold && !keepalive) return;
+
+  uint16_t az = (uint16_t)Azimuth;
+  net.publish("/azimuth", (const uint8_t*)&az, sizeof(az), TRX_NON);
+
+  trxLastPublishedAz = Azimuth;
+  trxLastPublishMs   = now;
+}
+
+void trxNetProcessPending() {
+  if (trxAzPending) {
+    trxAzPending = false;
+    int az = (int)trxPendingAz;
+    AzimuthTarget = az;
+    UiTargetAzimuth = AzimuthTarget + StartAzimuth;
+    if (UiTargetAzimuth > 359) UiTargetAzimuth -= 360;
+    RotCalculate();
+  }
+  if (trxElPending && ELEVATION) {
+    trxElPending = false;
+    // elevation target — rozšířit až bude elevation plně implementována
+  }
+}
+
+//-------------------------------------------------------------------------------------------------------
 
 void EthEvent(WiFiEvent_t event)
 {
@@ -4187,6 +4306,7 @@ void EthEvent(WiFiEvent_t event)
       Serial.print(ETH.linkSpeed());
       Serial.println("Mbps");
       eth_connected = true;
+      trxNetBegin();
 
       #if defined(MQTT)
         if(MQTT_ENABLE == true){
@@ -5669,6 +5789,19 @@ void handleSet() {
       DxcRequestReconnect();
     }
 
+    // 615-616 TrxNetPort
+    if(ajaxserver.hasArg("trxnet_port")) {
+      uint16_t port = (uint16_t)ajaxserver.arg("trxnet_port").toInt();
+      if(port >= 1024) {
+        TrxNetPort = port;
+        EEPROM.writeUShort(615, TrxNetPort);
+      }
+    }
+
+    // 617 TrxNetSubEnabled
+    TrxNetSubEnabled = ajaxserver.hasArg("trxnet_sub");
+    EEPROM.writeBool(617, TrxNetSubEnabled);
+
     EEPROM.commit();
   };
 
@@ -6106,6 +6239,9 @@ switch (PwmTuneAggressiveness) {
     HtmlSrc.replace("{{FS_SIZE}}", fsSize);
     HtmlSrc.replace("{{FS_USAGE}}", fsUsage);
     HtmlSrc.replace("{{FS_DETAIL}}", fsDetail);
+
+    HtmlSrc.replace("{{TRXNET_PORT}}",        String(TrxNetPort));
+    HtmlSrc.replace("{{TRXNET_SUB_CHECKED}}", TrxNetSubEnabled ? "checked" : "");
 
     ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
   };
@@ -6737,6 +6873,22 @@ void handleMAC() {
 }
 void handleUptime() {
   ajaxserver.send(200, "text/plane", String(millis()/1000) );
+}
+
+void handleTrxNetPeers() {
+  String json = "[";
+  int count = net.peerCount();
+  for (int i = 0; i < count; i++) {
+    const TrxPeer* p = net.peer(i);
+    if (!p) continue;
+    if (i > 0) json += ",";
+    uint32_t lastSeenSec = (millis() - p->lastSeen) / 1000;
+    json += "{\"name\":\"" + String(p->name) + "\","
+            "\"active\":" + (p->active ? "true" : "false") + ","
+            "\"lastSeen\":" + String(lastSeenSec) + "}";
+  }
+  json += "]";
+  ajaxserver.send(200, "application/json", json);
 }
 
 bool DxcConfigReady(){

@@ -45,6 +45,9 @@
     .backup-status {display: none; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #2f2f2f; color: #ddd;}
     .backup-status.is-ok {display: block; background: #16351d; color: #d5ffd8;}
     .backup-status.is-error {display: block; background: #4a1f1f; color: #ffd9d9;}
+    .peer        { display: inline-block; margin: 2px 8px; font-family: monospace; }
+    .peer.active { color: #4caf50; }
+    .peer.inactive { color: #888; }
   </style>
 </head>
 <body>
@@ -167,6 +170,37 @@
           <p>{{FS_DETAIL}}</p>
           <div class="backup-actions"><a href="/readFsDiag"><button type="button" id="go">Read FS diagnostics</button></a></div>
         </div>
+      </details>
+
+      <details class="setup-section">
+        <summary class="setup-summary">TrxNet</summary>
+        <table class="setup-table">
+          <tr>
+            <td class="tdr"><label>Rotator ID (NET_ID)</label></td>
+            <td>
+              <span id="trxnet-netid">{{NET_ID}}</span>
+              <small>&nbsp;<a href="#station-section">Nastavit v sekci Station</a> &nbsp;|&nbsp; Pr&aacute;zdn&aacute; hodnota = TrxNet vypnut&yacute;</small>
+            </td>
+          </tr>
+          <tr>
+            <td class="tdr"><label for="trxnet-port">UDP port</label></td>
+            <td>
+              <input type="number" id="trxnet-port" name="trxnet_port" min="1024" max="65535" value="{{TRXNET_PORT}}" placeholder="5683">
+              <small>V&yacute;choz&iacute;: 5683 &mdash; zm&ecaron;na se projev&iacute; po restartu</small>
+            </td>
+          </tr>
+          <tr>
+            <td class="tdr"><label for="trxnet-sub">Subscribe</label></td>
+            <td>
+              <input type="checkbox" id="trxnet-sub" name="trxnet_sub" {{TRXNET_SUB_CHECKED}}>
+              <small>P&#345;&iacute;jem p&#345;&iacute;kaz&#367; /s-azimuth (a /s-elevation pokud je zapnuta elevace) &mdash; zm&ecaron;na se projev&iacute; po restartu</small>
+            </td>
+          </tr>
+          <tr>
+            <td class="tdr"><label>Aktivn&iacute; peery</label></td>
+            <td><div id="trxnet-peers"><small>Na&ccaron;&iacute;t&aacute;m&hellip;</small></div></td>
+          </tr>
+        </table>
       </details>
 
       <div class="setup-actions"><button id="go">&#10004; Change</button></form>&nbsp;
@@ -302,6 +336,26 @@
     }, true);
     toggleMapSourceRows();
     bindTooltips();
+
+    function refreshTrxNetPeers() {
+      fetch('/trxnet/peers')
+        .then(function(r){ return r.json(); })
+        .then(function(peers) {
+          var el = document.getElementById('trxnet-peers');
+          if (!peers.length) {
+            el.innerHTML = '<small>&#381;&aacute;dn&eacute; peery nenalezeny</small>';
+            return;
+          }
+          el.innerHTML = peers.map(function(p) {
+            return '<span class="peer ' + (p.active ? 'active' : 'inactive') + '">' +
+              (p.active ? '&#9679;' : '&#9675;') + ' ' + p.name +
+              ' <small>' + p.lastSeen + 's</small></span>';
+          }).join('');
+        })
+        .catch(function(){});
+    }
+    setInterval(refreshTrxNetPeers, 1000);
+    refreshTrxNetPeers();
   </script>
 </body>
 </html>
