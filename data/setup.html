@@ -58,7 +58,7 @@
         <summary class="setup-summary">Station and rotor</summary>
         <table class="setup-table">
           <tr class="b"><td class="tdr"><label for="yourcall">Your callsign:</label></td><td><input type="text" id="yourcall" name="yourcall" size="10" value="{{YOUR_CALL}}"><span style="color:red;">{{YOURCALL_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 200px;">Used as part of an MQTT topic</span></span></td></tr>
-          <tr><td class="tdr"><label for="rotid">Rotator ID:</label></td><td><input type="text" id="rotid" name="rotid" size="2" value="{{NET_ID}}"><span style="color:red;">{{ROTID_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 300px;">[1-2 chars]<br>Multiple rotators with the same TOPIC must have different IDs<br>Second part of MQTT topic</span></span></td></tr>
+          <tr><td class="tdr"><label for="rotid">Rotator ID:</label></td><td><input type="text" id="rotid" name="rotid" size="2" value="{{NET_ID}}"><span style="color:red;">{{ROTID_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 300px;">[1-2 chars]<br>Shared ID for both MQTT topics and TrxNet P2P network<br>Multiple devices on the same network must have different IDs<br>Empty = TrxNet disabled</span></span></td></tr>
           <tr><td class="tdr"><label for="rotname">Rotator name:</label></td><td><input type="text" id="rotname" name="rotname" size="20" value="{{ROT_NAME}}"><span style="color:red;">{{ROTNAME_ERR}}</span></td></tr>
           <tr class="b"><td class="tdr"><label for="elevation">Use only for Elevation:</label></td><td><input type="checkbox" id="elevation" name="elevation" value="1" {{ELEVATION_CHECKED}}><span class="hover-text">?<span class="tooltip-text" id="top">Will be SET<br>Start Azimuth to 270<br>Max Rotate Degree to 180 (may be change to 0-180)<br><br>For map use<br>https://remoteqth.com/xplanet/SKY.jpg</span></span></td></tr>
           <tr><td class="tdr"><label for="startazimuth"><span{{STARTAZIMUTH_STYLE}}>Start CCW azimuth:</span></label></td><td><input type="text" id="startazimuth" name="startazimuth" size="3" value="{{START_AZIMUTH}}"{{STARTAZIMUTH_DISABLE}}>&deg; <span style="color:red;">{{STARTAZIMUTH_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 100px;">Allowed range<br>[0-359&deg;]</span></span></td></tr>
@@ -176,29 +176,33 @@
         <summary class="setup-summary">TrxNet</summary>
         <table class="setup-table">
           <tr>
-            <td class="tdr"><label>Rotator ID (NET_ID)</label></td>
+            <td class="tdr"><label>NET_ID = Rotator ID</label></td>
             <td>
               <span id="trxnet-netid">{{NET_ID}}</span>
-              <small>&nbsp;<a href="#station-section">Nastavit v sekci Station</a> &nbsp;|&nbsp; Pr&aacute;zdn&aacute; hodnota = TrxNet vypnut&yacute;</small>
+              <span class="hover-text">?<span class="tooltip-text" id="top" style="width: 280px;">Set in the Station and rotor section above.<br>Empty = TrxNet disabled.<br>Device name on the network: ROT.{NET_ID}</span></span>
             </td>
           </tr>
           <tr>
             <td class="tdr"><label for="trxnet-port">UDP port</label></td>
             <td>
               <input type="number" id="trxnet-port" name="trxnet_port" min="1024" max="65535" value="{{TRXNET_PORT}}" placeholder="5683">
-              <small>V&yacute;choz&iacute;: 5683 &mdash; zm&ecaron;na se projev&iacute; po restartu</small>
+              <span class="hover-text">?<span class="tooltip-text" id="top" style="width: 260px;">Default: 5683<br>All TrxNet devices on the network must use the same port.<br>Change takes effect after restart.</span></span>
             </td>
           </tr>
           <tr>
             <td class="tdr"><label for="trxnet-sub">Subscribe</label></td>
             <td>
               <input type="checkbox" id="trxnet-sub" name="trxnet_sub" {{TRXNET_SUB_CHECKED}}>
-              <small>P&#345;&iacute;jem p&#345;&iacute;kaz&#367; /s-azimuth (a /s-elevation pokud je zapnuta elevace) &mdash; zm&ecaron;na se projev&iacute; po restartu</small>
+              <span class="hover-text">?<span class="tooltip-text" id="top" style="width: 280px;">Accept rotation commands from peers:<br>/s-azimuth (always)<br>/s-elevation (only if elevation mode is enabled)<br>Change takes effect after restart.</span></span>
             </td>
           </tr>
           <tr>
-            <td class="tdr"><label>Aktivn&iacute; peery</label></td>
-            <td><div id="trxnet-peers"><small>Na&ccaron;&iacute;t&aacute;m&hellip;</small></div></td>
+            <td class="tdr"><label>Active peers</label></td>
+            <td><div id="trxnet-peers"><small>Loading&hellip;</small></div></td>
+          </tr>
+          <tr>
+            <td class="tdr"></td>
+            <td><a href="https://github.com/ok1hra/TrxNet" target="_blank">https://github.com/ok1hra/TrxNet</a></td>
           </tr>
         </table>
       </details>
