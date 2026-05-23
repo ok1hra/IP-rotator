@@ -42,6 +42,43 @@ detect_esp32_core_root() {
   return 1
 }
 
+detect_mkspiffs_bin() {
+  local candidates=()
+  if [[ -n "${MKSPIFFS_BIN}" ]]; then
+    candidates+=("${MKSPIFFS_BIN}")
+  fi
+  if [[ -n "${ESP32_CORE_ROOT}" ]]; then
+    candidates+=("${ESP32_CORE_ROOT}/tools/mkspiffs/mkspiffs")
+  fi
+  if [[ -n "${HOME:-}" ]]; then
+    candidates+=("${HOME}/Arduino/hardware/espressif/esp32/tools/mkspiffs/mkspiffs")
+  fi
+
+  local candidate=""
+  for candidate in "${candidates[@]}"; do
+    if [[ -x "${candidate}" ]]; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+
+  if [[ -n "${HOME:-}" ]]; then
+    candidate="$(find "${HOME}/.arduino15/packages" -path '*/tools/mkspiffs/*/mkspiffs' -type f -executable 2>/dev/null | sort -V | tail -n 1)"
+    if [[ -n "${candidate}" ]]; then
+      echo "${candidate}"
+      return 0
+    fi
+
+    candidate="$(find "${HOME}/.platformio/packages" -path '*/tool-mkspiffs/mkspiffs*' -type f -executable 2>/dev/null | sort -V | tail -n 1)"
+    if [[ -n "${candidate}" ]]; then
+      echo "${candidate}"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 usage() {
   cat <<'EOF'
 Usage: tools/build_spiffs_image.sh [options]
@@ -92,8 +129,8 @@ if [[ -z "${ESP32_CORE_ROOT}" ]]; then
   ESP32_CORE_ROOT="$(detect_esp32_core_root || true)"
 fi
 
-if [[ -z "${MKSPIFFS_BIN}" && -n "${ESP32_CORE_ROOT}" ]]; then
-  MKSPIFFS_BIN="${ESP32_CORE_ROOT}/tools/mkspiffs/mkspiffs"
+if [[ -z "${MKSPIFFS_BIN}" ]]; then
+  MKSPIFFS_BIN="$(detect_mkspiffs_bin || true)"
 fi
 
 if [[ ! -d "$DATA_DIR" ]]; then

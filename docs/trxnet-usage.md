@@ -29,14 +29,14 @@ IP-rotator (ESP32-PoE, Ethernet)
 
 | Topic | Type | Trigger | Description |
 |-------|------|---------|-------------|
-| `/azimuth` | `uint16_t` LE | Change ≥ 1° or every 10 s | Current azimuth in degrees (0 – MaxRotateDegree) |
+| `/azimuth` | `uint16_t` LE | Moving: change >= 1°. Stopped: change >= 2° or every 60 s | Current compass azimuth in degrees (0-359) |
 | `/elevation` | `uint16_t` LE | Same as above | Current elevation 0–90°. Sent only when elevation mode is enabled. |
 
 ## Subscribed topics (network → IP-rotator)
 
 | Topic | Type | Action | Condition |
 |-------|------|--------|-----------|
-| `/s-azimuth` | `uint16_t` LE | Rotate to this azimuth | Subscribe must be enabled in Setup |
+| `/s-azimuth` | `uint16_t` LE | Rotate to this compass azimuth (0-359) | Subscribe must be enabled in Setup |
 | `/s-elevation` | `uint16_t` LE | Set elevation target | Subscribe enabled + elevation mode on |
 
 ---
@@ -141,12 +141,9 @@ void onAzimuth(const char* from, const uint8_t* data, size_t len) {
 
 ## Azimuth coordinate system
 
-IP-rotator publishes the **internal rotator value** (0 to MaxRotateDegree), measured
-from the CCW end-stop (`StartAzimuth` calibration offset). This is **not** necessarily
-a compass bearing.
-
-If you need real-world North-referenced bearing coordination between multiple rotators,
-all rotators must share the same `StartAzimuth` calibration value.
+IP-rotator publishes the **real compass azimuth** (0-359), referenced to North.
+Internally, the firmware converts between this value and the rotator position relative
+to the CCW end-stop by applying the `StartAzimuth` calibration offset.
 
 ---
 

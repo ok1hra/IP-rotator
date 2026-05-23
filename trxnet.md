@@ -246,14 +246,14 @@ Use `memcpy` to deserialise — do not cast pointers directly.
 
 | Topic | Type | Value | Trigger |
 |-------|------|-------|---------|
-| `/azimuth` | `uint16_t` | Current azimuth in degrees (0 – MaxRotateDegree) | Change ≥ 1° or 10 s keepalive |
+| `/azimuth` | `uint16_t` | Current compass azimuth in degrees (0-359) | Moving: change >= 1°. Stopped: change >= 2° or 60 s keepalive |
 | `/elevation` | `uint16_t` | Current elevation in degrees (0 – 90) | Same as above — only if elevation mode is enabled |
 
 ### Subscribed by IP-rotator (when Subscribe is enabled)
 
 | Topic | Type | Value | Action |
 |-------|------|-------|--------|
-| `/s-azimuth` | `uint16_t` | Target azimuth (0 – MaxRotateDegree) | Rotate to this azimuth |
+| `/s-azimuth` | `uint16_t` | Target compass azimuth (0-359) | Rotate to this azimuth |
 | `/s-elevation` | `uint16_t` | Target elevation (0 – 90) | Set elevation target — only if elevation mode is enabled |
 
 The `/s-` prefix means "set / command" — same convention used in OI3 keyer and
@@ -476,9 +476,9 @@ void onSetAzimuth(const char* from, const uint8_t* data, size_t len) {
 void trxNetProcessPending() {    // called from loop()
     if (trxAzPending) {
         trxAzPending = false;
-        AzimuthTarget = (int)trxPendingAz;
-        UiTargetAzimuth = AzimuthTarget + StartAzimuth;
-        if (UiTargetAzimuth > 359) UiTargetAzimuth -= 360;
+        int compassAzimuth = (int)trxPendingAz;
+        AzimuthTarget = CompassToInternalAzimuth(compassAzimuth);
+        UiTargetAzimuth = compassAzimuth;
         RotCalculate();
     }
 }
@@ -496,12 +496,9 @@ setup page, all other devices must be updated to the same port and restarted.
 
 ### Azimuth coordinate system
 
-IP-rotator publishes `Azimuth` — the internal rotator value relative to `StartAzimuth`
-(the CCW end-stop calibration offset), ranging from 0 to `MaxRotateDegree`.  
-This is **not** necessarily a compass bearing. Two rotators with different
-`StartAzimuth` settings will interpret the same published value differently.
-If real-world bearing coordination between rotators is needed, ensure all rotators
-share the same `StartAzimuth` calibration.
+IP-rotator publishes the real compass azimuth, referenced to North and ranging from
+0 to 359. Internally, the firmware converts between compass azimuth and the rotator
+position relative to `StartAzimuth` (the CCW end-stop calibration offset).
 
 ### `setPort()` must be called before `begin()`
 

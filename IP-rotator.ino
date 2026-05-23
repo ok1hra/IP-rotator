@@ -128,7 +128,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260522";
+const char* REV = "20260523";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -642,6 +642,15 @@ void handleMAC();
 void handleUptime();
 void handleDxcHtml();
 void handleDxcPublishFreq();
+int NormalizeCompassAzimuth(int azimuth);
+int InternalToCompassAzimuth(int internalAzimuth);
+int CompassToInternalAzimuth(int compassAzimuth);
+int CompassAzimuthDelta(int a, int b);
+void onSetAzimuth(const char* from, const uint8_t* data, size_t len);
+void onSetElevation(const char* from, const uint8_t* data, size_t len);
+void trxNetBegin();
+void trxNetPublish();
+void trxNetProcessPending();
 void DxcLoop();
 void DxcDisconnectTelnet();
 void DxcDisconnectWebSocket();
@@ -4206,11 +4215,31 @@ void http(){
 //-------------------------------------------------------------------------------------------------------
 // TrxNet callbacks
 
+int NormalizeCompassAzimuth(int azimuth) {
+  while (azimuth < 0) azimuth += 360;
+  while (azimuth > 359) azimuth -= 360;
+  return azimuth;
+}
+
+int InternalToCompassAzimuth(int internalAzimuth) {
+  return NormalizeCompassAzimuth(internalAzimuth + StartAzimuth);
+}
+
+int CompassToInternalAzimuth(int compassAzimuth) {
+  return NormalizeCompassAzimuth(compassAzimuth - StartAzimuth);
+}
+
+int CompassAzimuthDelta(int a, int b) {
+  int delta = abs(NormalizeCompassAzimuth(a) - NormalizeCompassAzimuth(b));
+  if (delta > 180) delta = 360 - delta;
+  return delta;
+}
+
 void onSetAzimuth(const char* from, const uint8_t* data, size_t len) {
   if (len < sizeof(uint16_t)) return;
   uint16_t az;
   memcpy(&az, data, sizeof(az));
-  if (az > (uint16_t)MaxRotateDegree) return;
+  if (az > 359) return;
   trxPendingAz = (int32_t)az;
   trxAzPending = true;
 }
@@ -4248,25 +4277,27 @@ void trxNetPublish() {
   if (NET_ID.length() == 0) return;
 
   uint32_t now = millis();
-  bool changeThreshold = abs(Azimuth - trxLastPublishedAz) >= 1;
-  bool keepalive       = (now - trxLastPublishMs) >= 10000UL;
+  bool isMoving        = Status != 0;
+  int compassAzimuth   = InternalToCompassAzimuth(Azimuth);
+  int changeThresholdDeg = isMoving ? 1 : 2;
+  bool changeThreshold = trxLastPublishedAz < 0 || CompassAzimuthDelta(compassAzimuth, trxLastPublishedAz) >= changeThresholdDeg;
+  bool keepalive       = !isMoving && (now - trxLastPublishMs) >= 60000UL;
 
   if (!changeThreshold && !keepalive) return;
 
-  uint16_t az = (uint16_t)Azimuth;
+  uint16_t az = (uint16_t)compassAzimuth;
   net.publish("/azimuth", (const uint8_t*)&az, sizeof(az), TRX_NON);
 
-  trxLastPublishedAz = Azimuth;
+  trxLastPublishedAz = compassAzimuth;
   trxLastPublishMs   = now;
 }
 
 void trxNetProcessPending() {
   if (trxAzPending) {
     trxAzPending = false;
-    int az = (int)trxPendingAz;
-    AzimuthTarget = az;
-    UiTargetAzimuth = AzimuthTarget + StartAzimuth;
-    if (UiTargetAzimuth > 359) UiTargetAzimuth -= 360;
+    int compassAzimuth = (int)trxPendingAz;
+    AzimuthTarget = CompassToInternalAzimuth(compassAzimuth);
+    UiTargetAzimuth = compassAzimuth;
     RotCalculate();
   }
   if (trxElPending && ELEVATION) {
