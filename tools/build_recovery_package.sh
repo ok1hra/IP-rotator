@@ -33,20 +33,59 @@ detect_esp32_core_root() {
   local candidate=""
   local version_dir=""
 
+  # gen_esp32part.py ships inside the core in both 1.x and 2.x, whereas
+  # esptool.py moved out to a separate esptool_py tool package in 2.x.
   for candidate in "${candidates[@]}"; do
-    if [[ -f "${candidate}/tools/esptool.py" ]]; then
+    if [[ -f "${candidate}/tools/gen_esp32part.py" ]]; then
       echo "${candidate}"
       return 0
     fi
     if [[ -d "${candidate}" ]]; then
       version_dir="$(find "${candidate}" -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
-      if [[ -n "${version_dir}" && -f "${version_dir}/tools/esptool.py" ]]; then
+      if [[ -n "${version_dir}" && -f "${version_dir}/tools/gen_esp32part.py" ]]; then
         echo "${version_dir}"
         return 0
       fi
     fi
   done
 
+  return 1
+}
+
+# esptool.py lives inside the core in 1.x but in a separate esptool_py tool
+# package in 2.x (…/packages/esp32/tools/esptool_py/<ver>/esptool.py).
+detect_esptool() {
+  local core_root="$1"
+  if [[ -f "${core_root}/tools/esptool.py" ]]; then
+    echo "${core_root}/tools/esptool.py"
+    return 0
+  fi
+  # core_root is …/packages/esp32/hardware/esp32/<ver>; the tools package sits
+  # at …/packages/esp32/tools/esptool_py/<ver>/esptool.py.
+  local pkg_root="${core_root%/hardware/esp32/*}"
+  local found=""
+  if [[ -d "${pkg_root}/tools/esptool_py" ]]; then
+    found="$(find "${pkg_root}/tools/esptool_py" -mindepth 2 -maxdepth 2 -name esptool.py 2>/dev/null | sort | tail -n 1)"
+    if [[ -n "${found}" ]]; then
+      echo "${found}"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# Core 2.x ships the bootloader only as .elf; the flashable .bin is produced
+# per-sketch during compilation and cached under ~/.cache/arduino/sketches.
+detect_bootloader() {
+  local sketch_basename="$1"
+  local cache_dir="${HOME:-}/.cache/arduino/sketches"
+  [[ -d "${cache_dir}" ]] || return 1
+  local found=""
+  found="$(find "${cache_dir}" -name "${sketch_basename}.bootloader.bin" -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n 1 | cut -d' ' -f2-)"
+  if [[ -n "${found}" ]]; then
+    echo "${found}"
+    return 0
+  fi
   return 1
 }
 
@@ -120,7 +159,13 @@ if [[ -z "${ESP32_CORE_ROOT}" ]]; then
 fi
 
 if [[ -z "${BOOTLOADER_BIN}" && -n "${ESP32_CORE_ROOT}" ]]; then
-  BOOTLOADER_BIN="${ESP32_CORE_ROOT}/tools/sdk/esp32/bin/bootloader_dio_40m.bin"
+  # Prefer the legacy prebuilt bootloader (core 1.x); fall back to the
+  # per-sketch bootloader from the Arduino build cache (core 2.x).
+  if [[ -f "${ESP32_CORE_ROOT}/tools/sdk/esp32/bin/bootloader_dio_40m.bin" ]]; then
+    BOOTLOADER_BIN="${ESP32_CORE_ROOT}/tools/sdk/esp32/bin/bootloader_dio_40m.bin"
+  else
+    BOOTLOADER_BIN="$(detect_bootloader "$(basename "${REV_FILE}")" || true)"
+  fi
 fi
 if [[ -z "${BOOT_APP0_BIN}" && -n "${ESP32_CORE_ROOT}" ]]; then
   BOOT_APP0_BIN="${ESP32_CORE_ROOT}/tools/partitions/boot_app0.bin"
@@ -129,7 +174,7 @@ if [[ -z "${GEN_PART_BIN}" && -n "${ESP32_CORE_ROOT}" ]]; then
   GEN_PART_BIN="${ESP32_CORE_ROOT}/tools/gen_esp32part.py"
 fi
 if [[ -z "${ESPTOOL_BIN}" && -n "${ESP32_CORE_ROOT}" ]]; then
-  ESPTOOL_BIN="${ESP32_CORE_ROOT}/tools/esptool.py"
+  ESPTOOL_BIN="$(detect_esptool "${ESP32_CORE_ROOT}" || true)"
 fi
 
 require_file() {

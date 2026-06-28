@@ -128,7 +128,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260523";
+const char* REV = "20260628";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -440,6 +440,8 @@ volatile int32_t  trxPendingAz  = -1;
 volatile int32_t  trxPendingEl  = -1;
 volatile bool     trxAzPending  = false;
 volatile bool     trxElPending  = false;
+volatile bool     trxGreetPending = false;   // a peer joined/rebooted — send it a snapshot from loop()
+char              trxGreetName[33] = {0};     // name of the peer to greet (filled in the callback)
 uint16_t TrxNetPort        = 5683;
 bool     TrxNetSubEnabled  = false;
 String HTTP_req;
@@ -1447,6 +1449,7 @@ void loop() {
     net.loop();
     trxNetPublish();
     trxNetProcessPending();
+    trxNetGreet();
   }
 
   #if defined(OTAWEB)
@@ -4253,6 +4256,26 @@ void onSetElevation(const char* from, const uint8_t* data, size_t len) {
   trxElPending = true;
 }
 
+// Fired from net.loop() when a peer is discovered, or (TrxNet >= 1.03) re-probes
+// after a reboot. Re-entrancy rule: do NOT publish here — queue the peer name and
+// let loop() send the azimuth snapshot via trxNetGreet().
+void TrxNetOnPeerAdded(const TrxPeer* peer) {
+  if (!peer) return;
+  strncpy(trxGreetName, peer->name, sizeof(trxGreetName) - 1);
+  trxGreetName[sizeof(trxGreetName) - 1] = '\0';
+  trxGreetPending = true;
+}
+
+// Unicast the current azimuth to a freshly joined/rebooted peer (TRX_CON, reliable)
+// so it has data immediately instead of waiting for the next change or 60 s keepalive.
+void trxNetGreet() {
+  if (!trxGreetPending) return;
+  trxGreetPending = false;
+  if (!trxNetStarted) return;
+  uint16_t az = (uint16_t)InternalToCompassAzimuth(Azimuth);
+  net.publishTo(trxGreetName, "/azimuth", (const uint8_t*)&az, sizeof(az), TRX_CON);
+}
+
 void trxNetBegin() {
   if (NET_ID.length() == 0) return;
   if (trxNetStarted) return;
@@ -4262,6 +4285,7 @@ void trxNetBegin() {
   deviceName.toCharArray(buf, sizeof(buf));
 
   net.setPort(TrxNetPort);
+  net.onPeerAdded(TrxNetOnPeerAdded);
   net.begin(buf);
 
   if (TrxNetSubEnabled) {
