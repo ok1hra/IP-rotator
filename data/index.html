@@ -1545,6 +1545,7 @@
 
 	function getGraylineInfo() {
 	  var ghttp = new XMLHttpRequest();
+	  ghttp.timeout = POLL_TIMEOUT_MS; // fail fast when the device is offline
 	  ghttp.onreadystatechange = function() {
 	    if (this.readyState == 4 && this.status == 200) {
 				var parts = String(this.responseText).split("|");
@@ -1908,26 +1909,56 @@
 		initKeyboardShortcutHints();
 	}
 
+	// Bounded polling: without this an offline/unreachable device let each 500 ms
+	// getData() tick queue 5 XHRs that never completed (no RST -> full ~90 s browser
+	// connect timeout, only 6 sockets per host), so pending requests piled up in the
+	// browser and leaked tens of GB of RAM over a few hours. POLL_TIMEOUT_MS lets each
+	// request fail fast and be GC'd; GetDataInFlight caps outstanding requests to one
+	// round, so a dead device can never accumulate more than 5 pending XHRs.
+	var GetDataInFlight = 0;
+	var POLL_TIMEOUT_MS = 4000;
+
+	function pollXhr(url, onOk){
+		var x = new XMLHttpRequest();
+		var settled = false;
+		function done(){
+			if(settled){ return; }
+			settled = true;
+			GetDataInFlight--;
+			if(GetDataInFlight < 0){ GetDataInFlight = 0; }
+		}
+		x.open("GET", url, true);
+		x.timeout = POLL_TIMEOUT_MS;
+		x.onreadystatechange = function(){
+			if(this.readyState != 4){ return; }
+			if(this.status == 200){
+				try{ onOk(this.responseText); }catch(e){}
+			}
+			done();
+		};
+		x.ontimeout = done;
+		x.onerror = done;
+		x.onabort = done;
+		GetDataInFlight++;
+		try{ x.send(); }catch(e){ done(); }
+	}
+
 	function getData() {
-	  var xhttp = new XMLHttpRequest();
-	  xhttp.onreadystatechange = function() {
-	    if (this.readyState == 4 && this.status == 200) {
-				if( Number(this.responseText)<11.5){
+	  // Skip while the previous round is still pending so requests cannot stack up
+	  // when the device is offline.
+	  if (GetDataInFlight > 0) { return; }
 
-					document.getElementById("ADCValue").innerHTML = "<span style='color:red;'>"+ Math.round(this.responseText * 10) / 10 +"</span>";
-				}else{
-					document.getElementById("ADCValue").innerHTML = Math.round(this.responseText * 10) / 10;
-				}
-	    }
-	  };
-	  xhttp.open("GET", "readADC", true);
-	  xhttp.send();
+	  pollXhr("readADC", function(rt){
+			if( Number(rt)<11.5){
+				document.getElementById("ADCValue").innerHTML = "<span style='color:red;'>"+ Math.round(rt * 10) / 10 +"</span>";
+			}else{
+				document.getElementById("ADCValue").innerHTML = Math.round(rt * 10) / 10;
+			}
+	  });
 
-	  var yhttp = new XMLHttpRequest();
-	  yhttp.onreadystatechange = function() {
-	    if (this.readyState == 4 && this.status == 200) {
-	      document.getElementById("AZValue").innerHTML = this.responseText;
-				Azimuth = this.responseText;
+	  pollXhr("readAZ", function(rt){
+	      document.getElementById("AZValue").innerHTML = rt;
+				Azimuth = rt;
 				updateRawStatus();
 				// if( Math.abs(Number(AzimuthTmp)-Number(Azimuth))>1 ){	// || Status != 4
 				if( Number(AzimuthTmp) != Number(Azimuth) ){
@@ -1939,16 +1970,11 @@
 				}
 				OnlineTimeStamp = new Date().getTime();
 				// console.log ('OnlineTimer ' + OnlineTimer);
-	    }
-	  };
-	  yhttp.open("GET", "readAZ", true);
-	  yhttp.send();
+	  });
 
-	  var zhttp = new XMLHttpRequest();
-	  zhttp.onreadystatechange = function() {
-	    if (this.readyState == 4 && this.status == 200) {
-	      // document.getElementById("StatValue").innerHTML = this.responseText;
-				Status = this.responseText;
+	  pollXhr("readStat", function(rt){
+	      // document.getElementById("StatValue").innerHTML = rt;
+				Status = rt;
 				if(Number(Status) === 4 && Number(StatusTmp) !== 4){
 					clearTargetAzimuth();
 				}
@@ -1958,32 +1984,19 @@
 					StaticBot();
 					StatusTmp=Status;
 				}
-	    }
-	  };
-	  zhttp.open("GET", "readStat", true);
-	  zhttp.send();
+	  });
 
-	  var pwmhttp = new XMLHttpRequest();
-	  pwmhttp.onreadystatechange = function() {
-	    if (this.readyState == 4 && this.status == 200) {
-				var parts = String(this.responseText || "").split("|");
+	  pollXhr("readPwmUi", function(rt){
+				var parts = String(rt || "").split("|");
 				PwmUiEnabled = (parts[0] === "1");
 				PwmMaxDuty = Number(parts[1] || 255);
 				PwmActualDuty = Number(parts[2] || 0);
 				updatePwmControl();
-	    }
-	  };
-	  pwmhttp.open("GET", "readPwmUi", true);
-	  pwmhttp.send();
+	  });
 
-	  var targethttp = new XMLHttpRequest();
-	  targethttp.onreadystatechange = function() {
-	    if (this.readyState == 4 && this.status == 200) {
-				syncTargetAzimuthFromUi(this.responseText);
-	    }
-	  };
-	  targethttp.open("GET", "readTargetUi", true);
-	  targethttp.send();
+	  pollXhr("readTargetUi", function(rt){
+				syncTargetAzimuthFromUi(rt);
+	  });
 	}
 
 	//---------------------------------------------------------------

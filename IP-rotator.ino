@@ -128,7 +128,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260628";
+const char* REV = "20260707";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -300,7 +300,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 618   /*
+#define EEPROM_SIZE 691   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -376,6 +376,8 @@ int i = 0;
 551-614 - DXC MQTT publish topic (right mouse button)
 615-616 - TrxNetPort UShort
 617 - TrxNetSubEnabled Bool
+618-689 - TrxNetPrio (space-separated priority prefixes, max 8 x 8 chars)
+690 - TrxNetPrioInit (0x01 = user has set TrxNetPrio; else load default "INK 705")
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -444,6 +446,16 @@ volatile bool     trxGreetPending = false;   // a peer joined/rebooted — send 
 char              trxGreetName[33] = {0};     // name of the peer to greet (filled in the callback)
 uint16_t TrxNetPort        = 5683;
 bool     TrxNetSubEnabled  = false;
+// Priority prefixes (TrxNet peer-eviction protection). Max 8 prefixes x 8 chars,
+// space-separated. TrxNetPrio holds the editable raw string; the parse buffer and
+// pointer array below are handed to net.setPriorityPrefixes() and MUST stay valid
+// for the lifetime of the net object (library requirement), so they are global.
+#define TRXNET_PRIO_MAX_PREFIXES 8
+#define TRXNET_PRIO_MAX_LEN      8
+String   TrxNetPrio        = "INK 705";
+char     TrxNetPrioBuf[72]  = {0};                       // tokenized: spaces -> '\0'
+const char* TrxNetPrioPtrs[TRXNET_PRIO_MAX_PREFIXES] = {0};
+uint8_t  TrxNetPrioCount   = 0;
 String HTTP_req;
 #if defined(OTAWEB)
   #include <AsyncTCP.h>
@@ -687,6 +699,8 @@ bool LoadFilesystemBuildInfo();
 float GetPwmTuneAggressionFactor();
 String JsonEscape(const String& value);
 bool IsSafeConfigChar(byte value);
+String NormalizeTrxNetPrio(const String& in, bool* valid);
+void ParseTrxNetPrio();
 String ReadFixedStringFromEeprom(int start, int length);
 bool JsonExtractString(const String& json, const char* key, String& value);
 bool JsonExtractLong(const String& json, const char* key, long& value);
@@ -1234,6 +1248,15 @@ void setup() {
     TrxNetSubEnabled = false;
   }else{
     TrxNetSubEnabled = EEPROM.readBool(617);
+  }
+
+  // 618-689 TrxNetPrio, 690 init flag. Factory-fresh EEPROM (flag not set) loads
+  // the default "INK 705"; once the user has saved (flag == 0x01), an empty stored
+  // value stays empty (feature off) instead of reverting to the default.
+  if(EEPROM.read(690) != 0x01){
+    TrxNetPrio = "INK 705";
+  }else{
+    TrxNetPrio = ReadFixedStringFromEeprom(618, 72);
   }
 
   // 236-245 - MQTT_USER
@@ -2208,6 +2231,68 @@ void WriteFixedStringToEeprom(int start, int length, const String& text){
   }
 }
 
+// Normalize a TrxNet priority-prefix string: trim, collapse internal whitespace to
+// single spaces, keep only printable ASCII within tokens, and clamp to
+// TRXNET_PRIO_MAX_PREFIXES x TRXNET_PRIO_MAX_LEN. Returns the clamped result and,
+// via *valid, whether the ORIGINAL input already fit the limits (no illegal char,
+// no over-long token, no excess token). The interactive setup form uses *valid to
+// hard-reject; config-backup import ignores it and takes the clamped string.
+String NormalizeTrxNetPrio(const String& in, bool* valid){
+  bool ok = true;
+  String out = "";
+  int tokenCount = 0;
+  int i = 0;
+  int n = in.length();
+  while(i < n){
+    while(i < n && in[i] == ' ') i++;              // skip separators (collapse)
+    if(i >= n) break;
+    String tok = "";
+    while(i < n && in[i] != ' '){
+      char c = in[i];
+      if(IsSafeConfigChar((byte)c)){
+        if(tok.length() < TRXNET_PRIO_MAX_LEN){
+          tok += c;
+        }else{
+          ok = false;                              // token longer than max -> clamp
+        }
+      }else{
+        ok = false;                                // illegal char dropped
+      }
+      i++;
+    }
+    if(tok.length() == 0) continue;
+    if(tokenCount >= TRXNET_PRIO_MAX_PREFIXES){
+      ok = false;                                  // too many tokens -> dropped
+      continue;
+    }
+    if(out.length() > 0) out += " ";
+    out += tok;
+    tokenCount++;
+  }
+  if(valid) *valid = ok;
+  return out;
+}
+
+// Tokenize TrxNetPrio into the global buffer/pointer array handed to
+// net.setPriorityPrefixes(). Spaces become '\0' so each pointer is a C string that
+// stays valid for the net object's lifetime. Assumes TrxNetPrio is already
+// normalized, but is bounded and safe even if not.
+void ParseTrxNetPrio(){
+  TrxNetPrioCount = 0;
+  memset(TrxNetPrioBuf, 0, sizeof(TrxNetPrioBuf));
+  int len = TrxNetPrio.length();
+  if(len > (int)sizeof(TrxNetPrioBuf) - 1) len = sizeof(TrxNetPrioBuf) - 1;
+  for(int i = 0; i < len; i++) TrxNetPrioBuf[i] = TrxNetPrio[i];
+  TrxNetPrioBuf[len] = '\0';
+  int i = 0;
+  while(i < len && TrxNetPrioCount < TRXNET_PRIO_MAX_PREFIXES){
+    while(i < len && TrxNetPrioBuf[i] == ' '){ TrxNetPrioBuf[i] = '\0'; i++; }
+    if(i >= len) break;
+    TrxNetPrioPtrs[TrxNetPrioCount++] = &TrxNetPrioBuf[i];
+    while(i < len && TrxNetPrioBuf[i] != ' ') i++;
+  }
+}
+
 String JsonEscape(const String& value){
   String escaped = "";
   escaped.reserve(value.length() + 8);
@@ -2403,7 +2488,8 @@ String ExportConfigBackupJson(){
   json += "    \"default_dxc_lines\": " + String(DefaultMapDxcLinesEnabled ? "true" : "false") + ",\n";
   json += "    \"one_turn_limit_sec\": " + String(OneTurnLimitSec) + ",\n";
   json += "    \"trxnet_port\": " + String(TrxNetPort) + ",\n";
-  json += "    \"trxnet_sub\": " + String(TrxNetSubEnabled ? "true" : "false") + "\n";
+  json += "    \"trxnet_sub\": " + String(TrxNetSubEnabled ? "true" : "false") + ",\n";
+  json += "    \"trxnet_prio\": \"" + JsonEscape(TrxNetPrio) + "\"\n";
   json += "  }\n";
   json += "}\n";
   return json;
@@ -2428,6 +2514,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   bool reverseAzValue = false, webAuthEnabledValue = false, pwmEnableValue = false, mqttLoginValue = false, elevationValue = false;
   long trxNetPortValue = 5683;
   bool trxNetSubValue = false;
+  String trxNetPrioValue = "INK 705";
   bool defaultDegOverlayValue = true, defaultAntOverlayValue = true, defaultLocGridValue = false, defaultGraylineValue = true, defaultStateBordersValue = false, defaultDxccPrefixesValue = false, defaultDxcSpotsValue = false, defaultDxcLinesValue = false;
 
   if(!JsonExtractString(jsonPayload, "net_id", newNetId) || newNetId.length() < 1 || newNetId.length() > 2){
@@ -2624,6 +2711,10 @@ String ImportConfigBackupJson(const String& jsonPayload){
   JsonExtractLong(jsonPayload, "trxnet_port", trxNetPortValue);
   if(trxNetPortValue < 1024 || trxNetPortValue > 65535) trxNetPortValue = 5683;
   JsonExtractBool(jsonPayload, "trxnet_sub", trxNetSubValue);
+  // Soft sanitize on import (no interactive UI to reject): clamp to 8 x 8 chars.
+  if(JsonExtractString(jsonPayload, "trxnet_prio", trxNetPrioValue)){
+    trxNetPrioValue = NormalizeTrxNetPrio(trxNetPrioValue, NULL);
+  }
 
   int mqttIp0 = -1, mqttIp1 = -1, mqttIp2 = -1, mqttIp3 = -1;
   if(sscanf(mqttIpText.c_str(), "%d.%d.%d.%d", &mqttIp0, &mqttIp1, &mqttIp2, &mqttIp3) != 4){
@@ -2700,6 +2791,7 @@ String ImportConfigBackupJson(const String& jsonPayload){
   OneTurnLimitSec = oneTurnLimitValue;
   TrxNetPort = uint16_t(trxNetPortValue);
   TrxNetSubEnabled = trxNetSubValue;
+  TrxNetPrio = trxNetPrioValue;
 
   WriteFixedStringToEeprom(0, 2, NET_ID);
   WriteFixedStringToEeprom(2, 20, RotName);
@@ -2755,6 +2847,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   WriteFixedStringToEeprom(551, 64, DxcMqttTopicRight);
   EEPROM.writeUShort(615, TrxNetPort);
   EEPROM.writeBool(617, TrxNetSubEnabled);
+  WriteFixedStringToEeprom(618, 72, TrxNetPrio);
+  EEPROM.write(690, 0x01);
   EEPROM.writeBool(413, DefaultDegOverlayEnabled);
   EEPROM.writeBool(414, DefaultAntOverlayEnabled);
   EEPROM.writeBool(415, DefaultMapLocGridEnabled);
@@ -4286,6 +4380,8 @@ void trxNetBegin() {
 
   net.setPort(TrxNetPort);
   net.onPeerAdded(TrxNetOnPeerAdded);
+  ParseTrxNetPrio();
+  net.setPriorityPrefixes(TrxNetPrioCount ? TrxNetPrioPtrs : NULL, TrxNetPrioCount);
   net.begin(buf);
 
   if (TrxNetSubEnabled) {
@@ -4899,6 +4995,7 @@ void handleSet() {
 
   String yourcallERR= "";
   String rotidERR= "";
+  String trxnetprioERR= "";
   String rotnameERR= "";
   String startazimuthERR= "";
   String startazimuthSTYLE= "";
@@ -5857,6 +5954,22 @@ void handleSet() {
     TrxNetSubEnabled = ajaxserver.hasArg("trxnet_sub");
     EEPROM.writeBool(617, TrxNetSubEnabled);
 
+    // 618-689 TrxNetPrio (+ 690 init flag). Hard validation: if the input exceeds
+    // 8 prefixes x 8 chars or holds illegal chars, keep the old value and report an
+    // error; otherwise store the normalized string and set the init flag so an
+    // empty value stays empty (feature off) rather than reverting to the default.
+    if(ajaxserver.hasArg("trxnet_prio")) {
+      bool prioValid = true;
+      String prioNorm = NormalizeTrxNetPrio(ajaxserver.arg("trxnet_prio"), &prioValid);
+      if(!prioValid) {
+        trxnetprioERR = " Max 8 prefixes x 8 chars";
+      } else {
+        TrxNetPrio = prioNorm;
+        WriteFixedStringToEeprom(618, 72, TrxNetPrio);
+        EEPROM.write(690, 0x01);
+      }
+    }
+
     EEPROM.commit();
   };
 
@@ -6297,6 +6410,8 @@ switch (PwmTuneAggressiveness) {
 
     HtmlSrc.replace("{{TRXNET_PORT}}",        String(TrxNetPort));
     HtmlSrc.replace("{{TRXNET_SUB_CHECKED}}", TrxNetSubEnabled ? "checked" : "");
+    HtmlSrc.replace("{{TRXNET_PRIO}}",        TrxNetPrio);
+    HtmlSrc.replace("{{TRXNET_PRIO_ERR}}",    trxnetprioERR);
 
     ajaxserver.send(200, "text/html", HtmlSrc); //Send web page
   };

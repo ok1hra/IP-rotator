@@ -176,10 +176,9 @@
         <summary class="setup-summary">TrxNet</summary>
         <table class="setup-table">
           <tr>
-            <td class="tdr"><label>NET_ID = Rotator ID</label></td>
+            <td class="tdr"><label>ROT.{{NET_ID}}</label></td>
             <td>
-              <span id="trxnet-netid">{{NET_ID}}</span>
-              <span class="hover-text">?<span class="tooltip-text" id="top" style="width: 280px;">Set in the Station and rotor section above.<br>Empty = TrxNet disabled.<br>Device name on the network: ROT.{NET_ID}</span></span>
+              <span class="hover-text">?<span class="tooltip-text" id="top" style="width: 300px;">Device name on the network.<br>Derived from the Rotator ID (= NET_ID) set in the Station and rotor section above.<br>Empty Rotator ID = TrxNet disabled.</span></span>
             </td>
           </tr>
           <tr>
@@ -194,6 +193,13 @@
             <td>
               <input type="checkbox" id="trxnet-sub" name="trxnet_sub" {{TRXNET_SUB_CHECKED}}>
               <span class="hover-text">?<span class="tooltip-text" id="top" style="width: 280px;">Accept rotation commands from peers:<br>/s-azimuth (always)<br>/s-elevation (only if elevation mode is enabled)<br>Change takes effect after restart.</span></span>
+            </td>
+          </tr>
+          <tr>
+            <td class="tdr"><label for="trxnet-prio">Priority peers</label></td>
+            <td>
+              <input type="text" id="trxnet-prio" name="trxnet_prio" size="18" maxlength="71" value="{{TRXNET_PRIO}}" placeholder="INK 705"><span style="color:red;">{{TRXNET_PRIO_ERR}}</span>
+              <span class="hover-text">?<span class="tooltip-text" id="top" style="width: 300px;">When the peer table is full, protect devices whose name starts with any of these space-separated prefixes &mdash; the stalest non-priority peer is evicted to make room.<br>Max 8 prefixes &times; 8 chars.<br>Empty = off.<br>Change takes effect after restart.</span></span>
             </td>
           </tr>
           <tr>
