@@ -128,7 +128,7 @@ Použití knihovny Wire ve verzi 2.0.0 v adresáři: /home/dan/Arduino/hardware/
 
 */
 //-------------------------------------------------------------------------------------------------------
-const char* REV = "20260707";
+const char* REV = "20260912";
 const char* FS_BUILD_INFO_PATH = "/fs_build.txt";
 
 // #define CN3A                      // fix ip
@@ -300,7 +300,7 @@ int i = 0;
 #include <WiFiUdp.h>
 #include <MD5Builder.h>
 #include "EEPROM.h"
-#define EEPROM_SIZE 691   /*
+#define EEPROM_SIZE 756   /*
 
  0|Byte    1|128
  1|Char    1|A
@@ -378,6 +378,8 @@ int i = 0;
 617 - TrxNetSubEnabled Bool
 618-689 - TrxNetPrio (space-separated priority prefixes, max 8 x 8 chars)
 690 - TrxNetPrioInit (0x01 = user has set TrxNetPrio; else load default "INK 705")
+691 - DxcWifiltEnabled Bool
+692-755 - WIFILT DXC host[:port] (empty = autodetect localhost:82, then wifilt.local:82)
 
 !! Increment EEPROM_SIZE #define !!
 
@@ -411,6 +413,8 @@ String DxcMqttTopicMiddle = "";
 String DxcMqttTopicRight = "";
 const char* DEFAULT_DXC_HOST = "ve7cc.net";
 const uint16_t DEFAULT_DXC_PORT = 23;
+bool DxcWifiltEnabled = false;
+String DxcWifiltHost = "";     // empty = browser autodetects localhost:82, then wifilt.local:82
 bool DxcTelnetStatus = false;
 bool DxcWsStatus = false;
 bool DxcTelnetLoginPending = false;
@@ -559,6 +563,7 @@ bool GraylineUtcAvailable(time_t* nowOut = nullptr){
 uint32_t readADC_Cal(int ADC_Raw);
 bool IsSafeWebAuthPasswordValue(const String& value);
 bool IsSafeMqttPublishTopicValue(const String& value);
+bool IsSafeDxcWifiltHostValue(const String& value);
 bool LooksLikeLegacyWebAuthKey(const String& value);
 void Watchdog();
 void LedStatus();
@@ -627,6 +632,7 @@ void handleMapLocator();
 void handleMapZoomKm();
 void handleReadDxcMqttTopic();
 void handleReadDxcMqttTopics();
+void handleReadDxcSource();
 void handleSetMapLocator();
 void handleSetMapZoomKm();
 void handleMapTheme();
@@ -1235,6 +1241,24 @@ void setup() {
     }
   }
 
+  // 691 DxcWifiltEnabled
+  if(EEPROM.read(691)==0xff){
+    DxcWifiltEnabled = false;
+  }else{
+    DxcWifiltEnabled = EEPROM.readBool(691);
+  }
+
+  // 692-755 WIFILT DXC host[:port], empty = autodetect in the browser
+  if(EEPROM.read(692)==0xff){
+    DxcWifiltHost = "";
+  }else{
+    DxcWifiltHost = ReadFixedStringFromEeprom(692, 64);
+    DxcWifiltHost.trim();
+    if(!IsSafeDxcWifiltHostValue(DxcWifiltHost)){
+      DxcWifiltHost = "";
+    }
+  }
+
   // 615-616 TrxNetPort
   if(EEPROM.read(615)==0xff){
     TrxNetPort = 5683;
@@ -1421,6 +1445,7 @@ void setup() {
    RegisterAjaxRoute("/readMapZoomKm", handleMapZoomKm);
    RegisterAjaxRoute("/readDxcMqttTopic", handleReadDxcMqttTopic);
    RegisterAjaxRoute("/readDxcMqttTopics", handleReadDxcMqttTopics);
+   RegisterAjaxRoute("/readDxcSource", handleReadDxcSource);
    RegisterAjaxRoute("/setMapLocator", handleSetMapLocator);
   RegisterAjaxRoute("/setMapZoomKm", handleSetMapZoomKm);
   RegisterAjaxRoute("/readMapTheme", handleMapTheme);
@@ -2194,6 +2219,24 @@ bool IsSafeMqttPublishTopicValue(const String& value){
   return true;
 }
 
+// WIFILT DXC host is consumed by the browser as "host" or "host:port", so keep it to
+// what can appear in a hostname/IPv4 plus the optional :port separator.
+bool IsSafeDxcWifiltHostValue(const String& value){
+  if(value.length() > 63){
+    return false;
+  }
+  for(size_t i = 0; i < value.length(); i++){
+    char c = value[i];
+    bool isDigit = (c >= '0' && c <= '9');
+    bool isUpper = (c >= 'A' && c <= 'Z');
+    bool isLower = (c >= 'a' && c <= 'z');
+    if(!(isDigit || isUpper || isLower || c == '.' || c == '-' || c == ':')){
+      return false;
+    }
+  }
+  return true;
+}
+
 bool LooksLikeLegacyWebAuthKey(const String& value){
   if(value.length() != 100){
     return false;
@@ -2489,7 +2532,9 @@ String ExportConfigBackupJson(){
   json += "    \"one_turn_limit_sec\": " + String(OneTurnLimitSec) + ",\n";
   json += "    \"trxnet_port\": " + String(TrxNetPort) + ",\n";
   json += "    \"trxnet_sub\": " + String(TrxNetSubEnabled ? "true" : "false") + ",\n";
-  json += "    \"trxnet_prio\": \"" + JsonEscape(TrxNetPrio) + "\"\n";
+  json += "    \"trxnet_prio\": \"" + JsonEscape(TrxNetPrio) + "\",\n";
+  json += "    \"dxc_wifilt_enabled\": " + String(DxcWifiltEnabled ? "true" : "false") + ",\n";
+  json += "    \"dxc_wifilt_host\": \"" + JsonEscape(DxcWifiltHost) + "\"\n";
   json += "  }\n";
   json += "}\n";
   return json;
@@ -2655,6 +2700,17 @@ String ImportConfigBackupJson(const String& jsonPayload){
   if(!JsonExtractBool(jsonPayload, "elevation", elevationValue)){
     return "Invalid elevation";
   }
+  // Added after CONFIG_BACKUP_VERSION 1 shipped - optional, so backups written by
+  // older firmware still restore instead of failing on a missing key.
+  bool dxcWifiltEnabledValue = DxcWifiltEnabled;
+  String newDxcWifiltHost = DxcWifiltHost;
+  JsonExtractBool(jsonPayload, "dxc_wifilt_enabled", dxcWifiltEnabledValue);
+  if(JsonExtractString(jsonPayload, "dxc_wifilt_host", newDxcWifiltHost)){
+    newDxcWifiltHost.trim();
+    if(!IsSafeDxcWifiltHostValue(newDxcWifiltHost)){
+      return "Invalid dxc_wifilt_host";
+    }
+  }
   if(!JsonExtractString(jsonPayload, "map_url", newMapUrl) || newMapUrl.length() < 1 || newMapUrl.length() > 50){
     return "Invalid map_url";
   }
@@ -2772,6 +2828,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   DxcMqttTopic = newDxcMqttTopic;
   DxcMqttTopicMiddle = newDxcMqttTopicMiddle;
   DxcMqttTopicRight = newDxcMqttTopicRight;
+  DxcWifiltEnabled = dxcWifiltEnabledValue;
+  DxcWifiltHost = newDxcWifiltHost;
   ELEVATION = elevationValue;
   MapUrl = newMapUrl;
   MapSource = byte(mapSourceValue);
@@ -2845,6 +2903,8 @@ String ImportConfigBackupJson(const String& jsonPayload){
   WriteFixedStringToEeprom(422, 64, DxcMqttTopic);
   WriteFixedStringToEeprom(487, 64, DxcMqttTopicMiddle);
   WriteFixedStringToEeprom(551, 64, DxcMqttTopicRight);
+  EEPROM.writeBool(691, DxcWifiltEnabled);
+  WriteFixedStringToEeprom(692, 64, DxcWifiltHost);
   EEPROM.writeUShort(615, TrxNetPort);
   EEPROM.writeBool(617, TrxNetSubEnabled);
   WriteFixedStringToEeprom(618, 72, TrxNetPrio);
@@ -5064,6 +5124,8 @@ void handleSet() {
   String dxc_mqtt_topicERR= "";
   String dxc_mqtt_topic_middleERR= "";
   String dxc_mqtt_topic_rightERR= "";
+  String dxc_wifilt_hostERR= "";
+  String dxcwifiltCHECKED= "";
   String mapsourceERR= "";
   String maplocatorERR= "";
   String mapzoomkmERR= "";
@@ -5121,6 +5183,7 @@ void handleSet() {
       || ajaxserver.hasArg("dxcmqtttopic")
       || ajaxserver.hasArg("dxcmqtttopicmiddle")
       || ajaxserver.hasArg("dxcmqtttopicright")
+      || ajaxserver.hasArg("dxcwifilthost")
       || ajaxserver.hasArg("webauth")
       || ajaxserver.hasArg("webpass");
   };
@@ -5360,6 +5423,28 @@ void handleSet() {
       if(DxcMqttTopicRight != newDxcMqttTopicRight){
         DxcMqttTopicRight = newDxcMqttTopicRight;
         WriteFixedStringToEeprom(551, 64, DxcMqttTopicRight);
+      }
+    }
+
+    // 691-755 WIFILT DXC relay. Only the browser talks to WIFILT; the firmware just
+    // remembers whether it may and where to look. Guarded on the text field because
+    // an unticked checkbox is not submitted at all.
+    if(ajaxserver.hasArg("dxcwifilthost")){
+      String newDxcWifiltHost = String(ajaxserver.arg("dxcwifilthost"));
+      newDxcWifiltHost.trim();
+      if(!IsSafeDxcWifiltHostValue(newDxcWifiltHost)){
+        dxc_wifilt_hostERR = " Out of range 0-63 chars, only letters, digits, . - and :";
+      }else{
+        dxc_wifilt_hostERR = "";
+        if(DxcWifiltHost != newDxcWifiltHost){
+          DxcWifiltHost = newDxcWifiltHost;
+          WriteFixedStringToEeprom(692, 64, DxcWifiltHost);
+        }
+      }
+      bool newDxcWifiltEnabled = ajaxserver.arg("dxcwifilt").toInt() == 1;
+      if(DxcWifiltEnabled != newDxcWifiltEnabled){
+        DxcWifiltEnabled = newDxcWifiltEnabled;
+        EEPROM.writeBool(691, DxcWifiltEnabled);
       }
     }
 
@@ -6173,6 +6258,12 @@ if(WebAuthEnabled==true){
   webauthCHECKED= "";
 }
 
+if(DxcWifiltEnabled==true){
+  dxcwifiltCHECKED= "checked";
+}else{
+  dxcwifiltCHECKED= "";
+}
+
 if(MQTT_LOGIN==true){
   mqtt_loginCHECKED= "checked";
   mqtt_loginDisable="";
@@ -6397,6 +6488,9 @@ switch (PwmTuneAggressiveness) {
     HtmlSrc.replace("{{DXC_MQTT_TOPIC_MIDDLE_ERR}}", dxc_mqtt_topic_middleERR);
     HtmlSrc.replace("{{DXC_MQTT_TOPIC_RIGHT}}", DxcMqttTopicRight);
     HtmlSrc.replace("{{DXC_MQTT_TOPIC_RIGHT_ERR}}", dxc_mqtt_topic_rightERR);
+    HtmlSrc.replace("{{DXC_WIFILT_CHECKED}}", dxcwifiltCHECKED);
+    HtmlSrc.replace("{{DXC_WIFILT_HOST}}", DxcWifiltHost);
+    HtmlSrc.replace("{{DXC_WIFILT_HOST_ERR}}", dxc_wifilt_hostERR);
     HtmlSrc.replace("{{WEBAUTH_CHECKED}}", webauthCHECKED);
     HtmlSrc.replace("{{WEB_AUTH_USER}}", WEB_AUTH_USER);
     HtmlSrc.replace("{{WEB_AUTH_PASSWORD}}", WebAuthPassword);
@@ -6790,6 +6884,18 @@ void handleReadDxcMqttTopics() {
   json += "\"left\":\"" + JsonEscape(DxcMqttTopic) + "\",";
   json += "\"middle\":\"" + JsonEscape(DxcMqttTopicMiddle) + "\",";
   json += "\"right\":\"" + JsonEscape(DxcMqttTopicRight) + "\"";
+  json += "}";
+  ajaxserver.send(200, "application/json", json);
+}
+
+// Which DX cluster feed the browser should use. The firmware never talks to WIFILT
+// itself - it only reports whether its own telnet side is configured and where the
+// pages may look for a WIFILT relay. index.html and dxc.html decide from this.
+void handleReadDxcSource() {
+  String json = "{";
+  json += "\"ownReady\":" + String(DxcConfigReady() ? "true" : "false") + ",";
+  json += "\"wifiltEnabled\":" + String(DxcWifiltEnabled ? "true" : "false") + ",";
+  json += "\"wifiltHost\":\"" + JsonEscape(DxcWifiltHost) + "\"";
   json += "}";
   ajaxserver.send(200, "application/json", json);
 }
