@@ -1,7 +1,7 @@
 IP Rotator recovery package
 ==========================
 
-Firmware REV: 20260912
+Firmware REV: 20260913
 Flash mode:   dio
 Flash freq:   40m
 Flash size:   4MB
@@ -15,9 +15,9 @@ Files:
 - firmware.bin
 - spiffs.bin
 - recovery-merged.bin
-- ip-rotator-20260912-esp32-poe-firmware.bin
-- ip-rotator-20260912-esp32-poe-spiffs.bin
-- ip-rotator-20260912-esp32-poe-recovery-merged.bin
+- ip-rotator-20260913-esp32-poe-firmware.bin
+- ip-rotator-20260913-esp32-poe-spiffs.bin
+- ip-rotator-20260913-esp32-poe-recovery-merged.bin
 - manifest.json
 - index.html
 

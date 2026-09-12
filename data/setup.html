@@ -133,9 +133,7 @@
           <tr><td class="tdr"><label for="dxcmqtttopic">Send frequency to MQTT topic (left mouse button):</label></td><td><input type="text" id="dxcmqtttopic" name="dxcmqtttopic" size="28" maxlength="63" value="{{DXC_MQTT_TOPIC}}"><span style="color:red;">{{DXC_MQTT_TOPIC_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 310px;">Optional custom MQTT topic used when you left-click a frequency in the DXC window. Payload is sent as Hz without spaces. Leave empty to disable this mouse button.</span></span></td></tr>
           <tr><td class="tdr"><label for="dxcmqtttopicmiddle">Send frequency to MQTT topic (middle mouse button):</label></td><td><input type="text" id="dxcmqtttopicmiddle" name="dxcmqtttopicmiddle" size="28" maxlength="63" value="{{DXC_MQTT_TOPIC_MIDDLE}}"><span style="color:red;">{{DXC_MQTT_TOPIC_MIDDLE_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 320px;">Optional custom MQTT topic used when you middle-click a frequency in the DXC window. Payload is sent as Hz without spaces. Leave empty to disable this mouse button.</span></span></td></tr>
           <tr><td class="tdr"><label for="dxcmqtttopicright">Send frequency to MQTT topic (right mouse button):</label></td><td><input type="text" id="dxcmqtttopicright" name="dxcmqtttopicright" size="28" maxlength="63" value="{{DXC_MQTT_TOPIC_RIGHT}}"><span style="color:red;">{{DXC_MQTT_TOPIC_RIGHT_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 310px;">Optional custom MQTT topic used when you right-click a frequency in the DXC window. Payload is sent as Hz without spaces. Leave empty to disable this mouse button.</span></span></td></tr>
-          <tr class="b"><td class="tdr"><label for="dxcwifilt">Use WIFILT DX cluster:</label></td><td><input type="checkbox" id="dxcwifilt" name="dxcwifilt" value="1" {{DXC_WIFILT_CHECKED}}><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 330px;">Take DX spots from a running WIFILT instead of opening a second Telnet session to the cluster. The map uses it only while the rotator DXC window is closed &mdash; an open /dxc.html always wins. Nothing is ever sent to WIFILT, so its own cluster session is not disturbed.</span></span></td></tr>
-          <tr><td class="tdr"><label for="dxcwifilthost">WIFILT host:</label></td><td><input type="text" id="dxcwifilthost" name="dxcwifilthost" size="24" maxlength="63" placeholder="auto" value="{{DXC_WIFILT_HOST}}"><span style="color:red;">{{DXC_WIFILT_HOST_ERR}}</span><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 320px;">Leave empty to autodetect: the browser probes localhost:82 and then wifilt.local:82. Fill in a host or host:port when WIFILT runs on another machine, or when the browser blocks localhost access.</span></span></td></tr>
-          <tr><td class="tdr"><label>Detected:</label></td><td><div id="dxcwifilt-detect"><small>&hellip;</small></div></td></tr>
+          <tr class="b"><td class="tdr"><label for="dxcwifilt">Use WIFILT DX cluster:</label></td><td><input type="checkbox" id="dxcwifilt" name="dxcwifilt" value="1" {{DXC_WIFILT_CHECKED}}><span class="hover-text">?<span class="tooltip-text" id="top" style="width: 340px;">Let the map draw DX spots that WIFILT pushes here, instead of opening a second Telnet session to the cluster. WIFILT must be pointed at this rotator in its own setup; this rotator never connects to WIFILT. The map uses the spots only while its own DXC window is closed &mdash; an open /dxc.html always wins. Only what WIFILT itself is showing arrives, so its filters apply on top of the map filters.</span></span></td></tr>
         </table>
       </details>
 
@@ -370,50 +368,6 @@
     setInterval(refreshTrxNetPeers, 1000);
     refreshTrxNetPeers();
 
-    // WIFILT DXC relay probe. Port 82 answers 404 to every URI other than /dxcws,
-    // so this confirms the relay is alive without opening the single WebSocket slot
-    // and evicting whoever holds it. no-cors makes the response opaque - we only
-    // care that the request completed instead of failing to connect.
-    function probeWifiltHost(hostPort, cb) {
-      var ctl = new AbortController();
-      var timer = setTimeout(function(){ ctl.abort(); }, 1200);
-      fetch('http://' + hostPort + '/', { mode: 'no-cors', cache: 'no-store', signal: ctl.signal })
-        .then(function(){ clearTimeout(timer); cb(true); })
-        .catch(function(){ clearTimeout(timer); cb(false); });
-    }
-
-    function wifiltCandidates() {
-      var field = document.getElementById('dxcwifilthost');
-      var manual = field ? String(field.value || '').trim() : '';
-      if (manual) {
-        return [manual.indexOf(':') >= 0 ? manual : manual + ':82'];
-      }
-      return ['localhost:82', 'wifilt.local:82'];
-    }
-
-    function refreshWifiltDetect() {
-      var el = document.getElementById('dxcwifilt-detect');
-      if (!el) { return; }
-      var list = wifiltCandidates();
-      var i = 0;
-      function next() {
-        if (i >= list.length) {
-          el.innerHTML = '<span class="peer inactive">&#9675; not found</span>';
-          return;
-        }
-        var host = list[i++];
-        probeWifiltHost(host, function(ok){
-          if (ok) {
-            el.innerHTML = '<span class="peer active">&#9679; ' + host + '</span>';
-          } else {
-            next();
-          }
-        });
-      }
-      next();
-    }
-    setInterval(refreshWifiltDetect, 5000);
-    refreshWifiltDetect();
   </script>
 </body>
 </html>

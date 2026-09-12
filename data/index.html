@@ -712,18 +712,10 @@
 	var DxcSpotChannel = null;
 	var DxcPopupAliveAt = 0;
 	var DxcWifiltEnabled = false;
-	var DxcWifiltHostCfg = "";
-	var DxcWifiltHostFound = "";
-	var DxcWifiltSocket = null;
-	var DxcWifiltTelnetUp = false;
-	var DxcWifiltRxBuf = "";
 	var DxcWifiltSpots = [];
-	var DxcWifiltOpenedAt = 0;
-	var DxcWifiltGotData = false;
-	var DxcWifiltEvictions = [];
-	var DxcWifiltRetryAt = 0;
-	var DxcWifiltBackoffMs = 0;
-	var DxcWifiltBusyUntil = 0;
+	var DxcWifiltTelnetUp = false;
+	var DxcWifiltAgeMs = -1;
+	var DxcWifiltSeenAt = 0;
 	var DxcWifiltFilters = null;
 	var DXC_WIFILT_BANDS = [
 		{id:"160m",min:1800,max:2000},{id:"80m",min:3500,max:3800},{id:"60m",min:5351.5,max:5366.5},
@@ -734,7 +726,7 @@
 		{id:"13cm",min:2320000,max:2450000},{id:"9cm",min:3400000,max:3475000},{id:"6cm",min:5650000,max:5850000},
 		{id:"3cm",min:10000000,max:10500000}
 	];
-	
+
 	var Xcenter = BoxSize/2;
 	var Ycenter = BoxSize/2;
 
@@ -1199,222 +1191,61 @@
 
 
 	// ---- WIFILT DX cluster feed -------------------------------------------------
-	// WIFILT relays the same cluster stream this rotator does, on ws://<host>:82/dxcws.
-	// When the operator has no DXC window of our own open, the map reads that feed
-	// directly so the overlays work with no extra window. The relay accepts a single
-	// client, so we connect only while the feed is actually wanted and back off hard
-	// once something else takes the slot.
+	// WIFILT's own DXC page POSTs a snapshot of the spots it is showing into this
+	// rotator's /setDxcSpots mailbox; the map reads it back from its own firmware.
+	// Nothing here ever contacts WIFILT, and that is the whole point: its relay
+	// takes a single WebSocket client, so dialling in would evict the operator's
+	// own DXC window and force a fresh cluster login.
 
 	function dxcPopupAlive(){
 		return (Date.now() - Number(DxcPopupAliveAt)) <= 6000;
 	}
 
-	// Port 82 answers 404 to every URI but /dxcws, so this proves the relay is alive
-	// without opening the socket and evicting whoever holds it. no-cors leaves the
-	// response opaque - completing the request at all is the whole signal.
-	function probeWifiltHost(hostPort, cb){
-		var ctl = new AbortController();
-		var timer = setTimeout(function(){ ctl.abort(); }, 1200);
-		fetch("http://" + hostPort + "/", { mode: "no-cors", cache: "no-store", signal: ctl.signal })
-			.then(function(){ clearTimeout(timer); cb(true); })
-			.catch(function(){ clearTimeout(timer); cb(false); });
-	}
-
-	function wifiltCandidates(){
-		var manual = String(DxcWifiltHostCfg || "").trim();
-		if(manual){
-			return [manual.indexOf(":") >= 0 ? manual : manual + ":82"];
-		}
-		return ["localhost:82", "wifilt.local:82"];
-	}
-
-	function refreshWifiltProbe(){
-		if(!DxcWifiltEnabled){
-			DxcWifiltHostFound = "";
-			updateWifiltDot();
-			return;
-		}
-		if(DxcWifiltSocket){
-			return;
-		}
-		var list = wifiltCandidates();
-		var i = 0;
-		(function next(){
-			if(i >= list.length){
-				DxcWifiltHostFound = "";
-				updateWifiltDot();
-				return;
-			}
-			var host = list[i++];
-			probeWifiltHost(host, function(ok){
-				if(ok){
-					DxcWifiltHostFound = host;
-					updateWifiltDot();
-				}else{
-					next();
-				}
-			});
-		})();
-	}
-
 	function wifiltFeedWanted(){
 		return DxcWifiltEnabled
-			&& !!DxcWifiltHostFound
 			&& !dxcPopupAlive()
 			&& (MapDxcSpotsEnabled || MapDxcLinesEnabled)
 			&& Number(MapSource) === 1
-			&& Number(Elevation) !== 1
-			&& Date.now() >= DxcWifiltBusyUntil;
+			&& Number(Elevation) !== 1;
 	}
 
-	function closeWifiltSocket(){
-		var sock = DxcWifiltSocket;
-		DxcWifiltSocket = null;
-		DxcWifiltTelnetUp = false;
-		DxcWifiltRxBuf = "";
-		if(sock){
-			try{ sock.onopen = sock.onclose = sock.onerror = sock.onmessage = null; }catch(err){}
-			try{ sock.close(); }catch(err){}
-		}
-	}
-
-	function noteWifiltEviction(){
-		var now = Date.now();
-		DxcWifiltEvictions.push(now);
-		while(DxcWifiltEvictions.length && now - DxcWifiltEvictions[0] > 60000){
-			DxcWifiltEvictions.shift();
-		}
-		DxcWifiltBackoffMs = DxcWifiltBackoffMs ? Math.min(DxcWifiltBackoffMs * 3, 300000) : 5000;
-		if(DxcWifiltEvictions.length >= 3){
-			// Somebody else keeps taking the slot. Stop fighting over it for a while:
-			// every eviction also tears down WIFILT's own telnet login to the cluster.
-			DxcWifiltBusyUntil = now + 300000;
-			DxcWifiltEvictions = [];
-		}
-		DxcWifiltRetryAt = now + DxcWifiltBackoffMs;
-	}
-
-	function openWifiltSocket(){
-		var host = DxcWifiltHostFound;
-		if(!host){ return; }
-		var sock;
-		try{
-			sock = new WebSocket("ws://" + host + "/dxcws");
-		}catch(err){
-			DxcWifiltRetryAt = Date.now() + 15000;
-			return;
-		}
-		DxcWifiltSocket = sock;
-		DxcWifiltGotData = false;
-		DxcWifiltRxBuf = "";
-		DxcWifiltOpenedAt = 0;
-		sock.onopen = function(){
-			DxcWifiltOpenedAt = Date.now();
-			updateWifiltDot();
-		};
-		sock.onmessage = function(evt){
-			handleWifiltMessage(String(evt && evt.data !== undefined ? evt.data : ""));
-		};
-		sock.onerror = function(){};
-		sock.onclose = function(){
-			var wasOpen = DxcWifiltOpenedAt > 0;
-			var shortLived = wasOpen && (Date.now() - DxcWifiltOpenedAt) < 5000 && !DxcWifiltGotData;
-			closeWifiltSocket();
-			if(shortLived || !wasOpen){
-				noteWifiltEviction();
-			}else{
-				DxcWifiltBackoffMs = 0;
-				DxcWifiltEvictions = [];
-				DxcWifiltRetryAt = Date.now() + 5000;
-			}
-			updateWifiltDot();
-		};
-	}
-
-	function handleWifiltMessage(data){
-		if(!data){ return; }
-		if(data.indexOf("{\"telnet\"") === 0){
-			try{
-				DxcWifiltTelnetUp = !!JSON.parse(data).telnet;
-			}catch(err){}
-			updateWifiltDot();
-			return;
-		}
-		DxcWifiltGotData = true;
-		// Frames are raw telnet chunks, not line aligned - one line can span two frames
-		// and one frame can hold several lines.
-		DxcWifiltRxBuf += data;
-		if(DxcWifiltRxBuf.length > 8192){
-			DxcWifiltRxBuf = DxcWifiltRxBuf.slice(-8192);
-		}
-		var parts = DxcWifiltRxBuf.split("\n");
-		DxcWifiltRxBuf = parts.pop();
-		for(var i = 0; i < parts.length; i++){
-			addWifiltSpotLine(parts[i]);
-		}
-	}
-
-	function addWifiltSpotLine(line){
-		var spot = parseDxcSpotLine(line);
-		if(!spot){ return; }
-		spot.at = Date.now();
-		DxcWifiltSpots.push(spot);
-		if(DxcWifiltSpots.length > 800){
-			DxcWifiltSpots.splice(0, DxcWifiltSpots.length - 800);
-		}
-	}
-
-	// Ported verbatim from data/dxc.html so both feeds read the same cluster dialects:
-	// "DX de", the bare SPOTTER/kHz/DX/INFO/UTC table and DXSpider PC11 records.
-	function splitDxcComment(text){
-		var rest = String(text || "").trim();
-		var parts = { type:"", db:null, wpm:"", comment:"" };
-		var m = rest.match(/\b(CQ|DE)\b/i);
-		if(m){
-			parts.type = m[1].toUpperCase();
-			rest = (rest.slice(0, m.index) + " " + rest.slice(m.index + m[0].length)).trim();
-		}
-		m = rest.match(/(?:^|\s)(-?\d+(?:\.\d+)?)\s*dB\b/i);
-		if(m){
-			parts.db = m[1];
-			rest = (rest.slice(0, m.index) + " " + rest.slice(m.index + m[0].length)).trim();
-		}
-		m = rest.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*WPM\b/i);
-		if(m){
-			parts.wpm = m[1];
-			rest = (rest.slice(0, m.index) + " " + rest.slice(m.index + m[0].length)).trim();
-		}
-		parts.comment = rest.replace(/\s{2,}/g, " ").trim();
-		return parts;
-	}
-
-	function parseDxcSpotLine(line){
-		var s = String(line || "").replace(/\r/g, "").replace(/[\x00-\x1F\x7F]+$/g, "").trim();
-		var m, p, parts;
-		if(!s){ return null; }
-		if(/^SPOTTER\s+kHz\s+DX\s+INFO\s+UTC$/i.test(s)){ return null; }
-		m = s.match(/^DX\s+de\s+(\S+):\s*([0-9.]+)\s+(\S+)\s*(.*?)\s+([0-2][0-9][0-5][0-9])Z?\s*$/i);
-		if(m){
-			p = splitDxcComment(m[4]);
-			return { spotter:m[1], freq:m[2], dx:m[3], type:p.type, time:m[5] };
-		}
-		m = s.match(/^(\S+)\s+([0-9.]+)\s+(\S+)\s+(.*?)\s+([0-2][0-9][0-5][0-9])Z?\s*$/);
-		if(m){
-			p = splitDxcComment(m[4]);
-			return { spotter:m[1], freq:m[2], dx:m[3], type:p.type, time:m[5] };
-		}
-		parts = s.split("^");
-		if(parts.length >= 7 && String(parts[0]).toUpperCase() === "PC11"){
-			p = splitDxcComment(parts[5] || "");
-			return {
-				spotter: parts[6] || "",
-				freq: parts[1] || "",
-				dx: parts[2] || "",
-				type: p.type,
-				time: String(parts[4] || "").replace(/Z$/i, "")
-			};
-		}
-		return null;
+	// The blob is a snapshot, not an increment: what WIFILT shows right now replaces
+	// the whole list. Retention and the 120 cap live on the sending side.
+	function pollWifiltBlob(){
+		if(!wifiltFeedWanted()){ return; }
+		fetch("readDxcSpots", { cache: "no-store" })
+			.then(function(r){ return r.json(); })
+			.then(function(data){
+				var age = Number(data && data.ageMs);
+				if(!isFinite(age) || age < 0){
+					DxcWifiltAgeMs = -1;
+					DxcWifiltSeenAt = 0;
+					DxcWifiltTelnetUp = false;
+					DxcWifiltSpots = [];
+					updateWifiltDot();
+					return;
+				}
+				DxcWifiltAgeMs = age;
+				DxcWifiltSeenAt = Date.now();
+				DxcWifiltTelnetUp = !!(data && data.telnet);
+				var list = (data && data.spots) || [];
+				var now = Date.now();
+				var next = [];
+				for(var i = 0; i < list.length; i++){
+					var raw = list[i] || {};
+					if(!raw.dx){ continue; }
+					next.push({
+						dx: String(raw.dx),
+						freq: String(raw.freq || ""),
+						type: String(raw.type || ""),
+						time: String(raw.time || ""),
+						at: now
+					});
+				}
+				DxcWifiltSpots = next;
+				updateWifiltDot();
+			})
+			.catch(function(){});
 	}
 
 	function utcHmToRecentAgeMinutes(hm){
@@ -1431,9 +1262,10 @@
 		return diffMinutes;
 	}
 
-	// The DXC window keeps its filters in localStorage on this same origin. Reading them
-	// keeps the map looking the same whichever feed is driving it. dB and distance filters
-	// are deliberately left out - they need per-spot geometry the map never shows.
+	// The DXC window keeps its filters in localStorage on this same origin. Reading
+	// them keeps the map looking the same whichever feed is driving it. dB and
+	// distance filters are deliberately left out - they need per-spot geometry the
+	// map never shows, and the blob does not carry the fields they need.
 	function loadWifiltFilters(){
 		var f = { hidden:{}, type:{CQ:true, DE:true, EMPTY:true}, band:{}, dxText:"", dxRegex:false };
 		var i;
@@ -1441,8 +1273,7 @@
 			f.band[DXC_WIFILT_BANDS[i].id] = true;
 		}
 		try{
-			var cols = JSON.parse(localStorage.dxcCols || "{}") || {};
-			f.hidden = cols;
+			f.hidden = JSON.parse(localStorage.dxcCols || "{}") || {};
 		}catch(err){}
 		try{
 			var t = JSON.parse(localStorage.dxcTypeFilter || "{}") || {};
@@ -1501,16 +1332,23 @@
 	}
 
 	function aggregateWifiltSpots(){
-		if(!DxcWifiltSocket || !DxcWifiltSpots.length){ return; }
+		if(!DxcWifiltSpots.length){ return; }
+		// Stop the moment the feed is not wanted - with the rotator's own DXC window
+		// open it publishes the same counts over BroadcastChannel, and two writers
+		// would fight over the overlay every few seconds.
+		if(!wifiltFeedWanted()){ return; }
+		// Polling can stop or fail silently; without this the last snapshot would be
+		// drawn forever. The firmware drops its copy at the same age.
+		var effectiveAge = wifiltEffectiveAgeMs();
+		if(effectiveAge < 0 || effectiveAge > 600000){
+			DxcWifiltSpots = [];
+			return;
+		}
 		var f = loadWifiltFilters();
 		var counts = {};
 		var counts30 = {};
-		var cutoff = Date.now() - 3600000;
-		var kept = [];
 		for(var i = 0; i < DxcWifiltSpots.length; i++){
 			var spot = DxcWifiltSpots[i];
-			if(spot.at < cutoff){ continue; }
-			kept.push(spot);
 			if(!wifiltSpotAllowed(spot, f)){ continue; }
 			var entry = resolveDxccPrefixEntry(spot.dx);
 			if(!entry || !entry.label){ continue; }
@@ -1520,58 +1358,44 @@
 				counts30[entry.label] = (counts30[entry.label] || 0) + 1;
 			}
 		}
-		DxcWifiltSpots = kept;
 		applyDxcSpotPayload({ ts: Date.now(), spotsByPrefix: counts, spotsByPrefix30Min: counts30 });
+	}
+
+	// Three states, and the middle one matters: somebody is feeding us, but their
+	// cluster login is down, which looks identical to "nobody is feeding" unless
+	// it is spelled out. Spots keep being drawn between 15 s and 10 min - they are
+	// not wrong, only frozen; after 10 min the firmware drops the blob entirely.
+	function wifiltEffectiveAgeMs(){
+		if(DxcWifiltAgeMs < 0 || !DxcWifiltSeenAt){ return -1; }
+		return DxcWifiltAgeMs + (Date.now() - DxcWifiltSeenAt);
 	}
 
 	function updateWifiltDot(){
 		var dot = document.getElementById("DxcWifiltDot");
 		if(!dot){ return; }
-		var connected = !!DxcWifiltSocket && DxcWifiltOpenedAt > 0 && DxcWifiltTelnetUp;
-		if(connected){
-			dot.hidden = false;
+		if(!DxcWifiltEnabled){
+			dot.hidden = true;
+			dot.title = "";
+			return;
+		}
+		var effectiveAge = wifiltEffectiveAgeMs();
+		var fresh = effectiveAge >= 0 && effectiveAge < 15000;
+		dot.hidden = false;
+		if(fresh && DxcWifiltTelnetUp){
 			dot.className = "dxcsrcdot on";
 			dot.innerHTML = "&#9679;";
-			dot.title = "WIFILT DX cluster: " + DxcWifiltHostFound + " - connected";
+			dot.title = "WIFILT DX cluster: feeding spots, its cluster login is up. "
+			          + "Anything WIFILT filters out never reaches this map.";
 			return;
 		}
-		if(DxcWifiltEnabled && DxcWifiltHostFound){
-			dot.hidden = false;
-			dot.className = "dxcsrcdot idle";
-			dot.innerHTML = "&#9675;";
-			if(DxcWifiltSocket){
-				dot.title = "WIFILT DX cluster: " + DxcWifiltHostFound + " - connected, but its cluster login is down";
-			}else if(Date.now() < DxcWifiltBusyUntil){
-				dot.title = "WIFILT DX cluster: " + DxcWifiltHostFound + " - slot busy, backing off";
-			}else if(dxcPopupAlive()){
-				dot.title = "WIFILT DX cluster: " + DxcWifiltHostFound + " - available, own DXC window has priority";
-			}else{
-				dot.title = "WIFILT DX cluster: " + DxcWifiltHostFound + " - available";
-			}
-			return;
-		}
-		dot.hidden = true;
-		dot.title = "";
-	}
-
-	function wifiltTick(){
-		if(!DxcWifiltEnabled){
-			if(DxcWifiltSocket){ closeWifiltSocket(); }
-			return;
-		}
-		var wanted = wifiltFeedWanted();
-		if(!wanted){
-			if(DxcWifiltSocket){
-				// Dropping the socket also logs WIFILT out of the cluster, so only do it
-				// when the feed really is not needed. The collected spots are kept - they
-				// age out by themselves and survive a short visit to the DXC window.
-				closeWifiltSocket();
-				updateWifiltDot();
-			}
-			return;
-		}
-		if(!DxcWifiltSocket && Date.now() >= DxcWifiltRetryAt){
-			openWifiltSocket();
+		dot.className = "dxcsrcdot idle";
+		dot.innerHTML = "&#9675;";
+		if(fresh){
+			dot.title = "WIFILT DX cluster: feeding, but its own cluster login is down.";
+		}else if(dxcPopupAlive()){
+			dot.title = "WIFILT DX cluster: idle, this rotator's own DXC window has priority.";
+		}else{
+			dot.title = "WIFILT DX cluster: nobody is feeding spots. Check the map feed setting in WIFILT.";
 		}
 	}
 
@@ -1580,12 +1404,11 @@
 			.then(function(r){ return r.json(); })
 			.then(function(cfg){
 				DxcWifiltEnabled = !!(cfg && cfg.wifiltEnabled);
-				DxcWifiltHostCfg = String((cfg && cfg.wifiltHost) || "");
-				refreshWifiltProbe();
+				updateWifiltDot();
+				pollWifiltBlob();
 			})
 			.catch(function(){});
-		setInterval(refreshWifiltProbe, 10000);
-		setInterval(wifiltTick, 1000);
+		setInterval(pollWifiltBlob, 5000);
 		setInterval(aggregateWifiltSpots, 3000);
 		setInterval(updateWifiltDot, 2000);
 	}
